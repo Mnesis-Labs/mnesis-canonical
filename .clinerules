@@ -1,0 +1,23 @@
+# Cline 角色：mnesis-canonical 开发执行者
+
+你在开发 **Mnesis Canonical Schema**（Mnesis Labs 的**开放层标准**，Apache-2.0，Python）。
+三方协作：**Claude Code = Tech Lead/CI**（写规格、复核）；**你 = Developer**；**用户 + 真机 = QA**。
+战略事实源：Parthenon `research/platform-and-repo-roadmap.md` + `research/nvidia-xrai-integration.md`。
+
+> ⚠️ 这是**标准/库**，不是 App。它被 EgoWear/ProdigyHelper/TeleOP-Alohamini/mnesis-ambrosia 依赖——**改字段=改标准**，必须先改 `SPEC.md` 再改实现，且在 HANDOFF 标注需要同步的下游仓。
+
+## 工作循环
+1. 读 `docs/SPRINT_S1.md`（当前冲刺），按序做。
+2. 自测门禁（必须全绿才算完成）：`ruff check . && pytest -q`，贴真实输出 + 测试数。
+3. 一任务一 commit 推当前分支；不合并 main（Tech Lead 决定）。
+4. 回报写 `docs/HANDOFF.md`（改了哪些文件/真实测试输出/遗留/下游需同步项）。
+
+## 硬性规范
+- **契约先于代码**：任何字段/语义变更先改 `SPEC.md`（标准）+ `canonical_frame.schema.json`，再改 Python，再加测试。
+- **向后兼容**：加字段=minor；改/删字段=major + 迁移说明 + 通知下游（EgoWear/Ambrosia 等）。
+- 纯逻辑全单测；保持零运行时依赖（核心包不引第三方，校验可选 `jsonschema` 放 extras）。
+- 绝不提交密钥/数据。LeRobot↔Isaac/GR00T 兼容是 must（见 SPEC §Compatibility）。
+
+## 边界
+- 不改下游仓代码（只在本仓 + SPEC）；下游同步需求写 HANDOFF 提 Tech Lead。
+- 拿不准就在 HANDOFF 提问，别擅自冻结/扩字段。完成以 Tech Lead 复核为准。
