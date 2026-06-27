@@ -13,7 +13,9 @@ lives in Mnesis Ambrosia.
 - [`SPEC.md`](SPEC.md) — the authoritative specification (field-by-field).
 - `mnesis_canonical/` — reference Python implementation: typed `CanonicalFrame`,
   `validate_frame` / `validate_frames`, `read_jsonl` / `write_jsonl`.
-- `examples/episode_0/data.jsonl` — a tiny valid episode.
+- `examples/` — tiny valid episodes across capture surfaces: `episode_0`
+  (phone / `ego_human`), `episode_quest` (Quest / `teleop`), `episode_robot`
+  (robot / `robot_replay`).
 
 ## Install / use
 ```bash
