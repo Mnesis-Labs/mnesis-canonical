@@ -1,5 +1,7 @@
 # Sprint S1 · mnesis-canonical（Cline 连续冲刺 → 下周 demo）
 
+> **进度（2026-06-28，Logos 自主执行，非 Cline）**：C1 JSON Schema ✅（`canonical_frame.schema.json`，测试断言与 `REQUIRED_KEYS` 一致；`jsonschema` 后端待接）· C2 CLI ✅（`python -m mnesis_canonical validate`）· C3 LeRobot 适配 ✅（`to_lerobot`/`from_lerobot`）· C4 quest/robot 示例 ✅ — **13 tests 绿、已 push**。**余**：C1 的 `jsonschema` 可选后端、C5 Isaac/GR00T 兼容文档、C6 打包发布。
+
 > Tech Lead 授权 Cline **连续执行**：每个 Task `ruff check . && pytest -q` 真绿就 commit，接着下一个；只有①自测红修不动 ②需改标准/字段决策 ③Sprint 完成 时停下写 HANDOFF。
 > 背景已就绪（schema/validate/io/tests/SPEC/README 已由 Tech Lead 搭好，8 tests 绿）。本冲刺把它打磨到"可作标准对外 + 喂 Ambrosia ingest + 跨采集面"。
 
