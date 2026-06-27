@@ -4,6 +4,7 @@ The reference Python implementation of the Canonical Schema: typed frame,
 validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 """
 from .io import read_jsonl, write_jsonl
+from .lerobot import LEROBOT_COLUMNS, from_lerobot, to_lerobot
 from .schema import (
     DEVICES,
     MODALITIES,
@@ -26,5 +27,8 @@ __all__ = [
     "ValidationReport",
     "read_jsonl",
     "write_jsonl",
+    "to_lerobot",
+    "from_lerobot",
+    "LEROBOT_COLUMNS",
     "__version__",
 ]

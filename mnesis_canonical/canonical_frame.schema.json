@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mnesis-Labs/mnesis-canonical/canonical_frame.schema.json",
+  "title": "Mnesis Canonical Frame",
+  "description": "One frame of embodied spatial-action data (one JSONL line). See SPEC.md.",
+  "type": "object",
+  "required": [
+    "index", "episode_index", "task_index", "frame_index",
+    "t_ns", "t_hw_ns", "timestamp",
+    "head_pose_SE3", "observation.state", "observation.images.ego", "action",
+    "source.device", "source.modality", "tracking_state"
+  ],
+  "properties": {
+    "index": { "type": "integer", "minimum": 0 },
+    "episode_index": { "type": "integer", "minimum": 0 },
+    "task_index": { "type": "integer", "minimum": 0 },
+    "frame_index": { "type": "integer", "minimum": 0 },
+    "t_ns": { "type": "integer", "description": "wall-clock nanoseconds" },
+    "t_hw_ns": { "type": "integer", "description": "hardware ns (ARCore frame.timestamp); join key" },
+    "timestamp": { "type": "string", "minLength": 1 },
+    "head_pose_SE3": {
+      "type": "array", "items": { "type": "number" }, "minItems": 7, "maxItems": 7,
+      "description": "[tx,ty,tz, qx,qy,qz,qw] metres + quaternion {x,y,z,w}"
+    },
+    "observation.state": {
+      "type": "array", "items": { "type": "number" }, "minItems": 7, "maxItems": 7
+    },
+    "observation.images.ego": { "type": "string" },
+    "action": {
+      "type": "array", "items": { "type": "number" }, "minItems": 6, "maxItems": 6,
+      "description": "relative delta [tx,ty,tz, rx,ry,rz] (m, axis-angle rad)"
+    },
+    "spatial_anchor_id": { "type": ["string", "null"] },
+    "source.device": { "type": "string" },
+    "source.modality": { "type": "string" },
+    "tracking_state": { "type": "string" }
+  },
+  "additionalProperties": true
+}
