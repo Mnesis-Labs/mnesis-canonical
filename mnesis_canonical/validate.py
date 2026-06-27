@@ -6,7 +6,9 @@ episode sidecar. Used by Mnesis Ambrosia's ingest gate and by capture-surface CI
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .schema import (
     DEVICES,
@@ -15,6 +17,39 @@ from .schema import (
     REQUIRED_KEYS,
     VECTOR_LENGTHS,
 )
+
+_SCHEMA_PATH = Path(__file__).resolve().parent / "canonical_frame.schema.json"
+
+
+def load_json_schema() -> dict:
+    """Load the bundled JSON Schema (Draft 2020-12) as a dict.
+
+    This is the same contract as the pure-Python validator below; it exists so
+    that other languages / tools (e.g. Mnesis Ambrosia ingest) can validate
+    against the standard without a Python dependency.
+    """
+    with open(_SCHEMA_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def validate_frame_jsonschema(frame: dict) -> list[str]:
+    """Validate one frame against the bundled JSON Schema via the optional
+    ``jsonschema`` backend (install with ``pip install mnesis-canonical[jsonschema]``).
+
+    Returns a list of human-readable errors (empty = valid). Raises RuntimeError
+    if ``jsonschema`` is not installed. Note: this enforces structure/types only;
+    cross-frame rules (frame_index monotonicity) and strict vocab live in the
+    pure-Python :func:`validate_frame` / :func:`validate_frames`.
+    """
+    try:
+        import jsonschema
+    except ImportError as e:  # pragma: no cover - exercised only without extra
+        raise RuntimeError(
+            "validate_frame_jsonschema requires the optional 'jsonschema' "
+            "dependency; install with: pip install mnesis-canonical[jsonschema]"
+        ) from e
+    validator = jsonschema.Draft202012Validator(load_json_schema())
+    return [err.message for err in sorted(validator.iter_errors(frame), key=str)]
 
 
 def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:

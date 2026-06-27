@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mnesis.dev/schemas/canonical_frame/v0.1.json",
+  "title": "Mnesis CanonicalFrame",
+  "description": "One frame of embodied spatial-action data = one JSONL line. Open standard, Apache-2.0. Authority: SPEC.md / Parthenon 03 §3.2. Keep in lock-step with schema.py.",
+  "type": "object",
+  "required": [
+    "index",
+    "episode_index",
+    "task_index",
+    "frame_index",
+    "t_ns",
+    "t_hw_ns",
+    "timestamp",
+    "head_pose_SE3",
+    "observation.state",
+    "observation.images.ego",
+    "action",
+    "source.device",
+    "source.modality",
+    "tracking_state"
+  ],
+  "properties": {
+    "index": {
+      "type": "integer",
+      "description": "Global monotonic frame index across episodes."
+    },
+    "episode_index": {
+      "type": "integer",
+      "description": "Episode id."
+    },
+    "task_index": {
+      "type": "integer",
+      "description": "Task within episode (0 = single-task)."
+    },
+    "frame_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Frame index within episode (0-based, strictly increasing — cross-frame rule enforced by validate_frames)."
+    },
+    "t_ns": {
+      "type": "integer",
+      "description": "Wall-clock nanoseconds (System.nanoTime base)."
+    },
+    "t_hw_ns": {
+      "type": "integer",
+      "description": "Hardware ns (ARCore frame.timestamp) — join key pose<->video."
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 wall clock, e.g. 2026-06-26T00:00:00.000Z."
+    },
+    "head_pose_SE3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 7,
+      "maxItems": 7,
+      "description": "[tx,ty,tz, qx,qy,qz,qw] metres + quaternion {x,y,z,w}, right-handed."
+    },
+    "observation.state": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 7,
+      "maxItems": 7,
+      "description": "7-DoF state (mirrors head_pose_SE3)."
+    },
+    "observation.images.ego": {
+      "type": "string",
+      "description": "File reference to the ego video frame ('' allowed)."
+    },
+    "action": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 6,
+      "maxItems": 6,
+      "description": "Relative delta [tx,ty,tz, rx,ry,rz] (m, axis-angle rad)."
+    },
+    "spatial_anchor_id": {
+      "type": ["string", "null"],
+      "description": "ARCore Anchor id (optional, recommended)."
+    },
+    "source.device": {
+      "type": "string",
+      "description": "Capture surface, e.g. phone, glasses, quest, pico, robot, sim (open set)."
+    },
+    "source.modality": {
+      "type": "string",
+      "description": "Capture modality, e.g. ego_human, teleop, robot_replay, sim (open set)."
+    },
+    "tracking_state": {
+      "type": "string",
+      "description": "e.g. TRACKING, PAUSED, STOPPED."
+    }
+  }
+}

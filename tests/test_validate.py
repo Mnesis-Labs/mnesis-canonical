@@ -4,10 +4,14 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
+import pytest
+
 from mnesis_canonical import (
     CanonicalFrame,
+    load_json_schema,
     read_jsonl,
     validate_frame,
+    validate_frame_jsonschema,
     validate_frames,
 )
 
@@ -77,3 +81,28 @@ def test_frame_index_must_increase():
 def test_dataclass_roundtrip():
     d = _good_frame()
     assert CanonicalFrame.from_dict(d).to_dict() == d
+
+
+# --- JSON Schema backend (C1) -------------------------------------------------
+
+def test_json_schema_loads_and_matches_required_keys():
+    schema = load_json_schema()
+    assert schema["$schema"].endswith("2020-12/schema")
+    # The bundled JSON Schema and the Python REQUIRED_KEYS must not drift.
+    from mnesis_canonical import REQUIRED_KEYS
+
+    assert set(schema["required"]) == set(REQUIRED_KEYS)
+
+
+def test_example_passes_both_validators():
+    pytest.importorskip("jsonschema")
+    for frame in read_jsonl(EXAMPLE):
+        assert validate_frame(frame) == []
+        assert validate_frame_jsonschema(frame) == []
+
+
+def test_jsonschema_backend_rejects_bad_frame():
+    pytest.importorskip("jsonschema")
+    f = _good_frame()
+    f["action"] = [1.0, 2.0, 3.0]  # wrong length (should be 6)
+    assert validate_frame_jsonschema(f)  # non-empty error list

@@ -11,7 +11,13 @@ from .schema import (
     VECTOR_LENGTHS,
     CanonicalFrame,
 )
-from .validate import ValidationReport, validate_frame, validate_frames
+from .validate import (
+    ValidationReport,
+    load_json_schema,
+    validate_frame,
+    validate_frame_jsonschema,
+    validate_frames,
+)
 
 __version__ = "0.1.0"
 
@@ -23,6 +29,8 @@ __all__ = [
     "MODALITIES",
     "validate_frame",
     "validate_frames",
+    "validate_frame_jsonschema",
+    "load_json_schema",
     "ValidationReport",
     "read_jsonl",
     "write_jsonl",
