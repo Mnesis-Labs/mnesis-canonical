@@ -4,6 +4,12 @@ The reference Python implementation of the Canonical Schema: typed frame,
 validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 """
 from .io import read_jsonl, write_jsonl
+from .isaac import (
+    from_isaac,
+    quat_wxyz_to_xyzw,
+    quat_xyzw_to_wxyz,
+    to_isaac,
+)
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
 from .manifest import build_manifest, manifest_for_episode, write_manifest
 from .schema import (
@@ -42,5 +48,9 @@ __all__ = [
     "build_manifest",
     "manifest_for_episode",
     "write_manifest",
+    "to_isaac",
+    "from_isaac",
+    "quat_xyzw_to_wxyz",
+    "quat_wxyz_to_xyzw",
     "__version__",
 ]

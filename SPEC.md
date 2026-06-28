@@ -73,10 +73,10 @@ open items to align with the platform authority before freezing. ✅ = settled,
 | `tracking_state` | (extra column) | — | ℹ️ Canonical-only QA flag |
 
 **Open items (⚠️ 待对齐 Parthenon `03 §3.2` — do NOT freeze unilaterally):**
-1. **Quaternion order.** Canonical is `{x,y,z,w}` scalar-last (ARCore); Isaac/USD convention is `{w,x,y,z}` scalar-first. Define the export adapter's reorder (and whether the wire format ever changes) with the platform authority.
-2. **World frame / up-axis & handedness.** Both are right-handed, but ARCore is Y-up while Isaac Lab is typically Z-up. Pin the canonical world frame + the GR00T export transform.
-3. **Action rotation representation.** Canonical `action` rotation is axis-angle (rad); confirm GR00T/Isaac action-space expectation before locking.
-4. **Embodiment tagging.** Exact `source.device`/`source.modality` → GR00T embodiment-tag mapping.
+1. **Quaternion order.** Canonical is `{x,y,z,w}` scalar-last (ARCore); Isaac/USD convention is `{w,x,y,z}` scalar-first. A reference export adapter exists — `mnesis_canonical.isaac.to_isaac` / `from_isaac` (reorders the pose-block quaternion, exact round-trip). It is **adapter-only; the wire format is unchanged.** Whether the canonical wire ever switches order is the only open call here.
+2. **World frame / up-axis & handedness.** Both are right-handed, but ARCore is Y-up while Isaac Lab is typically Z-up. The adapter exposes an optional `world_transform` hook that **defaults to identity** (it does not guess a transform); pin the canonical world frame + the concrete GR00T export transform with the authority.
+3. **Action rotation representation.** Canonical `action` rotation is axis-angle (rad); the adapter passes `action` through **verbatim** (do not consume the exported `action` as Isaac-native yet). Confirm GR00T/Isaac action-space expectation before locking.
+4. **Embodiment tagging.** Exact `source.device`/`source.modality` → GR00T embodiment-tag mapping (not yet implemented in the adapter).
 
 Until these are resolved, conversion stays a **documented adapter concern**, not a wire-format change — the Canonical fields above are stable.
 
