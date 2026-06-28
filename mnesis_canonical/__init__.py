@@ -5,6 +5,7 @@ validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 """
 from .io import read_jsonl, write_jsonl
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
+from .manifest import build_manifest, manifest_for_episode, write_manifest
 from .schema import (
     DEVICES,
     MODALITIES,
@@ -38,5 +39,8 @@ __all__ = [
     "to_lerobot",
     "from_lerobot",
     "LEROBOT_FEATURES",
+    "build_manifest",
+    "manifest_for_episode",
+    "write_manifest",
     "__version__",
 ]

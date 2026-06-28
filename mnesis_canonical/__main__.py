@@ -9,9 +9,11 @@ ingest. Exit codes: 0 = all frames valid, 1 = validation errors, 2 = I/O error.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from .io import read_jsonl
+from .manifest import manifest_for_episode, write_manifest
 from .validate import validate_frames
 
 
@@ -40,6 +42,22 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def _cmd_manifest(args: argparse.Namespace) -> int:
+    try:
+        if args.no_write:
+            manifest = manifest_for_episode(args.episode_dir)
+        else:
+            manifest = json.loads(write_manifest(args.episode_dir).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"error: no data.jsonl under: {args.episode_dir}", file=sys.stderr)
+        return 2
+    except (OSError, ValueError) as e:
+        print(f"error: could not build manifest for {args.episode_dir}: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(manifest, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mnesis-canonical",
@@ -61,6 +79,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Max error lines to print (0 = print all).",
     )
     v.set_defaults(func=_cmd_validate)
+
+    m = sub.add_parser(
+        "manifest",
+        help="Build (and write) an episode's manifest.json from its data.jsonl.",
+    )
+    m.add_argument("episode_dir", help="Episode directory containing data.jsonl")
+    m.add_argument(
+        "--no-write",
+        action="store_true",
+        help="Print the manifest to stdout without writing manifest.json.",
+    )
+    m.set_defaults(func=_cmd_manifest)
     return parser
 
 

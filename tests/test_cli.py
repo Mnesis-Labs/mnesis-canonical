@@ -49,3 +49,15 @@ def test_cli_empty_episode_returns_one(tmp_path):
     empty = tmp_path / "data.jsonl"
     empty.write_text("", encoding="utf-8")
     assert main(["validate", str(empty)]) == 1
+
+
+def test_cli_manifest_no_write(capsys):
+    rc = main(["manifest", str(EXAMPLE.parent), "--no-write"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["frameCount"] == 2 and out["episodeIndex"] == 0
+
+
+def test_cli_manifest_missing_dir_returns_two(capsys):
+    assert main(["manifest", "does/not/exist"]) == 2
+    assert "no data.jsonl" in capsys.readouterr().err

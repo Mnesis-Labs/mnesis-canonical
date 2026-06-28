@@ -1,0 +1,7 @@
+# Keep wire/text formats byte-stable across platforms so manifest jsonlSizeBytes
+# (and diffs) stay deterministic. Episode data is LF-only.
+*.jsonl text eol=lf
+*.json  text eol=lf
+*.py    text eol=lf
+*.md    text eol=lf
+*.toml  text eol=lf
