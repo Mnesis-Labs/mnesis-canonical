@@ -20,7 +20,7 @@ def write_jsonl(path: str | Path, frames: list[dict]) -> None:
     """Write frame dicts as a JSONL sidecar (one compact JSON object per line)."""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
+    with open(p, "w", encoding="utf-8", newline="\n") as f:
         for frame in frames:
             f.write(json.dumps(frame, ensure_ascii=False, separators=(",", ":")))
             f.write("\n")

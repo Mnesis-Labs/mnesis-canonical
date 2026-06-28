@@ -66,5 +66,5 @@ def write_manifest(episode_dir: str | Path, *, indent: int = 2) -> Path:
     episode_dir = Path(episode_dir)
     manifest = manifest_for_episode(episode_dir)
     out = episode_dir / "manifest.json"
-    out.write_text(json.dumps(manifest, indent=indent) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(manifest, indent=indent) + "\n", encoding="utf-8", newline="\n")
     return out
