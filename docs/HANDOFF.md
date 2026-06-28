@@ -11,11 +11,12 @@ $ ruff check .
 All checks passed!
 
 $ pytest -q
-........................                                                 [100%]
-24 passed in 0.10s
+......................................                                   [100%]
+38 passed in 0.14s
 ```
-Baseline was 8 tests → now **24** (+16). Every example episode (phone / quest /
-robot) validates, including under `--strict-vocab`.
+Baseline was 8 tests → now **38** (+30; C1–C6 plus the F1/F2 follow-ups below).
+Every example episode (phone / quest / robot) validates, including under
+`--strict-vocab`, and now ships a `manifest.json`.
 
 ## What shipped (one commit per task)
 | Task | Commit | Summary |
@@ -26,6 +27,8 @@ robot) validates, including under `--strict-vocab`.
 | C4 | `2e9706f` | `examples/episode_quest` (quest/teleop) + `examples/episode_robot` (robot/robot_replay); vocab/example drift guard |
 | C5 | `da43b35` | SPEC §Compatibility: Isaac Lab / GR00T field-mapping table + open items |
 | C6 | `6bdb63b` | Packaging verified (wheel+sdist ship schema; console script installs); README standard/compat commitment |
+| F1 | `41d41d7`, `0ada08b` | Episode `manifest.json` writer (`build_manifest`/`manifest_for_episode`/`write_manifest`) + `manifest` CLI subcommand; manifests for all 3 examples; `.gitattributes` LF pin; library writes JSONL/manifest as LF |
+| F2 | `253d4de` | Isaac/GR00T export adapter `mnesis_canonical.isaac` (`to_isaac`/`from_isaac`, quaternion scalar-last↔scalar-first, optional `world_transform` hook) — **adapter-only, wire format unchanged** |
 
 ## Files changed (vs `33dedba`)
 - **New:** `mnesis_canonical/canonical_frame.schema.json`, `mnesis_canonical/__main__.py`,
@@ -56,17 +59,22 @@ These are **adapter / doc** alignment items, not wire-format changes:
    the extra columns (`head_pose_SE3`, `t_hw_ns`, `source.*`, `tracking_state`).
 
 ## ⚠️ Open questions (need Tech Lead / Parthenon `03 §3.2`, do NOT freeze unilaterally)
-Recorded in `SPEC.md` §Compatibility → "Open items":
-1. **Quaternion order** for Isaac/GR00T export — Canonical `{x,y,z,w}` scalar-last
-   vs Isaac/USD `{w,x,y,z}` scalar-first. Adapter-only, or does wire change?
-2. **World frame / up-axis** — ARCore Y-up vs Isaac Z-up (both right-handed). Pin
-   the canonical world frame + export transform.
-3. **Action rotation representation** — axis-angle (rad) vs GR00T/Isaac action space.
-4. **Embodiment tagging** — `source.device`/`source.modality` → GR00T embodiment tag.
+Recorded in `SPEC.md` §Compatibility → "Open items". F2 supplies a **reference
+adapter** for 1–2 but changes **nothing** in the wire format; the calls below are
+still yours:
+1. **Quaternion order** — adapter `isaac.to_isaac` reorders on export; decide
+   whether the canonical *wire* ever switches from `{x,y,z,w}` to `{w,x,y,z}`.
+2. **World frame / up-axis** — ARCore Y-up vs Isaac Z-up. Adapter has an identity
+   `world_transform` hook; supply the concrete transform + pin the canonical frame.
+3. **Action rotation representation** — axis-angle (rad) vs GR00T/Isaac action
+   space. Adapter passes `action` through verbatim — confirm before consuming it.
+4. **Embodiment tagging** — `source.device`/`source.modality` → GR00T embodiment
+   tag (not yet implemented in the adapter).
 
 ## Leftover / not in scope this sprint
-- `manifest.json` per the SPEC episode layout is documented but not generated for the
-  new examples (only `data.jsonl` shipped). A `manifest`/`video.mp4` writer could be a
-  follow-up if Ambrosia needs it for ingest demos.
+- `manifest.json` is now generated for all 3 examples (F1). `video.mp4` is binary
+  capture **data** — intentionally not produced or committed; the manifest only
+  references it when present on disk.
 - JSON Schema enforces structure/types only; cross-frame `frame_index` monotonicity
   and strict vocab remain in the pure-Python validator (by design).
+- GR00T embodiment-tag mapping (open item 4) is not yet implemented in the adapter.
