@@ -2,8 +2,8 @@
 
 > From: Developer (Claude Code, autonomous run on branch `claude/objective-haslett-0e818f`)
 > To: Tech Lead (review) · QA (用户 + 真机)
-> Status: **Sprint S1 complete — C1–C6 all done, gate green.** Not merged to `main`
-> (Tech Lead decides). Base commit: `33dedba`.
+> Status: **Sprint S1 complete (C1–C6) + F1/F2 follow-ups + D1–D4 demo, gate green.**
+> Not merged to `main` (Tech Lead decides). Base commit: `33dedba`.
 
 ## Gate (real output)
 ```
@@ -11,12 +11,23 @@ $ ruff check .
 All checks passed!
 
 $ pytest -q
-......................................                                   [100%]
-38 passed in 0.14s
+............................................                             [100%]
+44 passed in 0.91s
 ```
-Baseline was 8 tests → now **38** (+30; C1–C6 plus the F1/F2 follow-ups below).
-Every example episode (phone / quest / robot) validates, including under
-`--strict-vocab`, and now ships a `manifest.json`.
+Baseline was 8 tests → now **44**. Every example episode (phone / quest / robot)
+validates, including under `--strict-vocab`, and ships a `manifest.json`. The
+end-to-end `demo` command runs green and renders the trajectory plot.
+
+## Investor demo — live command sheet
+```bash
+pip install -e ".[viz]"                 # one-time: core + matplotlib
+python -m mnesis_canonical demo         # -> ./demo_out/ : data + LeRobot + Isaac + trajectories.png
+```
+Talking point: *one `head_pose_SE3` field, three real motions (handheld ego scan,
+teleop reach, robot replay), all from identical canonical frames* — see
+`docs/assets/demo_trajectories.png` (embedded at the top of the README).
+Backup if a laptop has no matplotlib: `python -m mnesis_canonical demo` still
+writes all data/LeRobot/Isaac artifacts and just skips the plot.
 
 ## What shipped (one commit per task)
 | Task | Commit | Summary |
@@ -29,6 +40,10 @@ Every example episode (phone / quest / robot) validates, including under
 | C6 | `6bdb63b` | Packaging verified (wheel+sdist ship schema; console script installs); README standard/compat commitment |
 | F1 | `41d41d7`, `0ada08b` | Episode `manifest.json` writer (`build_manifest`/`manifest_for_episode`/`write_manifest`) + `manifest` CLI subcommand; manifests for all 3 examples; `.gitattributes` LF pin; library writes JSONL/manifest as LF |
 | F2 | `253d4de` | Isaac/GR00T export adapter `mnesis_canonical.isaac` (`to_isaac`/`from_isaac`, quaternion scalar-last↔scalar-first, optional `world_transform` hook) — **adapter-only, wire format unchanged** |
+| D1 | `c436bac` | Deterministic synthetic data generator `synth.py` (`synth_episode`/`demo_episodes`, pure stdlib) — believable phone/quest/robot trajectories, doubles as fixture |
+| D2 | `218e63c` | End-to-end `demo` CLI: synth → validate → LeRobot + Isaac export → plot → summary table |
+| D3 | `e25b0ab` | Trajectory plot `viz.py` + optional `[viz]` extra (matplotlib lazy; core stays zero-dep) |
+| D4 | `d3b1fd7` | README 30-second demo + pitch narrative + committed `docs/assets/demo_trajectories.png` |
 
 ## Files changed (vs `33dedba`)
 - **New:** `mnesis_canonical/canonical_frame.schema.json`, `mnesis_canonical/__main__.py`,
@@ -78,3 +93,9 @@ still yours:
 - JSON Schema enforces structure/types only; cross-frame `frame_index` monotonicity
   and strict vocab remain in the pure-Python validator (by design).
 - GR00T embodiment-tag mapping (open item 4) is not yet implemented in the adapter.
+
+## Release dry-run (local, no external publish)
+Built the wheel and installed it into a **fresh venv** with the `[viz]` extra;
+the `mnesis-canonical demo` console script then ran end-to-end (incl. the plot),
+confirming `pip install "mnesis-canonical[viz]"` works for a clean machine.
+Publishing to (Test)PyPI is an outward action left for you to authorize.
