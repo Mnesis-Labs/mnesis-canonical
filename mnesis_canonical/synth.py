@@ -25,14 +25,14 @@ def _arc(u: float) -> tuple[float, float, float]:
 
 
 def _reach(u: float) -> tuple[float, float, float]:
-    """Teleop grab: reach forward and down with ease-in/ease-out."""
+    """Teleop grab: reach forward and down, curving out (ease-in/ease-out)."""
     s = _smoothstep(u)
-    return (0.4 * s, 1.1 - 0.25 * s, 0.5 * s)
+    return (0.45 * math.sin(s * math.pi / 2), 1.1 - 0.30 * s, 0.5 * s)
 
 
 def _replay(u: float) -> tuple[float, float, float]:
     """Robot replay: straighter path with a small tracking offset."""
-    return (0.4 * u, 1.1 - 0.25 * u, 0.5 * u + 0.02 * math.sin(u * math.pi))
+    return (0.4 * u, 1.1 - 0.28 * u, 0.5 * u + 0.03 * math.sin(u * math.pi))
 
 
 _SHAPES = {"arc": _arc, "reach": _reach, "replay": _replay}
