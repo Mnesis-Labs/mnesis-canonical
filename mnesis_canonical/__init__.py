@@ -27,6 +27,7 @@ from .validate import (
     validate_frame_jsonschema,
     validate_frames,
 )
+from .viz import plot_trajectories
 
 __version__ = "0.1.0"
 
@@ -55,5 +56,6 @@ __all__ = [
     "quat_wxyz_to_xyzw",
     "synth_episode",
     "demo_episodes",
+    "plot_trajectories",
     "__version__",
 ]
