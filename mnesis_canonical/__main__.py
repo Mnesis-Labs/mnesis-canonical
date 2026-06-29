@@ -11,9 +11,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
-from .io import read_jsonl
+from .io import read_jsonl, write_jsonl
+from .isaac import to_isaac
+from .lerobot import to_lerobot
 from .manifest import manifest_for_episode, write_manifest
+from .synth import demo_episodes
 from .validate import validate_frames
 
 
@@ -58,6 +62,49 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_demo(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    episodes = demo_episodes()
+    rows: list[tuple[str, int, int, bool]] = []
+    all_ok = True
+
+    for name, frames in episodes.items():
+        ep_dir = out / "episodes" / name
+        write_jsonl(ep_dir / "data.jsonl", frames)
+        write_manifest(ep_dir)
+
+        report = validate_frames(frames, strict_vocab=True)
+        all_ok = all_ok and report.ok
+
+        lerobot_dir = out / "lerobot"
+        lerobot_dir.mkdir(parents=True, exist_ok=True)
+        (lerobot_dir / f"{name}.columns.json").write_text(
+            json.dumps(to_lerobot(frames)), encoding="utf-8", newline="\n"
+        )
+        write_jsonl(out / "isaac" / f"{name}.jsonl", to_isaac(frames))
+
+        f0 = frames[0]
+        dur_ms = round((frames[-1]["t_ns"] - f0["t_ns"]) / 1_000_000)
+        surface = f"{f0['source.device']}·{f0['source.modality']}"
+        rows.append((surface, len(frames), dur_ms, report.ok))
+
+    print("Mnesis Canonical — demo: one format, three capture surfaces\n")
+    print(f"  {'surface':<20}{'frames':>8}{'durationMs':>12}  valid")
+    for surface, n, dur, ok in rows:
+        print(f"  {surface:<20}{n:>8}{dur:>12}  {'OK' if ok else 'FAIL'}")
+    print(f"\n  validated -> LeRobot ({out / 'lerobot'}) + Isaac ({out / 'isaac'})")
+
+    try:
+        from .viz import plot_trajectories
+
+        png = plot_trajectories(episodes, out / "trajectories.png")
+        print(f"  trajectory plot: {png}")
+    except RuntimeError as e:
+        print(f"  (trajectory plot skipped: {e})")
+
+    return 0 if all_ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mnesis-canonical",
@@ -91,6 +138,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the manifest to stdout without writing manifest.json.",
     )
     m.set_defaults(func=_cmd_manifest)
+
+    d = sub.add_parser(
+        "demo",
+        help="Generate the 3-surface demo: synth data -> validate -> LeRobot/Isaac -> plot.",
+    )
+    d.add_argument(
+        "--out",
+        default="demo_out",
+        help="Output directory for the generated demo artifacts (default: ./demo_out).",
+    )
+    d.set_defaults(func=_cmd_demo)
     return parser
 
 

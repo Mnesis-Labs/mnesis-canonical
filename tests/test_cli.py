@@ -61,3 +61,13 @@ def test_cli_manifest_no_write(capsys):
 def test_cli_manifest_missing_dir_returns_two(capsys):
     assert main(["manifest", "does/not/exist"]) == 2
     assert "no data.jsonl" in capsys.readouterr().err
+
+
+def test_cli_demo_generates_artifacts(tmp_path):
+    out = tmp_path / "demo_out"
+    assert main(["demo", "--out", str(out)]) == 0
+    for name in ("episode_phone", "episode_quest", "episode_robot"):
+        assert (out / "episodes" / name / "data.jsonl").exists()
+        assert (out / "episodes" / name / "manifest.json").exists()
+        assert (out / "lerobot" / f"{name}.columns.json").exists()
+        assert (out / "isaac" / f"{name}.jsonl").exists()
