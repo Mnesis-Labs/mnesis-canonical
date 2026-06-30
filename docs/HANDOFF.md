@@ -66,9 +66,10 @@ These are **adapter / doc** alignment items, not wire-format changes:
 1. **Ambrosia ingest** can now reuse the CLI exit-code contract (0 valid / 1 errors
    / 2 I/O) and the same JSON Schema file for a language-agnostic ingest gate.
    → Confirm Ambrosia adopts `canonical_frame.schema.json` rather than a fork.
-2. **EgoWear / ProdigyHelper / TeleOP-Alohamini** producers: no field change needed.
-   Optional: adopt the `mnesis-canonical validate` CLI in their CI to gate emitted
-   episodes against the standard.
+2. **EgoWear (`Mnesis-Labs/Mnesis-Iris`) / ProdigyHelper (`Mnesis-Labs/Mnesis-Eidolon`)
+   / TeleOP-Alohamini (`Mnesis-Labs/Mnesis-Daedalus`)** producers: no field change
+   needed. Optional: adopt the `mnesis-canonical validate` CLI in their CI to gate
+   emitted episodes against the standard.
 3. **LeRobot export**: `to_lerobot` carries the 7 native features 1:1 and lets the
    extra canonical columns ride along — confirm the Ambrosia/training side tolerates
    the extra columns (`head_pose_SE3`, `t_hw_ns`, `source.*`, `tracking_state`).

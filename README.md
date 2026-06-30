@@ -68,9 +68,12 @@ ruff check . && pytest -q
 ```
 
 ## Who depends on this
-`EgoWear` (phone) · `ProdigyHelper` (Quest) · `TeleOP-Alohamini` (robot) all emit
-this schema; `mnesis-ambrosia` validates ingest against it. Change the schema **here
-first** (SPEC + reference impl), then sync consumers — never fork the fields per repo.
+EgoWear / phone ([`Mnesis-Labs/Mnesis-Iris`](https://github.com/Mnesis-Labs/Mnesis-Iris)) ·
+ProdigyHelper / Quest ([`Mnesis-Labs/Mnesis-Eidolon`](https://github.com/Mnesis-Labs/Mnesis-Eidolon)) ·
+TeleOP-Alohamini / robot ([`Mnesis-Labs/Mnesis-Daedalus`](https://github.com/Mnesis-Labs/Mnesis-Daedalus))
+all emit this schema; [`Mnesis-Labs/mnesis-ambrosia`](https://github.com/Mnesis-Labs/mnesis-ambrosia)
+validates ingest against it. Change the schema **here first** (SPEC + reference
+impl), then sync consumers — never fork the fields per repo.
 
 ## Referencing this as a standard
 The spec is versioned and the package `__version__` mirrors it. Pin against the
@@ -90,5 +93,6 @@ mnesis-canonical ~= 0.1   # additive-only within 0.1.x
 - Contract changes land **here first** (SPEC + reference impl), then consumers sync.
 
 ## Status
-v0.1 scaffold (seeded from EgoWear `schema/CanonicalFrame`). Roadmap → `docs/SPRINT_S1.md`.
-Cross-repo plan → Parthenon `research/platform-and-repo-roadmap.md`.
+v0.1 scaffold (seeded from EgoWear / [`Mnesis-Labs/Mnesis-Iris`](https://github.com/Mnesis-Labs/Mnesis-Iris)
+`schema/CanonicalFrame`). Roadmap → `docs/SPRINT_S1.md`.
+Cross-repo plan → [`Mnesis-Labs/Parthenon`](https://github.com/Mnesis-Labs/Parthenon) `research/platform-and-repo-roadmap.md`.

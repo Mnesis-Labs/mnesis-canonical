@@ -1,10 +1,11 @@
 """Mnesis Canonical Schema — the field definitions (single source of truth).
 
 This is the open standard ("具身数据的 USB-C") that every capture surface
-(EgoWear phone, ProdigyHelper Quest, TeleOP-Alohamini robot) and the Mnesis
-Ambrosia cloud platform agree on. One frame = one JSON object = one JSONL line.
+(EgoWear phone / Mnesis-Iris, ProdigyHelper Quest / Mnesis-Eidolon,
+TeleOP-Alohamini robot / Mnesis-Daedalus) and the Mnesis Ambrosia cloud platform
+(mnesis-ambrosia) agree on. One frame = one JSON object = one JSONL line.
 
-Authority: Parthenon `03 §3.2`. Keep this in lock-step with `SPEC.md` and
+Authority: Mnesis-Labs/Parthenon `03 §3.2`. Keep this in lock-step with `SPEC.md` and
 `canonical_frame.schema.json`. LeRobot-native; designed to stay compatible with
 Isaac/GR00T data formats (see SPEC §Compatibility).
 """
