@@ -9,28 +9,6 @@ schema + reference validator + device-abstraction SDK are open so they become th
 de-facto standard; the proprietary core (high-fidelity data, 4DGS physics, eval)
 lives in Mnesis Ambrosia.
 
-## 30-second demo
-One format, three capture surfaces — **phone, Quest, robot** — all emit the same
-schema, all pass the same validator, all export to LeRobot (training) and Isaac
-(sim) with no re-labeling:
-
-```bash
-pip install -e ".[viz]"
-python -m mnesis_canonical demo          # writes ./demo_out/ (data + LeRobot + Isaac + plot)
-```
-```
-Mnesis Canonical — demo: one format, three capture surfaces
-
-  surface               frames  durationMs  valid
-  phone·ego_human           90        2967  OK
-  quest·teleop              60        1967  OK
-  robot·robot_replay        60        1180  OK
-```
-![Head-pose trajectories for phone, Quest and robot](docs/assets/demo_trajectories.png)
-
-> Same `head_pose_SE3` field, three real motions — handheld ego scan, teleop
-> reach, robot replay — drawn from the identical canonical frames.
-
 ## What's here
 - [`SPEC.md`](SPEC.md) — the authoritative specification (field-by-field).
 - `mnesis_canonical/` — reference Python implementation: typed `CanonicalFrame`,
@@ -94,5 +72,5 @@ mnesis-canonical ~= 0.1   # additive-only within 0.1.x
 
 ## Status
 v0.1 scaffold (seeded from EgoWear / [`Mnesis-Labs/Mnesis-Iris`](https://github.com/Mnesis-Labs/Mnesis-Iris)
-`schema/CanonicalFrame`). Roadmap → `docs/SPRINT_S1.md`.
+`schema/CanonicalFrame`).
 Cross-repo plan → [`Mnesis-Labs/Parthenon`](https://github.com/Mnesis-Labs/Parthenon) `research/platform-and-repo-roadmap.md`.

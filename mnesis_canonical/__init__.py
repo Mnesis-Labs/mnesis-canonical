@@ -19,7 +19,6 @@ from .schema import (
     VECTOR_LENGTHS,
     CanonicalFrame,
 )
-from .synth import demo_episodes, synth_episode
 from .validate import (
     ValidationReport,
     load_json_schema,
@@ -27,7 +26,6 @@ from .validate import (
     validate_frame_jsonschema,
     validate_frames,
 )
-from .viz import plot_trajectories
 
 __version__ = "0.1.0"
 
@@ -54,8 +52,5 @@ __all__ = [
     "from_isaac",
     "quat_xyzw_to_wxyz",
     "quat_wxyz_to_xyzw",
-    "synth_episode",
-    "demo_episodes",
-    "plot_trajectories",
     "__version__",
 ]
