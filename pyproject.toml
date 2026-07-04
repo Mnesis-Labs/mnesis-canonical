@@ -13,10 +13,17 @@ authors = [{ name = "Mnesis Labs" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+jsonschema = ["jsonschema>=4.18"]
+dev = ["pytest>=8.0", "ruff>=0.6", "jsonschema>=4.18"]
+
+[project.scripts]
+mnesis-canonical = "mnesis_canonical.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["mnesis_canonical*"]
+
+[tool.setuptools.package-data]
+mnesis_canonical = ["canonical_frame.schema.json"]
 
 [tool.ruff]
 line-length = 100
