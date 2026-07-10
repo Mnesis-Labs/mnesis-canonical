@@ -41,6 +41,12 @@
 ### C7(新草案)· 数据集导出格式(Ambrosia S6-3 落地时定契约)
 Ambrosia 的 LeRobot/Isaac 导出应成为**稳定契约**,让 Daedalus/外部训练直接消费,不各写各的。Owner=Ambrosia(复用 canonical `to_lerobot`),消费方=Daedalus 训练 + 外部。
 
+### C8(新草案)· `space_id` 跨引擎同空间对齐(来源:Eidolon TL IR-a · Iris TL 背书)
+现状 `spatial_anchor_id` 是各引擎私有 id(Iris=ARCore anchor、Eidolon=OpenXR anchor),**两命名空间不可关联,同房间的手机面+Quest 面数据 merge 不了**。建议 canonical 加 `space_id`(房间 UUID 或共享 fiducial 原点标识)+ 约定 anchor 位姿表示为**在该 space 系下**的 SE(3)。**这是 Ambrosia「同空间多面视图」/多视角 4DGS 的钥匙**。消费方=Iris·Eidolon·Ambrosia。
+
+### C9(新草案)· `camera_intrinsics` 一等字段(来源:Eidolon TL IR-b · Iris TL 背书)
+相机内参(fx,fy,cx,cy,畸变,分辨率)应是 **canonical 一等字段**,不塞各仓私有 sidecar。两采集面同表示后,**4DGS/重构才能同吃手机+Quest 帧**。Owner=canonical 定义;消费方=Iris·Eidolon 产出、Ambrosia/重构消费。
+
 ## B. 各仓产品建议(对应仓自行排期,非契约)
 
 | 仓 | 建议 | 为什么(飞轮/商业价值) |
