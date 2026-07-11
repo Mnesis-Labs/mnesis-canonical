@@ -8,6 +8,9 @@ upload / ingest. Shape (camelCase, per SPEC):
 ``durationMs`` is derived from the wall-clock ``t_ns`` span of the frames. The
 video sidecar itself is binary capture *data* and is never produced or committed
 here; the manifest only references it when a ``video.mp4`` is present on disk.
+
+This module also provides :func:`validate_manifest` for consistency checks
+between a manifest.json and its sibling data.jsonl (S2-5).
 """
 from __future__ import annotations
 
@@ -15,6 +18,10 @@ import json
 from pathlib import Path
 
 from .io import read_jsonl
+
+_SCHEMA_PATH = Path(__file__).resolve().parent / "manifest.schema.json"
+with open(_SCHEMA_PATH, encoding="utf-8") as _f:
+    _MANIFEST_SCHEMA = json.loads(_f.read())
 
 
 def build_manifest(
@@ -68,3 +75,93 @@ def write_manifest(episode_dir: str | Path, *, indent: int = 2) -> Path:
     out = episode_dir / "manifest.json"
     out.write_text(json.dumps(manifest, indent=indent) + "\n", encoding="utf-8", newline="\n")
     return out
+
+
+def validate_manifest(episode_dir: str | Path) -> dict:
+    """Validate ``manifest.json`` against the manifest schema *and* check
+    consistency with the sibling ``data.jsonl``.
+
+    Returns a dict like ``{"ok": True}`` or ``{"ok": False, "errors": [...]}``.
+    """
+    episode_dir = Path(episode_dir)
+    errors: list[str] = []
+
+    manifest_path = episode_dir / "manifest.json"
+    jsonl_path = episode_dir / "data.jsonl"
+
+    if not manifest_path.exists():
+        errors.append(f"manifest not found: {manifest_path}")
+        return {"ok": False, "errors": errors}
+    if not jsonl_path.exists():
+        errors.append(f"data.jsonl not found: {jsonl_path}")
+        return {"ok": False, "errors": errors}
+
+    # Load both files
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        errors.append(f"cannot parse manifest.json: {e}")
+        return {"ok": False, "errors": errors}
+
+    try:
+        frames = read_jsonl(jsonl_path)
+    except (OSError, ValueError) as e:
+        errors.append(f"cannot read data.jsonl: {e}")
+        return {"ok": False, "errors": errors}
+
+    # --- Schema validation (optional jsonschema if available) ---
+    try:
+        import jsonschema as _jsonschema  # noqa: N813
+    except ImportError:
+        _jsonschema = None  # type: ignore[assignment]
+
+    if _jsonschema is not None:
+        try:
+            _jsonschema.validate(manifest, _MANIFEST_SCHEMA)
+        except _jsonschema.ValidationError as e:
+            errors.append(f"manifest violates schema: {e.message}")
+
+    # --- Consistency checks ---
+    actual_frame_count = len(frames)
+
+    if manifest.get("frameCount") != actual_frame_count:
+        errors.append(
+            f"frameCount mismatch: manifest={manifest.get('frameCount')} "
+            f"actual={actual_frame_count}"
+        )
+
+    if frames:
+        actual_episode_index = frames[0].get("episode_index")
+        if manifest.get("episodeIndex") != actual_episode_index:
+            errors.append(
+                f"episodeIndex mismatch: manifest={manifest.get('episodeIndex')} "
+                f"actual={actual_episode_index}"
+            )
+
+    try:
+        actual_bytes = jsonl_path.stat().st_size
+        if manifest.get("jsonlSizeBytes") != actual_bytes:
+            errors.append(
+                f"jsonlSizeBytes mismatch: manifest={manifest.get('jsonlSizeBytes')} "
+                f"actual={actual_bytes}"
+            )
+    except OSError as e:
+        errors.append(f"cannot stat data.jsonl: {e}")
+
+    # --- video consistency when present ---
+    if manifest.get("videoPath") is not None:
+        video_path = episode_dir / manifest["videoPath"]
+        if video_path.exists():
+            try:
+                actual_video_bytes = video_path.stat().st_size
+                if manifest.get("videoSizeBytes") != actual_video_bytes:
+                    errors.append(
+                        f"videoSizeBytes mismatch: manifest={manifest.get('videoSizeBytes')} "
+                        f"actual={actual_video_bytes}"
+                    )
+            except OSError as e:
+                errors.append(f"cannot stat video file: {e}")
+        else:
+            errors.append(f"videoPath '{manifest['videoPath']}' does not exist on disk")
+
+    return {"ok": len(errors) == 0, "errors": errors}

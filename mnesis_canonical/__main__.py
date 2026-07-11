@@ -15,7 +15,7 @@ import sys
 from .io import read_jsonl, write_jsonl
 from .isaac import to_isaac
 from .lerobot import to_lerobot
-from .manifest import manifest_for_episode, write_manifest
+from .manifest import manifest_for_episode, validate_manifest, write_manifest
 from .validate import validate_frames
 
 
@@ -45,6 +45,15 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 def _cmd_manifest(args: argparse.Namespace) -> int:
+    if args.check:
+        result = validate_manifest(args.episode_dir)
+        if result["ok"]:
+            print("manifest.json is consistent with data.jsonl")
+            return 0
+        for err in result["errors"]:
+            print(f"  {err}", file=sys.stderr)
+        return 1
+
     try:
         if args.no_write:
             manifest = manifest_for_episode(args.episode_dir)
@@ -123,6 +132,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-write",
         action="store_true",
         help="Print the manifest to stdout without writing manifest.json.",
+    )
+    m.add_argument(
+        "--check",
+        action="store_true",
+        help="Validate existing manifest.json for consistency with sibling data.jsonl.",
     )
     m.set_defaults(func=_cmd_manifest)
 

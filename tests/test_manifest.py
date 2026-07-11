@@ -67,3 +67,170 @@ def test_write_manifest_roundtrips(tmp_path):
     written = json.loads(out.read_text(encoding="utf-8"))
     assert written == manifest_for_episode(ep)
     assert written["frameCount"] == 2 and written["episodeIndex"] == 3
+
+
+# ── validate_manifest (S2-5) ──────────────────────────────────────────────────
+
+
+from mnesis_canonical import validate_manifest  # noqa: E402
+
+
+def test_validate_manifest_consistent(tmp_path):
+    """Golden path: matching manifest passes."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":1,"t_ns":1000000}\n{"episode_index":1,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    jsonl_bytes = jsonl.stat().st_size
+    manifest = ep / "manifest.json"
+    manifest.write_text(
+        json.dumps({
+            "episodeIndex": 1,
+            "frameCount": 2,
+            "jsonlSizeBytes": jsonl_bytes,
+            "videoPath": None,
+            "videoSizeBytes": 0,
+            "durationMs": 1,
+        }),
+        encoding="utf-8",
+    )
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_validate_manifest_frame_count_mismatch(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n{"episode_index":0,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    jsonl_bytes = jsonl.stat().st_size
+    manifest = ep / "manifest.json"
+    manifest.write_text(
+        json.dumps({
+            "episodeIndex": 0,
+            "frameCount": 999,  # wrong
+            "jsonlSizeBytes": jsonl_bytes,
+            "videoPath": None,
+            "videoSizeBytes": 0,
+            "durationMs": 1,
+        }),
+        encoding="utf-8",
+    )
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("frameCount" in e for e in result["errors"])
+
+
+def test_validate_manifest_episode_index_mismatch(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    jsonl_bytes = jsonl.stat().st_size
+    manifest = ep / "manifest.json"
+    manifest.write_text(
+        json.dumps({
+            "episodeIndex": 99,  # wrong
+            "frameCount": 1,
+            "jsonlSizeBytes": jsonl_bytes,
+            "videoPath": None,
+            "videoSizeBytes": 0,
+            "durationMs": 0,
+        }),
+        encoding="utf-8",
+    )
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("episodeIndex" in e for e in result["errors"])
+
+
+def test_validate_manifest_jsonl_size_mismatch(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    manifest = ep / "manifest.json"
+    manifest.write_text(
+        json.dumps({
+            "episodeIndex": 0,
+            "frameCount": 1,
+            "jsonlSizeBytes": 0,  # wrong
+            "videoPath": None,
+            "videoSizeBytes": 0,
+            "durationMs": 0,
+        }),
+        encoding="utf-8",
+    )
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("jsonlSizeBytes" in e for e in result["errors"])
+
+
+def test_validate_manifest_missing_manifest(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text("{}", encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("manifest not found" in e for e in result["errors"])
+
+
+def test_validate_manifest_missing_jsonl(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "manifest.json").write_text("{}", encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("data.jsonl not found" in e for e in result["errors"])
+
+
+# ── CLI tests for manifest --check ────────────────────────────────────────────
+
+
+def test_cli_manifest_check_consistent(tmp_path, capsys):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":5,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    from mnesis_canonical.__main__ import main as cli_main
+
+    # write a correct manifest first
+    cli_main(["manifest", str(ep)])
+    capsys.readouterr()  # flush
+    rc = cli_main(["manifest", str(ep), "--check"])
+    assert rc == 0
+    assert "consistent" in capsys.readouterr().out
+
+
+def test_cli_manifest_check_inconsistent(tmp_path, capsys):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":5,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    from mnesis_canonical.__main__ import main as cli_main
+    from mnesis_canonical.manifest import manifest_for_episode
+
+    manifest = manifest_for_episode(ep)
+    manifest["frameCount"] = 999  # corrupt
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    rc = cli_main(["manifest", str(ep), "--check"])
+    assert rc == 1
+    assert "frameCount" in capsys.readouterr().err

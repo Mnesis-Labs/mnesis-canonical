@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mnesis-Labs/mnesis-canonical/blob/main/mnesis_canonical/manifest.schema.json",
+  "title": "Mnesis Canonical Episode Manifest",
+  "description": "Schema for episode manifest.json sidecars (SPEC §Episode layout).",
+  "type": "object",
+  "properties": {
+    "episodeIndex": {
+      "type": "integer",
+      "description": "0-based episode index matching the first frame's episode_index."
+    },
+    "frameCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of frames in the episode data.jsonl."
+    },
+    "jsonlSizeBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Byte size of the data.jsonl file on disk."
+    },
+    "videoPath": {
+      "type": ["string", "null"],
+      "description": "Relative path to the video sidecar, or null if absent."
+    },
+    "videoSizeBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Byte size of the video file (0 if no video)."
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock duration in milliseconds (max(t_ns) - min(t_ns))."
+    }
+  },
+  "required": ["episodeIndex", "frameCount", "jsonlSizeBytes", "durationMs"],
+  "dependentRequired": {
+    "videoPath": ["videoSizeBytes"],
+    "videoSizeBytes": ["videoPath"]
+  }
+}
