@@ -59,7 +59,7 @@ def test_frame_index_must_increase(good_frame):
     frames = [good_frame(), good_frame()]  # both frame_index=0
     report = validate_frames(frames)
     assert not report.ok
-    assert any("frame_index not increasing" in m for _, m in report.errors)
+    assert any("duplicate frame_index" in m for _, m in report.errors)
 
 
 def test_dataclass_roundtrip(good_frame):
@@ -90,3 +90,53 @@ def test_jsonschema_backend_rejects_bad_frame(good_frame):
     f = good_frame()
     f["action"] = [1.0, 2.0, 3.0]  # wrong length (should be 6)
     assert validate_frame_jsonschema(f)  # non-empty error list
+
+
+# --- S2-3: Boundary hardening -------------------------------------------------
+
+def test_nan_in_vector_rejected(good_frame):
+    f = good_frame()
+    f["action"] = [1.0, float("nan"), 3.0, 4.0, 5.0, 6.0]
+    errs = validate_frame(f)
+    assert any("action" in e and "finite" in e for e in errs)
+
+
+def test_inf_in_vector_rejected(good_frame):
+    f = good_frame()
+    f["head_pose_SE3"] = [0.0, 0.0, 0.0, 0.0, 0.0, float("inf"), 1.0]
+    errs = validate_frame(f)
+    assert any("head_pose_SE3" in e and "finite" in e for e in errs)
+
+
+def test_finite_vector_accepted(good_frame):
+    f = good_frame()
+    f["action"] = [1.0, -2.5, 3.0, 0.0, 0.5, -1.0]
+    assert validate_frame(f) == []
+
+
+def test_duplicate_frame_index_rejected(good_frame):
+    f0 = good_frame()
+    f1 = good_frame()  # both frame_index=0
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    report = validate_frames([f0, f1])
+    assert not report.ok
+    assert any("duplicate frame_index" in m for _, m in report.errors)
+
+
+def test_negative_frame_index_rejected(good_frame):
+    f = good_frame()
+    f["frame_index"] = -1
+    report = validate_frames([f])
+    assert not report.ok
+    assert any("non-negative" in m for _, m in report.errors)
+
+
+def test_positive_frame_index_increasing_accepted(good_frame):
+    f0 = good_frame()
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    report = validate_frames([f0, f1])
+    assert report.ok
