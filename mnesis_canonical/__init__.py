@@ -11,7 +11,7 @@ from .isaac import (
     to_isaac,
 )
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
-from .manifest import build_manifest, manifest_for_episode, write_manifest
+from .manifest import build_manifest, manifest_for_episode, validate_manifest, write_manifest
 from .schema import (
     DEVICES,
     MODALITIES,
@@ -47,6 +47,7 @@ __all__ = [
     "LEROBOT_FEATURES",
     "build_manifest",
     "manifest_for_episode",
+    "validate_manifest",
     "write_manifest",
     "to_isaac",
     "from_isaac",

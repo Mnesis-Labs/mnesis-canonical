@@ -23,7 +23,7 @@ mnesis-canonical = "mnesis_canonical.__main__:main"
 include = ["mnesis_canonical*"]
 
 [tool.setuptools.package-data]
-mnesis_canonical = ["canonical_frame.schema.json"]
+mnesis_canonical = ["canonical_frame.schema.json", "manifest.schema.json"]
 
 [tool.ruff]
 line-length = 100
