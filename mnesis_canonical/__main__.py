@@ -12,7 +12,9 @@ import argparse
 import json
 import sys
 
-from .io import read_jsonl
+from .io import read_jsonl, write_jsonl
+from .isaac import to_isaac
+from .lerobot import to_lerobot
 from .manifest import manifest_for_episode, validate_manifest, write_manifest
 from .validate import validate_frames
 
@@ -67,6 +69,38 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_convert(args: argparse.Namespace) -> int:
+    try:
+        frames = read_jsonl(args.path)
+    except FileNotFoundError:
+        print(f"error: file not found: {args.path}", file=sys.stderr)
+        return 2
+    except (OSError, ValueError) as e:
+        print(f"error: could not read {args.path}: {e}", file=sys.stderr)
+        return 2
+
+    fmt = args.to
+    try:
+        if fmt == "lerobot":
+            columns = to_lerobot(frames)
+            with open(args.out, "w", encoding="utf-8", newline="") as f:
+                json.dump(columns, f, ensure_ascii=False)
+                f.write("\n")
+        elif fmt == "isaac":
+            write_jsonl(args.out, to_isaac(frames))
+        else:
+            print(
+                f"error: unknown format '{fmt}' (expected lerobot or isaac)",
+                file=sys.stderr,
+            )
+            return 1
+    except OSError as e:
+        print(f"error: could not write {args.out}: {e}", file=sys.stderr)
+        return 2
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mnesis-canonical",
@@ -105,6 +139,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate existing manifest.json for consistency with sibling data.jsonl.",
     )
     m.set_defaults(func=_cmd_manifest)
+
+    c = sub.add_parser(
+        "convert",
+        help="Convert a canonical JSONL sidecar to LeRobot (columnar JSON) or Isaac (JSONL).",
+    )
+    c.add_argument("path", help="Path to the source data.jsonl")
+    c.add_argument("--to", required=True,
+                   help="Target format (lerobot → columnar JSON; isaac → JSONL)")
+    c.add_argument("--out", required=True, help="Output file path")
+    c.set_defaults(func=_cmd_convert)
     return parser
 
 
