@@ -1,4 +1,4 @@
-"""Tests for the `python -m mnesis_canonical` CLI (validate / manifest)."""
+"""Tests for the `python -m mnesis_canonical` CLI (validate / manifest / convert)."""
 from __future__ import annotations
 
 import json
@@ -46,3 +46,52 @@ def test_cli_manifest_no_write(capsys):
 def test_cli_manifest_missing_dir_returns_two(capsys):
     assert main(["manifest", "does/not/exist"]) == 2
     assert "no data.jsonl" in capsys.readouterr().err
+
+
+# --- S2-4: convert CLI --------------------------------------------------------
+
+
+def test_cli_convert_lerobot_outputs_columnar_json(tmp_path):
+    out = tmp_path / "lerobot.json"
+    rc = main(["convert", str(EXAMPLE), "--to", "lerobot", "--out", str(out)])
+    assert rc == 0
+    assert out.exists()
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert "action" in data
+    assert "observation.state" in data
+    assert isinstance(data["action"], list)
+    assert len(data["action"]) == 2
+
+
+def test_cli_convert_isaac_outputs_jsonl(tmp_path):
+    out = tmp_path / "isaac.jsonl"
+    rc = main(["convert", str(EXAMPLE), "--to", "isaac", "--out", str(out)])
+    assert rc == 0
+    assert out.exists()
+    lines = [json.loads(line) for line in out.read_text(encoding="utf-8").strip().splitlines()]
+    assert len(lines) == 2
+    # Isaac-flavoured frames still contain the same keys
+    assert "action" in lines[0]
+
+
+def test_cli_convert_unknown_format_returns_one(tmp_path, capsys):
+    out = tmp_path / "out.json"
+    rc = main(["convert", str(EXAMPLE), "--to", "nonexistent", "--out", str(out)])
+    assert rc == 1
+    assert "unknown format" in capsys.readouterr().err
+
+
+def test_cli_convert_missing_source_returns_two(tmp_path, capsys):
+    out = tmp_path / "out.json"
+    rc = main(["convert", "does/not/exist.jsonl", "--to", "lerobot", "--out", str(out)])
+    assert rc == 2
+    assert "not found" in capsys.readouterr().err
+
+
+def test_cli_convert_lerobot_output_is_lf(tmp_path):
+    """Verify lerobot output uses LF line ending (not CRLF)."""
+    out = tmp_path / "lerobot.json"
+    main(["convert", str(EXAMPLE), "--to", "lerobot", "--out", str(out)])
+    raw = out.read_bytes()
+    assert b"\r\n" not in raw
+    assert raw.endswith(b"\n")
