@@ -81,6 +81,13 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
             errors.append(f"{key} must have length {expected_len}, got {len(val)}")
         elif not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in val):
             errors.append(f"{key} must contain only numbers")
+        else:
+            # Reject NaN / Inf in vector fields
+            import math
+            for i, x in enumerate(val):
+                if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
+                    errors.append(f"{key}[{i}] must be a finite number, got {x!r}")
+                    break  # one error per vector is enough
 
     if not isinstance(frame["observation.images.ego"], str):
         errors.append("observation.images.ego must be a string (file reference, '' allowed)")
@@ -121,9 +128,18 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
     for i, frame in enumerate(frames):
         report.total += 1
         errs = validate_frame(frame, strict_vocab=strict_vocab)
-        # frame_index must be monotonically increasing within an episode
-        if not errs and prev_frame_index is not None:
-            if frame["frame_index"] <= prev_frame_index:
+        # Check for negative frame_index
+        if not errs and "frame_index" in frame:
+            fi = frame["frame_index"]
+            if isinstance(fi, int) and fi < 0:
+                errs.append(f"frame_index must be non-negative, got {fi}")
+        # Check for duplicate frame_index
+        if not errs and prev_frame_index is not None and "frame_index" in frame:
+            if frame["frame_index"] == prev_frame_index:
+                errs.append(
+                    f"duplicate frame_index ({frame['frame_index']}) at line {i}"
+                )
+            elif frame["frame_index"] < prev_frame_index:
                 errs.append(
                     f"frame_index not increasing ({prev_frame_index} -> {frame['frame_index']})"
                 )
