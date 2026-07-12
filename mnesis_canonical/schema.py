@@ -11,7 +11,31 @@ Isaac/GR00T data formats (see SPEC §Compatibility).
 """
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
+from pathlib import Path
+
+# Path to the bundled JSON Schema (single source of truth for $id/version).
+_SCHEMA_PATH = Path(__file__).resolve().parent / "canonical_frame.schema.json"
+_VERSION_RE = re.compile(r"/(v[\w.]+)\.json$")
+
+
+def get_schema_version() -> str:
+    """Extract the Canonical Schema version from the JSON Schema ``$id`` field.
+
+    Returns a string like ``"v0.1"``, or ``"unknown"`` if parsing fails.
+    """
+    try:
+        with open(_SCHEMA_PATH, encoding="utf-8") as f:
+            schema = json.load(f)
+        sid = schema.get("$id", "")
+        m = _VERSION_RE.search(sid)
+        if m:
+            return m.group(1)
+    except (OSError, json.JSONDecodeError):
+        pass
+    return "unknown"
 
 # Capture-surface vocabularies (open set — extend deliberately, keep cross-repo in sync).
 DEVICES = ("phone", "glasses", "quest", "pico", "robot", "sim")

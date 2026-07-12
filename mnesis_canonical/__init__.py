@@ -18,6 +18,7 @@ from .schema import (
     REQUIRED_KEYS,
     VECTOR_LENGTHS,
     CanonicalFrame,
+    get_schema_version,
 )
 from .validate import (
     ValidationReport,
@@ -42,6 +43,7 @@ __all__ = [
     "ValidationReport",
     "read_jsonl",
     "write_jsonl",
+    "get_schema_version",
     "to_lerobot",
     "from_lerobot",
     "LEROBOT_FEATURES",
