@@ -16,6 +16,7 @@ from .io import read_jsonl, write_jsonl
 from .isaac import to_isaac
 from .lerobot import to_lerobot
 from .manifest import manifest_for_episode, validate_manifest, write_manifest
+from .schema import get_schema_version
 from .validate import validate_frames
 
 
@@ -106,7 +107,12 @@ def build_parser() -> argparse.ArgumentParser:
         prog="mnesis-canonical",
         description="Mnesis Canonical Schema — validation tools for episode sidecars.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument(
+        "--schema-version",
+        action="store_true",
+        help="Print the Canonical Schema version and exit.",
+    )
+    sub = parser.add_subparsers(dest="command")
 
     v = sub.add_parser("validate", help="Validate an episode JSONL sidecar.")
     v.add_argument("path", help="Path to the episode data.jsonl")
@@ -154,6 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.schema_version:
+        print(get_schema_version())
+        return 0
+    if args.command is None:
+        build_parser().print_help()
+        return 2
     return args.func(args)
 
 

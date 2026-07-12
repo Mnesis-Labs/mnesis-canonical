@@ -2,11 +2,21 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from mnesis_canonical.__main__ import main
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "episode_0" / "data.jsonl"
+
+
+def test_cli_schema_version_exists(capsys):
+    """--schema-version prints a non-empty version string and exits 0."""
+    rc = main(["--schema-version"])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out, "schema-version output must not be empty"
+    assert re.match(r"^v?\d+\.\d+", out), f"schema-version '{out}' does not look like a version"
 
 
 def test_cli_valid_example_returns_zero(capsys):
