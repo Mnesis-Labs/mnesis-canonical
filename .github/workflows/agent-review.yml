@@ -1,0 +1,12 @@
+name: agent-review
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+jobs:
+  review:
+    if: startsWith(github.head_ref, 'agent/')
+    runs-on: [self-hosted, mnesis-mnesis-canonical]
+    steps:
+      - name: reviewer
+        shell: pwsh
+        run: pwsh -File D:\Github\_ops\orchestration\run-review.ps1 -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
