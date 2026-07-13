@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "files": {
+    "canonical_frame_schema_REFERENCE.md": "2aaef941269f875e033a55955733ab0392eeca9cecc6c82280faacb8fbfadb56",
+    "xr_bridge_SPEC.md": "7b0b48ac0868c10e60ef95903e472880c3cb5dd1d85798ea8ec46ad6d51b68f5",
+    "XR_ROBOT_CONTRACT.md": "8fa6cb0b9bf9147dd15b51ef1fa02b06e4d45a75d307a167f7092a429511969b"
+  }
+}
