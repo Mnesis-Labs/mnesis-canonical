@@ -98,6 +98,8 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
     if "spatial_anchor_id" in frame and frame["spatial_anchor_id"] is not None:
         if not isinstance(frame["spatial_anchor_id"], str):
             errors.append("spatial_anchor_id must be a string or null")
+        elif frame["spatial_anchor_id"] == "":
+            errors.append("spatial_anchor_id must be a non-empty string or null")
 
     dev, mod = frame["source.device"], frame["source.modality"]
     if not isinstance(dev, str) or not isinstance(mod, str):
@@ -125,9 +127,15 @@ class ValidationReport:
 def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> ValidationReport:
     report = ValidationReport()
     prev_frame_index: int | None = None
+
+    # --- Episode-level: spatial_anchor_id validation ---
+    # Track anchor_ids that have been defined (non-None, non-empty, first occurrence).
+    defined_anchors: dict[str, int] = {}  # anchor_id -> first-definition line index
+
     for i, frame in enumerate(frames):
         report.total += 1
         errs = validate_frame(frame, strict_vocab=strict_vocab)
+
         # Check for negative frame_index
         if not errs and "frame_index" in frame:
             fi = frame["frame_index"]
@@ -143,6 +151,19 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
                 errs.append(
                     f"frame_index not increasing ({prev_frame_index} -> {frame['frame_index']})"
                 )
+
+        # --- spatial_anchor_id validation ---
+        aid = frame.get("spatial_anchor_id")
+        if aid is not None and isinstance(aid, str) and aid:
+            if aid in defined_anchors:
+                first_line = defined_anchors[aid]
+                errs.append(
+                    f"duplicate spatial_anchor_id '{aid}' at line {i} "
+                    f"(first defined at line {first_line})"
+                )
+            else:
+                defined_anchors[aid] = i
+
         if not errs:
             report.valid += 1
             prev_frame_index = frame["frame_index"]
