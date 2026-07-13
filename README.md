@@ -40,6 +40,45 @@ Optional strict JSON-Schema backend: `pip install "mnesis-canonical[jsonschema]"
 then `validate_frame_jsonschema(frame)` (or use the bundled
 `mnesis_canonical/canonical_frame.schema.json` from any language).
 
+## Device Adapter SDK
+
+`mnesis_canonical.sdk` provides a uniform interface for all Mnesis capture
+surfaces, so downstream code (training pipelines, evaluators, data viewers)
+can consume frames without caring which device produced them.
+
+```
+                    ┌───────────────┐
+                    │ DeviceAdapter │  ← ABC (open / close / read_frame)
+                    └───────┬───────┘
+                            │
+              ┌─────────────┴─────────────┐
+              │                           │
+     ┌────────┴────────┐       ┌──────────┴──────────┐
+     │  QuestAdapter   │       │    RobotAdapter     │  ← reference impls
+     │ episode_quest   │       │   episode_robot     │     (example data)
+     └─────────────────┘       └─────────────────────┘
+```
+
+**Minimal usage:**
+
+```python
+from mnesis_canonical.sdk import QuestAdapter, RobotAdapter
+
+# Context-manager protocol (auto open/close)
+with QuestAdapter() as quest:
+    for frame in quest:                     # CanonicalFrame objects
+        print(frame.index, frame.source_device, frame.action)
+
+with RobotAdapter() as robot:
+    frame = robot.read_frame()
+    print(frame.observation_state)
+```
+
+Every adapter implements `open()`, `close()`, `read_frame()` → `CanonicalFrame`,
+and supports iteration (`__iter__`/`__next__`) and the context-manager protocol.
+Unimplemented abstract methods raise `TypeError` at instantiation time (standard
+ABC behaviour).
+
 ## Test / lint (what CI runs)
 ```bash
 ruff check . && pytest -q
