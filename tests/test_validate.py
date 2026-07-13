@@ -140,3 +140,90 @@ def test_positive_frame_index_increasing_accepted(good_frame):
     f1["t_hw_ns"] = 2_000_000_000
     report = validate_frames([f0, f1])
     assert report.ok
+
+
+# --- S2-10: spatial_anchor_id episode-level validation ------------------------
+
+
+def test_duplicate_spatial_anchor_rejected(good_frame):
+    """Same anchor_id in two frames → duplicate definition error."""
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-A"
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    f1["spatial_anchor_id"] = "anchor-A"
+    report = validate_frames([f0, f1])
+    assert not report.ok
+    assert any("duplicate" in m and "anchor-A" in m for _, m in report.errors)
+
+
+def test_undefined_spatial_anchor_rejected(good_frame):
+    """Empty string spatial_anchor_id → undefined/reference error."""
+    f = good_frame()
+    f["spatial_anchor_id"] = ""
+    errs = validate_frame(f)
+    assert any("spatial_anchor_id" in e and "empty" in e for e in errs)
+
+
+def test_unique_spatial_anchors_accepted(good_frame):
+    """Different anchor_ids across frames → valid."""
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-A"
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    f1["spatial_anchor_id"] = "anchor-B"
+    report = validate_frames([f0, f1])
+    assert report.ok
+
+
+def test_null_spatial_anchor_accepted(good_frame):
+    """None spatial_anchor_id → skip (no anchor)."""
+    f = good_frame()
+    assert f["spatial_anchor_id"] is None
+    assert validate_frame(f) == []
+
+
+def test_multiple_duplicate_anchor_errors(good_frame):
+    """Three frames with the same anchor_id → error on each duplicate."""
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-X"
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    f1["spatial_anchor_id"] = "anchor-X"
+    f2 = good_frame()
+    f2["frame_index"] = 2
+    f2["t_ns"] = 3_000_000
+    f2["t_hw_ns"] = 3_000_000_000
+    f2["spatial_anchor_id"] = "anchor-X"
+    report = validate_frames([f0, f1, f2])
+    assert not report.ok
+    assert len(report.errors) == 2  # two duplicates of anchor-X
+    assert all("duplicate" in m and "anchor-X" in m for _, m in report.errors)
+
+
+def test_anchor_errors_include_cli_in_output(capsys, tmp_path, good_frame):
+    """CLI validate exits 1 and prints anchor errors to stderr."""
+    from mnesis_canonical.__main__ import main
+
+    bad = tmp_path / "data.jsonl"
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-A"
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    f1["spatial_anchor_id"] = "anchor-A"
+    import json
+    bad.write_text(
+        json.dumps(f0) + "\n" + json.dumps(f1) + "\n", encoding="utf-8"
+    )
+    rc = main(["validate", str(bad)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "duplicate" in err and "anchor-A" in err
