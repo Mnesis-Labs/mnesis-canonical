@@ -4,7 +4,7 @@ on:
     types: [opened, ready_for_review]
 jobs:
   review:
-    if: startsWith(github.head_ref, 'agent/')
+    if: startsWith(github.head_ref, 'agent/') || startsWith(github.head_ref, 'claude/')
     runs-on: [self-hosted, mnesis-mnesis-canonical]
     steps:
       - name: reviewer
