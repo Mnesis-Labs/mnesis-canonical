@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mnesis-Labs/mnesis-canonical/blob/main/embodiments/embodiment.schema.json",
+  "title": "Mnesis Embodiment Registry",
+  "description": "Schema for embodiment registry entries: one JSON file per embodiment. Authority: Parthenon D-8 / S12. Each file declares the canonical identity, kinematics, asset paths, and teleop defaults for one robot or human embodiment.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Embodiment identifier, used as filename stem (e.g. 'airbot_play').",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable display name (e.g. 'AIRBOT Play')."
+    },
+    "arms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "description": "Number of arms (1 = single-arm, 2 = dual-arm)."
+    },
+    "dof_per_arm": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of degrees of freedom per arm, excluding gripper (e.g. 6 for a 6-DOF arm)."
+    },
+    "joint_names": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Joint names in order. For dual-arm embodiments, concatenate left then right joints (e.g. [left_j1, ..., left_jN, right_j1, ..., right_jN])."
+    },
+    "joint_limits": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "Minimum joint positions in radians, one per joint_name entry."
+        },
+        "max": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "Maximum joint positions in radians, one per joint_name entry."
+        }
+      },
+      "required": ["min", "max"],
+      "description": "Position limits for each joint in radians. Arrays must match joint_names length."
+    },
+    "gripper_range": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "Gripper open/close range, e.g. [0.0, 1.0] (normalized) or [0.0, 0.08] (metres)."
+    },
+    "base_frame": {
+      "type": "string",
+      "description": "Base frame name (e.g. 'base', 'chassis', 'pelvis', 'world')."
+    },
+    "assets": {
+      "type": "object",
+      "properties": {
+        "urdf": { "type": "string", "description": "Path to URDF file, or empty string if not available." },
+        "mjcf": { "type": "string", "description": "Path to MuJoCo MJCF file, or empty string if not available." },
+        "glb": { "type": "string", "description": "Path to GLB (glTF Binary) file, or empty string if not available." },
+        "skeleton": { "type": "string", "description": "Path to skeleton/keypoints file, or empty string if not available." }
+      },
+      "required": ["urdf", "mjcf", "glb", "skeleton"],
+      "description": "Asset paths for rendering, simulation, and skeleton data."
+    },
+    "teleop": {
+      "type": "object",
+      "properties": {
+        "default_pos_scale": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Default position scaling factor for teleoperation (e.g. 0.3 for fine control)."
+        },
+        "workspace_box": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Workspace bounding box [[x_min, y_min, z_min], [x_max, y_max, z_max]] in metres."
+        }
+      },
+      "required": ["default_pos_scale", "workspace_box"],
+      "description": "Teleoperation default parameters."
+    }
+  },
+  "required": ["id", "display_name", "arms", "dof_per_arm", "joint_names", "joint_limits", "gripper_range", "base_frame", "assets", "teleop"]
+}

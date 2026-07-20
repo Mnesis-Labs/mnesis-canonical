@@ -1,0 +1,82 @@
+{
+  "id": "dual_airbot_play",
+  "display_name": "Dual AIRBOT Play",
+  "arms": 2,
+  "dof_per_arm": 6,
+  "joint_names": [
+    "left/joint_1",
+    "left/joint_2",
+    "left/joint_3",
+    "left/joint_4",
+    "left/joint_5",
+    "left/joint_6",
+    "left/gripper",
+    "right/joint_1",
+    "right/joint_2",
+    "right/joint_3",
+    "right/joint_4",
+    "right/joint_5",
+    "right/joint_6",
+    "right/gripper"
+  ],
+  "joint_limits": {
+    "min": [
+      -3.1416,
+      -2.9671,
+      -0.087266,
+      -3.0107,
+      -1.7628,
+      -3.0107,
+      0.0,
+      -3.1416,
+      -2.9671,
+      -0.087266,
+      -3.0107,
+      -1.7628,
+      -3.0107,
+      0.0
+    ],
+    "max": [
+      2.0944,
+      0.17453,
+      3.1416,
+      3.0107,
+      1.7628,
+      3.0107,
+      0.072,
+      2.0944,
+      0.17453,
+      3.1416,
+      3.0107,
+      1.7628,
+      3.0107,
+      0.072
+    ]
+  },
+  "gripper_range": [
+    0.0,
+    0.072
+  ],
+  "base_frame": "world",
+  "assets": {
+    "urdf": "",
+    "mjcf": "models/airbot_play/dual_airbot_play.xml",
+    "glb": "",
+    "skeleton": ""
+  },
+  "teleop": {
+    "default_pos_scale": 0.3,
+    "workspace_box": [
+      [
+        -0.6,
+        -0.6,
+        0.0
+      ],
+      [
+        0.6,
+        0.6,
+        0.6
+      ]
+    ]
+  }
+}

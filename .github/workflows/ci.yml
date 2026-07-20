@@ -32,3 +32,14 @@ jobs:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
       - run: python -m mnesis_canonical.contracts_check
+
+  embodiment-check:
+    name: Embodiment registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: python -m mnesis_canonical.embodiment_check
