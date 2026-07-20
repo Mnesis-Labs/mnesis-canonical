@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mnesis.dev/schemas/canonical_frame/v0.1.json",
+  "$id": "https://mnesis.dev/schemas/canonical_frame/v0.2.json",
   "title": "Mnesis CanonicalFrame",
   "description": "One frame of embodied spatial-action data = one JSONL line. Open standard, Apache-2.0. Authority: SPEC.md / Parthenon 03 §3.2. Keep in lock-step with schema.py.",
   "type": "object",
@@ -14,7 +14,6 @@
     "timestamp",
     "head_pose_SE3",
     "observation.state",
-    "observation.images.ego",
     "action",
     "source.device",
     "source.modality",
@@ -61,20 +60,16 @@
     "observation.state": {
       "type": "array",
       "items": { "type": "number" },
-      "minItems": 7,
-      "maxItems": 7,
-      "description": "7-DoF state (mirrors head_pose_SE3)."
+      "description": "7-DoF state (ego_v1) or variable-length float[N] (robot_v2, N per registry joint_names)."
     },
     "observation.images.ego": {
       "type": "string",
-      "description": "File reference to the ego video frame ('' allowed)."
+      "description": "File reference to the ego video frame ('' allowed). Required for ego_v1 profile."
     },
     "action": {
       "type": "array",
       "items": { "type": "number" },
-      "minItems": 6,
-      "maxItems": 6,
-      "description": "Relative delta [tx,ty,tz, rx,ry,rz] (m, axis-angle rad)."
+      "description": "Relative delta [tx,ty,tz, rx,ry,rz] (m, axis-angle rad) for ego_v1; variable-length for robot_v2."
     },
     "spatial_anchor_id": {
       "type": ["string", "null"],
@@ -91,6 +86,52 @@
     "tracking_state": {
       "type": "string",
       "description": "e.g. TRACKING, PAUSED, STOPPED."
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["ego_v1", "robot_v2"],
+      "description": "Frame profile (v0.2+). When absent, defaults to ego_v1 (backward-compatible)."
+    },
+    "embodiment_id": {
+      "type": ["string", "null"],
+      "description": "Reference to an embodiment registry entry (v0.2+). Optional."
+    },
+    "observation.eef_pose.left": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 7,
+      "maxItems": 7,
+      "description": "Left end-effector pose [tx,ty,tz, qx,qy,qz,qw] (robot_v2 profile, optional)."
+    },
+    "observation.eef_pose.right": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 7,
+      "maxItems": 7,
+      "description": "Right end-effector pose [tx,ty,tz, qx,qy,qz,qw] (robot_v2 profile, optional)."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "not": {
+          "required": ["profile"],
+          "properties": { "profile": { "const": "robot_v2" } }
+        }
+      },
+      "then": {
+        "required": ["observation.images.ego"],
+        "properties": {
+          "observation.state": {
+            "minItems": 7,
+            "maxItems": 7
+          },
+          "action": {
+            "minItems": 6,
+            "maxItems": 6
+          }
+        }
+      }
+    }
+  ]
 }

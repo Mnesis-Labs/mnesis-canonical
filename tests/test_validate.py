@@ -72,10 +72,17 @@ def test_dataclass_roundtrip(good_frame):
 def test_json_schema_loads_and_matches_required_keys():
     schema = load_json_schema()
     assert schema["$schema"].endswith("2020-12/schema")
-    # The bundled JSON Schema and the Python REQUIRED_KEYS must not drift.
-    from mnesis_canonical import REQUIRED_KEYS
+    # The bundled JSON Schema top-level required is the intersection of all
+    # profile required sets (without observation.images.ego, which is conditional).
+    # The Python REQUIRED_KEYS is the ego_v1 set (backward compat superset).
+    from mnesis_canonical import REQUIRED_KEYS, required_keys_for_profile
 
-    assert set(schema["required"]) == set(REQUIRED_KEYS)
+    schema_top_required = set(schema["required"])
+    robot_v2_required = set(required_keys_for_profile("robot_v2"))
+    # Schema top-level must be exactly the robot_v2 required set
+    assert schema_top_required == robot_v2_required
+    # Python REQUIRED_KEYS (ego_v1) is a superset
+    assert set(REQUIRED_KEYS) >= robot_v2_required
 
 
 def test_example_passes_both_validators():

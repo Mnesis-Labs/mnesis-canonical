@@ -7,10 +7,38 @@ and this project adheres to [SemVer-of-the-schema](README.md#compatibility-commi
 — the **package version** (this changelog) and the **schema version** (SPEC.md §Versioning)
 are decoupled:
 
-> **Package 0.2.0** adds CLI, adapter, manifest, and type-distribution capabilities
-> **without changing any wire fields.** The schema version remains `v0.1` (SPEC.md),
-> so downstream consumers pinning `mnesis-canonical ~= 0.1` are unaffected.
-> The version bump reflects the new *non-field* surface area, not a wire change.
+> **Package 0.3.0** introduces the **profile mechanism** (v0.2 schema) for additive
+> schema evolution. `ego_v1` = v0.1 backward-compatible default; `robot_v2` adds
+> variable-length vectors, open camera keys, and optional `eef_pose`. All existing
+> data and examples validate without modification.
+
+## [0.3.0] — 2026-07-21
+
+### Added
+
+- **D-9a — Profile mechanism** (v0.2 schema, additive-only). Frame top-level
+  optional `profile` (default `ego_v1`) and `embodiment_id` fields. v0.1 frames
+  without these fields pass all validation unchanged (regression covered).
+  - `PROFILES`, `DEFAULT_PROFILE`, `ROBOT_V2_VARIABLE_VECTORS` constants.
+  - `required_keys_for_profile()` helper function.
+- **D-9a — robot_v2 profile**: `observation.state` and `action` are
+  variable-length float[N] (no fixed-size check); `observation.images.<cam>`
+  open key set (at least one required, no single camera mandatory); optional
+  `observation.eef_pose.{left,right}` (each float[7]).
+- **D-9a — `examples/episode_dual_airbot`** — robot_v2 profile example with
+  14-DoF dual-arm state/action, wrist_left/wrist_right cameras, and optional
+  eef_pose left/right. Validates via `validate_frames` (strict).
+- **SPEC v0.2** — rewritten with profile table, robot_v2 field documentation,
+  backward-compatibility guarantee.
+- **JSON Schema v0.2** — `$id` bumped to `v0.2.json`; conditional validation
+  via `if/then/else` for profile-specific requirements.
+
+### Changed
+
+- `CanonicalFrame` dataclass extended with `profile`, `embodiment_id`,
+  `observation_images` (extra camera keys), `eef_pose_left`, `eef_pose_right`.
+- `REQUIRED_KEYS` split into `_REQUIRED_KEYS_EGO_V1` and `_REQUIRED_KEYS_ROBOT_V2`;
+  base `REQUIRED_KEYS` constant kept as ego_v1 for backward compat.
 
 ## [0.2.0] — 2026-07-11
 
@@ -66,5 +94,6 @@ are decoupled:
 - `examples/episode_0` (phone / ego_human).
 - Dual-timestamp design, quaternion `{x,y,z,w}` scalar-last, relative-delta action.
 
+[0.3.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.1.0
