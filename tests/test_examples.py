@@ -9,6 +9,7 @@ from mnesis_canonical import (
     DEVICES,
     MODALITIES,
     read_jsonl,
+    validate_events,
     validate_frames,
 )
 
@@ -39,3 +40,12 @@ def test_examples_cover_multiple_surfaces():
     # Anything used in the examples must be in the frozen vocab.
     assert devices <= set(DEVICES)
     assert modalities <= set(MODALITIES)
+
+
+def test_example_episodes_with_events_pass_validation():
+    """Example episodes that include events.jsonl must pass validate_events."""
+    for jsonl_path in EPISODES:
+        ep_dir = jsonl_path.parent
+        if (ep_dir / "events.jsonl").exists():
+            errs = validate_events(ep_dir)
+            assert errs == [], f"{ep_dir.name}: {errs}"

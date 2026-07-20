@@ -1,0 +1,5 @@
+{"t_ns":500000,"type":"plan_preview","payload":{"plan_id":"plan-001","steps":2}}
+{"t_ns":800000,"type":"execute_confirm","payload":{"plan_id":"plan-001","confirmed":true}}
+{"t_ns":1000000,"type":"episode_mark","payload":{"mark":"start"}}
+{"t_ns":33000000,"type":"episode_mark","payload":{"mark":"end"}}
+{"t_ns":35000000,"type":"anchor_set","payload":{"anchor_id":"anchor-robot-001"}}

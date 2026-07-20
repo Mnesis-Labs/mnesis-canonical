@@ -15,6 +15,7 @@ from .manifest import build_manifest, manifest_for_episode, validate_manifest, w
 from .schema import (
     DEFAULT_PROFILE,
     DEVICES,
+    EVENT_TYPES,
     MODALITIES,
     PROFILES,
     REQUIRED_KEYS,
@@ -27,6 +28,7 @@ from .schema import (
 from .validate import (
     ValidationReport,
     load_json_schema,
+    validate_events,
     validate_frame,
     validate_frame_jsonschema,
     validate_frames,
@@ -37,6 +39,7 @@ __version__ = "0.2.0"
 __all__ = [
     "CanonicalFrame",
     "DEFAULT_PROFILE",
+    "EVENT_TYPES",
     "PROFILES",
     "REQUIRED_KEYS",
     "ROBOT_V2_VARIABLE_VECTORS",
@@ -47,6 +50,7 @@ __all__ = [
     "validate_frame",
     "validate_frames",
     "validate_frame_jsonschema",
+    "validate_events",
     "load_json_schema",
     "ValidationReport",
     "read_jsonl",

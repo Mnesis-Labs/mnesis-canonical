@@ -30,6 +30,7 @@ def build_manifest(
     jsonl_size_bytes: int,
     video_path: str | None = None,
     video_size_bytes: int = 0,
+    events_path: str | None = None,
 ) -> dict:
     """Build a manifest dict from in-memory frames (pure; no I/O).
 
@@ -38,7 +39,7 @@ def build_manifest(
     if not frames:
         raise ValueError("cannot build a manifest for an empty episode")
     t = [f["t_ns"] for f in frames]
-    return {
+    result: dict = {
         "episodeIndex": frames[0]["episode_index"],
         "frameCount": len(frames),
         "jsonlSizeBytes": jsonl_size_bytes,
@@ -46,11 +47,14 @@ def build_manifest(
         "videoSizeBytes": video_size_bytes,
         "durationMs": round((max(t) - min(t)) / 1_000_000),
     }
+    if events_path is not None:
+        result["eventsPath"] = events_path
+    return result
 
 
 def manifest_for_episode(episode_dir: str | Path) -> dict:
-    """Read ``<episode_dir>/data.jsonl`` (and ``video.mp4`` if present) and build
-    the manifest, filling in real on-disk sizes."""
+    """Read ``<episode_dir>/data.jsonl`` (and ``video.mp4`` / ``events.jsonl`` if present)
+    and build the manifest, filling in real on-disk sizes."""
     episode_dir = Path(episode_dir)
     jsonl = episode_dir / "data.jsonl"
     frames = read_jsonl(jsonl)
@@ -60,11 +64,14 @@ def manifest_for_episode(episode_dir: str | Path) -> dict:
         video_size = video.stat().st_size
     else:
         video_path, video_size = None, 0
+    events = episode_dir / "events.jsonl"
+    events_path: str | None = events.name if events.exists() else None
     return build_manifest(
         frames,
         jsonl_size_bytes=jsonl.stat().st_size,
         video_path=video_path,
         video_size_bytes=video_size,
+        events_path=events_path,
     )
 
 
@@ -163,5 +170,13 @@ def validate_manifest(episode_dir: str | Path) -> dict:
                 errors.append(f"cannot stat video file: {e}")
         else:
             errors.append(f"videoPath '{manifest['videoPath']}' does not exist on disk")
+
+    # --- eventsPath consistency when present ---
+    if manifest.get("eventsPath") is not None:
+        events_path = episode_dir / manifest["eventsPath"]
+        if not events_path.exists():
+            errors.append(
+                f"eventsPath '{manifest['eventsPath']}' does not exist on disk"
+            )
 
     return {"ok": len(errors) == 0, "errors": errors}
