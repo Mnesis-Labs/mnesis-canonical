@@ -116,6 +116,35 @@ EVENT_TYPES = (
     "anchor_set",
 )
 
+# Spans annotation vocabulary (v0.3+).
+# Hand enum values for annotations/spans.jsonl.
+ANNOTATION_HANDS = ("left", "right", "both", "none")
+
+# Visibility enum values for spans.
+ANNOTATION_VISIBILITIES = ("visible", "occluded", "out_of_frame")
+
+# Source enum values for spans.
+ANNOTATION_SOURCES = ("argus_v0", "human", "external")
+
+# Manipulation action taxonomy (v0.3+).  Every span.action MUST be one of these.
+# These mirror the verbs in taxonomies/manipulation_v1.json.
+MANIPULATION_ACTIONS = (
+    "reaching",
+    "grasping_pinching",
+    "lifting",
+    "holding",
+    "placing_inserting",
+    "pushing_pulling",
+    "rotating",
+    "opening_closing",
+    "releasing",
+    "pressing_sliding",
+    "pouring",
+    "bimanual_coordination",
+    "tool_use",
+    "idle",
+)
+
 
 @dataclass(frozen=True)
 class CanonicalFrame:

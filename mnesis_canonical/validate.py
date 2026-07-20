@@ -16,10 +16,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .schema import (
+    ANNOTATION_HANDS,
+    ANNOTATION_SOURCES,
+    ANNOTATION_VISIBILITIES,
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
     INT_KEYS,
+    MANIPULATION_ACTIONS,
     MODALITIES,
     PROFILES,
     ROBOT_V2_VARIABLE_VECTORS,
@@ -321,5 +325,163 @@ def validate_events(episode_dir: str | Path) -> list[str]:
             # payload must be present (may be null)
             if "payload" not in event:
                 errors.append(f"events.jsonl line {line_no}: missing required key 'payload'")
+
+    return errors
+
+
+def validate_annotations(episode_dir: str | Path) -> list[str]:
+    """Validate the optional ``annotations/spans.jsonl`` sidecar in an episode dir.
+
+    Returns a list of error messages (empty = valid).  If the file does not exist
+    the check passes silently (additive-only — existing episodes without annotations
+    are unaffected).
+
+    Each span line must be a JSON object with:
+      - ``span_id``: str (required)
+      - ``t_start_ns``: int (required, must be < t_end_ns)
+      - ``t_end_ns``: int (required, must be > t_start_ns)
+      - ``hand``: one of ANNOTATION_HANDS (required)
+      - ``action``: one of MANIPULATION_ACTIONS (required)
+      - ``action_text``: str (optional, free-text description)
+      - ``object``: str (optional, target object label)
+      - ``visibility``: one of ANNOTATION_VISIBILITIES (optional)
+      - ``confidence``: float 0-1 (optional)
+      - ``source``: one of ANNOTATION_SOURCES (optional)
+      - ``verified``: bool (optional)
+    """
+    spans_path = Path(episode_dir) / "annotations" / "spans.jsonl"
+    if not spans_path.exists():
+        return []
+
+    errors: list[str] = []
+    with open(spans_path, encoding="utf-8") as f:
+        for line_no, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: blank line "
+                    f"(expected JSON object)"
+                )
+                continue
+
+            try:
+                span = json.loads(line)
+            except ValueError as e:
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: invalid JSON: {e}"
+                )
+                continue
+
+            if not isinstance(span, dict):
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: expected JSON object, "
+                    f"got {type(span).__name__}"
+                )
+                continue
+
+            # --- Required fields ---
+
+            # span_id
+            span_id = span.get("span_id")
+            if not isinstance(span_id, str) or not span_id:
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: span_id must be a "
+                    f"non-empty string"
+                )
+
+            # t_start_ns / t_end_ns
+            t_start = span.get("t_start_ns")
+            t_end = span.get("t_end_ns")
+            if not isinstance(t_start, int) or isinstance(t_start, bool):
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: t_start_ns must be an "
+                    f"int, got {type(t_start).__name__ if t_start is not None else 'null'}"
+                )
+            if not isinstance(t_end, int) or isinstance(t_end, bool):
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: t_end_ns must be an "
+                    f"int, got {type(t_end).__name__ if t_end is not None else 'null'}"
+                )
+            if (
+                isinstance(t_start, int)
+                and isinstance(t_end, int)
+                and not isinstance(t_start, bool)
+                and not isinstance(t_end, bool)
+            ):
+                if t_start >= t_end:
+                    errors.append(
+                        f"annotations/spans.jsonl line {line_no}: t_start_ns ({t_start}) "
+                        f"must be less than t_end_ns ({t_end})"
+                    )
+
+            # hand
+            hand = span.get("hand")
+            if hand not in ANNOTATION_HANDS:
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: hand must be one of "
+                    f"{ANNOTATION_HANDS}, got {hand!r}"
+                )
+
+            # action
+            action = span.get("action")
+            if action not in MANIPULATION_ACTIONS:
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: action must be one of "
+                    f"{MANIPULATION_ACTIONS}, got {action!r}"
+                )
+
+            # --- Optional fields ---
+
+            # confidence (0-1)
+            confidence = span.get("confidence")
+            if confidence is not None:
+                if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
+                    errors.append(
+                        f"annotations/spans.jsonl line {line_no}: confidence must be "
+                        f"a number, got {type(confidence).__name__}"
+                    )
+                elif confidence < 0.0 or confidence > 1.0:
+                    errors.append(
+                        f"annotations/spans.jsonl line {line_no}: confidence must be "
+                        f"in [0, 1], got {confidence}"
+                    )
+
+            # visibility
+            visibility = span.get("visibility")
+            if visibility is not None and visibility not in ANNOTATION_VISIBILITIES:
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: visibility must be one of "
+                    f"{ANNOTATION_VISIBILITIES}, got {visibility!r}"
+                )
+
+            # source
+            source = span.get("source")
+            if source is not None and source not in ANNOTATION_SOURCES:
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: source must be one of "
+                    f"{ANNOTATION_SOURCES}, got {source!r}"
+                )
+
+            # verified
+            verified = span.get("verified")
+            if verified is not None and not isinstance(verified, bool):
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: verified must be a bool, "
+                    f"got {type(verified).__name__}"
+                )
+
+            # action_text (optional, free-text string if present)
+            action_text = span.get("action_text")
+            if action_text is not None and not isinstance(action_text, str):
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: action_text must be a string"
+                )
+
+            # object (optional, free-text string if present)
+            obj = span.get("object")
+            if obj is not None and not isinstance(obj, str):
+                errors.append(
+                    f"annotations/spans.jsonl line {line_no}: object must be a string"
+                )
 
     return errors

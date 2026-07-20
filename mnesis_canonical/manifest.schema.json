@@ -36,6 +36,10 @@
     "eventsPath": {
       "type": ["string", "null"],
       "description": "Relative path to the events.jsonl sidecar, or null if absent."
+    },
+    "annotationsPath": {
+      "type": ["string", "null"],
+      "description": "Relative path to the annotations/spans.jsonl sidecar, or null if absent."
     }
   },
   "required": ["episodeIndex", "frameCount", "jsonlSizeBytes", "durationMs"],

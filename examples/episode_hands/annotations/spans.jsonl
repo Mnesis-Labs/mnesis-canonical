@@ -1,0 +1,5 @@
+{"span_id":"s1","t_start_ns":500000,"t_end_ns":1500000,"hand":"right","action":"reaching","action_text":"reach for cup on table","object":"cup","visibility":"visible","confidence":0.95,"source":"human","verified":true}
+{"span_id":"s2","t_start_ns":1500000,"t_end_ns":3500000,"hand":"right","action":"grasping_pinching","action_text":"grasp cup handle","object":"cup","visibility":"visible","confidence":0.98,"source":"human","verified":true}
+{"span_id":"s3","t_start_ns":3500000,"t_end_ns":4800000,"hand":"right","action":"lifting","action_text":"lift cup from table","object":"cup","visibility":"visible","confidence":0.97,"source":"human","verified":true}
+{"span_id":"s4","t_start_ns":100000,"t_end_ns":4800000,"hand":"left","action":"holding","action_text":"stabilize plate","object":"plate","visibility":"visible","confidence":0.90,"source":"human","verified":true}
+{"span_id":"s5","t_start_ns":4800000,"t_end_ns":5000000,"hand":"both","action":"bimanual_coordination","action_text":"pass cup between hands","visibility":"occluded","confidence":0.80,"source":"argus_v0","verified":false}

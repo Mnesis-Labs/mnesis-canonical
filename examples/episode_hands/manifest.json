@@ -1,0 +1,9 @@
+{
+  "episodeIndex": 4,
+  "frameCount": 2,
+  "jsonlSizeBytes": 791,
+  "videoPath": null,
+  "videoSizeBytes": 0,
+  "durationMs": 5000,
+  "annotationsPath": "annotations/spans.jsonl"
+}
