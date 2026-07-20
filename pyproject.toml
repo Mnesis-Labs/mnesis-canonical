@@ -24,7 +24,7 @@ mnesis-canonical-contracts-check = "mnesis_canonical.contracts_check:main"
 include = ["mnesis_canonical*"]
 
 [tool.setuptools.package-data]
-mnesis_canonical = ["canonical_frame.schema.json", "manifest.schema.json", "py.typed"]
+mnesis_canonical = ["canonical_frame.schema.json", "manifest.schema.json", "py.typed", "embodiments/*.json"]
 
 [tool.ruff]
 line-length = 100
@@ -36,3 +36,4 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]

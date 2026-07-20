@@ -3,6 +3,7 @@
 The reference Python implementation of the Canonical Schema: typed frame,
 validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 """
+from .embodiment_registry import list_embodiment_ids, list_embodiments, load_embodiment
 from .io import read_jsonl, write_jsonl
 from .isaac import (
     from_isaac,
@@ -77,5 +78,8 @@ __all__ = [
     "from_isaac",
     "quat_xyzw_to_wxyz",
     "quat_wxyz_to_xyzw",
+    "list_embodiments",
+    "list_embodiment_ids",
+    "load_embodiment",
     "__version__",
 ]
