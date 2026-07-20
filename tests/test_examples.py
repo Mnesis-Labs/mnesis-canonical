@@ -17,9 +17,9 @@ EPISODES = sorted(EXAMPLES_DIR.glob("*/data.jsonl"))
 
 
 def test_examples_discovered():
-    # phone (episode_0), quest, robot — the three capture surfaces in the sprint.
+    # phone (episode_0), quest, robot, dual_airbot — the capture surfaces.
     names = {p.parent.name for p in EPISODES}
-    assert {"episode_0", "episode_quest", "episode_robot"} <= names
+    assert {"episode_0", "episode_quest", "episode_robot", "episode_dual_airbot"} <= names
 
 
 @pytest.mark.parametrize("path", EPISODES, ids=lambda p: p.parent.name)

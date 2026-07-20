@@ -24,7 +24,7 @@ _VERSION_RE = re.compile(r"/(v[\w.]+)\.json$")
 def get_schema_version() -> str:
     """Extract the Canonical Schema version from the JSON Schema ``$id`` field.
 
-    Returns a string like ``"v0.1"``, or ``"unknown"`` if parsing fails.
+    Returns a string like ``"v0.2"``, or ``"unknown"`` if parsing fails.
     """
     try:
         with open(_SCHEMA_PATH, encoding="utf-8") as f:
@@ -41,8 +41,17 @@ def get_schema_version() -> str:
 DEVICES = ("phone", "glasses", "quest", "pico", "robot", "sim")
 MODALITIES = ("ego_human", "teleop", "robot_replay", "sim")
 
-# Required JSON keys (dotted keys are intentional — LeRobot-style flat columns).
-REQUIRED_KEYS = (
+# Profile names (v0.2+).
+#   ego_v1   — original v0.1 frame (fixed-length vectors, obs.images.ego required)
+#   robot_v2 — robot-centric frame (variable-length state/action, open cameras, eef_pose)
+PROFILES = ("ego_v1", "robot_v2")
+DEFAULT_PROFILE = "ego_v1"
+
+# When profile is "robot_v2", these fields are variable-length (no fixed-size check).
+ROBOT_V2_VARIABLE_VECTORS = ("observation.state", "action")
+
+# Required JSON keys for the default ego_v1 profile (dotted keys — LeRobot-style flat columns).
+_REQUIRED_KEYS_EGO_V1 = (
     "index",
     "episode_index",
     "task_index",
@@ -59,7 +68,36 @@ REQUIRED_KEYS = (
     "tracking_state",
 )
 
-# Fixed-length vector fields → expected length.
+# Required JSON keys for the robot_v2 profile (no fixed camera key, variable vectors).
+_REQUIRED_KEYS_ROBOT_V2 = (
+    "index",
+    "episode_index",
+    "task_index",
+    "frame_index",
+    "t_ns",
+    "t_hw_ns",
+    "timestamp",
+    "head_pose_SE3",
+    "observation.state",
+    "action",
+    "source.device",
+    "source.modality",
+    "tracking_state",
+)
+
+# For v0.1 backwards-compat: the base set of required keys is the ego_v1 set.
+REQUIRED_KEYS = _REQUIRED_KEYS_EGO_V1
+
+
+def required_keys_for_profile(profile: str | None) -> tuple[str, ...]:
+    """Return the required key set for the given profile name."""
+    p = profile or DEFAULT_PROFILE
+    if p == "robot_v2":
+        return _REQUIRED_KEYS_ROBOT_V2
+    return _REQUIRED_KEYS_EGO_V1
+
+
+# Fixed-length vector fields → expected length (applies to ego_v1 profile).
 VECTOR_LENGTHS = {
     "head_pose_SE3": 7,      # [tx,ty,tz, qx,qy,qz,qw] metres + quaternion {x,y,z,w}
     "observation.state": 7,  # 7-DoF head/effector pose (mirrors head_pose_SE3)
@@ -72,7 +110,12 @@ NULLABLE_KEYS = ("spatial_anchor_id",)  # optional but recommended
 
 @dataclass(frozen=True)
 class CanonicalFrame:
-    """Typed convenience wrapper. The wire format is the dict / JSONL line."""
+    """Typed convenience wrapper. The wire format is the dict / JSONL line.
+
+    ``profile`` (optional, defaults to ``"ego_v1"``) and ``embodiment_id``
+    (optional) are v0.2+ fields.  When ``profile="robot_v2"``, the frame
+    uses variable-length vectors and open camera-key semantics.
+    """
 
     index: int
     episode_index: int
@@ -89,9 +132,14 @@ class CanonicalFrame:
     source_modality: str
     tracking_state: str
     spatial_anchor_id: str | None = None
+    profile: str | None = None
+    embodiment_id: str | None = None
+    observation_images: dict[str, str] | None = None
+    eef_pose_left: list[float] | None = None
+    eef_pose_right: list[float] | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d: dict = {
             "index": self.index,
             "episode_index": self.episode_index,
             "task_index": self.task_index,
@@ -108,9 +156,29 @@ class CanonicalFrame:
             "source.modality": self.source_modality,
             "tracking_state": self.tracking_state,
         }
+        if self.profile is not None:
+            d["profile"] = self.profile
+        if self.embodiment_id is not None:
+            d["embodiment_id"] = self.embodiment_id
+        if self.observation_images is not None:
+            for cam_key, ref in self.observation_images.items():
+                d[f"observation.images.{cam_key}"] = ref
+        if self.eef_pose_left is not None:
+            d["observation.eef_pose.left"] = list(self.eef_pose_left)
+        if self.eef_pose_right is not None:
+            d["observation.eef_pose.right"] = list(self.eef_pose_right)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> CanonicalFrame:
+        # Extract extra camera keys (observation.images.<cam>)
+        obs_images: dict[str, str] = {}
+        for key, val in d.items():
+            if key.startswith("observation.images."):
+                cam = key[len("observation.images."):]
+                if cam:  # skip empty
+                    obs_images[cam] = val
+
         return cls(
             index=d["index"],
             episode_index=d["episode_index"],
@@ -121,10 +189,23 @@ class CanonicalFrame:
             timestamp=d["timestamp"],
             head_pose_se3=list(d["head_pose_SE3"]),
             observation_state=list(d["observation.state"]),
-            observation_images_ego=d["observation.images.ego"],
+            observation_images_ego=d.get("observation.images.ego", ""),
             action=list(d["action"]),
             source_device=d["source.device"],
             source_modality=d["source.modality"],
             tracking_state=d["tracking_state"],
             spatial_anchor_id=d.get("spatial_anchor_id"),
+            profile=d.get("profile"),
+            embodiment_id=d.get("embodiment_id"),
+            observation_images=(
+                obs_images if len(obs_images) > 1 or "ego" not in obs_images else None
+            ),
+            eef_pose_left=(
+                list(d["observation.eef_pose.left"])
+                if "observation.eef_pose.left" in d else None
+            ),
+            eef_pose_right=(
+                list(d["observation.eef_pose.right"])
+                if "observation.eef_pose.right" in d else None
+            ),
         )

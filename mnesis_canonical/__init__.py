@@ -13,12 +13,16 @@ from .isaac import (
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
 from .manifest import build_manifest, manifest_for_episode, validate_manifest, write_manifest
 from .schema import (
+    DEFAULT_PROFILE,
     DEVICES,
     MODALITIES,
+    PROFILES,
     REQUIRED_KEYS,
+    ROBOT_V2_VARIABLE_VECTORS,
     VECTOR_LENGTHS,
     CanonicalFrame,
     get_schema_version,
+    required_keys_for_profile,
 )
 from .validate import (
     ValidationReport,
@@ -32,10 +36,14 @@ __version__ = "0.2.0"
 
 __all__ = [
     "CanonicalFrame",
+    "DEFAULT_PROFILE",
+    "PROFILES",
     "REQUIRED_KEYS",
+    "ROBOT_V2_VARIABLE_VECTORS",
     "VECTOR_LENGTHS",
     "DEVICES",
     "MODALITIES",
+    "required_keys_for_profile",
     "validate_frame",
     "validate_frames",
     "validate_frame_jsonschema",
