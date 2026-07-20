@@ -174,6 +174,7 @@ VR ─── WS Close ──── Robot           [正常断开]
 | `arms[].target_pose_SE3` | float[7] | 末端目标位姿（米 + 四元数 {x,y,z,w}） |
 | `arms[].gripper` | float | 夹爪开度 [0.0, 1.0] |
 | `arms[].clutch` | bool | clutch 脱开状态：true = 脱开（不跟随指令，末端保持当前位姿） |
+| `arms[].mode` | string | 可选，`"position"`（默认）或 `"joint"`（预留）；对应 ≤v1.4 的顶层 `mode` 字段 |
 
 ### 3.5 `C3_Status` — 机器 -> VR（状态回传，循环发送）
 
@@ -224,16 +225,18 @@ VR ─── WS Close ──── Robot           [正常断开]
 |---|---|---|
 | `reason` | string | 急停原因枚举 |
 | `source` | string | `"vr"` 或 `"robot"` |
-| `arm_id` | string\|null | **逐臂急停**：指定臂标识，仅停止该臂。**全局急停**：`null` 或 `"operator_triggered"` 时所有臂停止 |
+| `arm_id` | string\|null | **诊断字段**：标注触发来源臂（如某臂 watchdog 超时）；`null` = 非臂级来源。**无论 arm_id 取值，急停一律全局——所有臂立即停止**（安全铁律：绝不允许单臂急停，见 §8-2） |
 
 急停后系统进入闩锁状态：必须通过**软重置消息**或**重新连接**才能恢复运动。
 
 **急停原因枚举**:
-- `"operator_triggered"` — 操作员手动触发（全局急停）
-- `"watchdog_timeout"` — 看门狗超时（可逐臂触发）
-- `"joint_limit_exceeded"` — 关节超限（可逐臂触发）
-- `"communication_loss"` — 通信丢失（全局）
-- `"internal_error"` — 内部错误（可逐臂触发）
+- `"operator_triggered"` — 操作员手动触发
+- `"watchdog_timeout"` — 看门狗超时（arm_id 标注超时臂）
+- `"joint_limit_exceeded"` — 关节超限（arm_id 标注超限臂）
+- `"communication_loss"` — 通信丢失
+- `"internal_error"` — 内部错误
+
+> 所有 reason 触发的急停均为**全局**；arm_id 仅用于诊断定位。
 
 ### 3.7 `C3_Heartbeat` — 双向（周期性心跳）
 
@@ -245,7 +248,7 @@ VR ─── WS Close ──── Robot           [正常断开]
 
 看门狗：双方在收到对方心跳后重置本地看门狗计时器。超时（`watchdog_timeout_ms` 内未收到任何消息）则自动触发 `C3_EStop`。
 
-**逐臂看门狗**：在多臂模式下，每臂独立维护看门狗计时器。若某臂的 `C3_Frame` 或 `C3_Status` 在超时阈值内未收到，则触发该臂的 `C3_EStop`（带 `arm_id`），不影响其他臂。全局心跳（`C3_Heartbeat`）重置所有臂的看门狗计时器。
+**逐臂看门狗（检测逐臂、停止全局）**：在多臂模式下，每臂独立维护看门狗计时器（检测粒度逐臂）。若某臂的 `C3_Frame` 或 `C3_Status` 在超时阈值内未收到，则触发 `C3_EStop`（`arm_id` 标注超时臂）——**急停动作为全局，所有臂同时进入闩锁**。全局心跳（`C3_Heartbeat`）重置所有臂的看门狗计时器。
 
 ### 3.8 `C3_Reset` — VR -> 机器（急停后恢复）
 
@@ -329,8 +332,7 @@ VR ─── WS Close ──── Robot           [正常断开]
 - 急停是**上升沿触发**的闩锁：一旦触发，即使发送方恢复，接收方也不自动解除。
 - 闩锁状态独立于 WebSocket 连接状态：断线重连后，两端应重新协商闩锁状态。
 - 解除闩锁的唯一途径：`C3_Reset` 消息 + 机器人端安全确认 → 重新锚定。
-- **逐臂急停**：`C3_EStop` 带 `arm_id` 时，仅该臂进入闩锁状态，其他臂继续运行。
-- **全局急停**：`C3_EStop` 不带 `arm_id` 或 `reason` 为 `"operator_triggered"` 时，所有臂进入闩锁状态。
+- **全局闩锁（唯一语义）**：任何 `C3_EStop`（无论 `arm_id`/`reason` 取值）都使**所有臂**进入闩锁状态。`arm_id` 仅用于诊断（定位触发来源臂），不改变闩锁范围。双臂必须同停，**绝不允许单臂急停**（安全铁律，来源 Parthenon research/17 §2.2）。
 
 ---
 
@@ -357,9 +359,9 @@ VR ─── WS Close ──── Robot           [正常断开]
 | 心跳间隔 | 100 ms | 双方每 100ms 发送一次 `C3_Heartbeat` |
 
 - 任何收到的消息都重置看门狗计时器（不仅限于 `C3_Heartbeat`——`C3_Frame` / `C3_Status` 同样有效）
-- **逐臂看门狗**：在多臂模式下，每臂独立维护看门狗计时器。某臂的 `C3_Frame` 或 `C3_Status` 超时，触发该臂的 `C3_EStop`（带 `arm_id`），不影响其他臂。
+- **逐臂看门狗（检测逐臂、停止全局）**：多臂模式下每臂独立维护看门狗计时器；某臂的 `C3_Frame` 或 `C3_Status` 超时即触发 `C3_EStop`（arm_id 标注超时臂）——**所有臂全部停止并闩锁**。
 - 全局 `C3_Heartbeat` 重置所有臂的看门狗计时器。
-- 超时 → 自动触发 `C3_EStop`（reason=`"watchdog_timeout"`，arm_id 对应超时臂，全局超时 arm_id=`null`）
+- 超时 → 自动触发 `C3_EStop`（reason=`"watchdog_timeout"`，arm_id 对应超时臂，连接级超时 arm_id=`null`；停止范围一律全局）
 
 ---
 
@@ -378,8 +380,8 @@ VR ─── WS Close ──── Robot           [正常断开]
 ## 8. 安全规则
 
 1. **急停优先**：任何检测到异常的一方应立即发送 `C3_EStop`，不应等待确认。
-2. **全局急停**：操作员手动触发急停（`reason: "operator_triggered"`）为全局急停，所有臂立即停止。
-3. **逐臂急停**：看门狗超时或关节超限可逐臂触发，不影响其他臂。
+2. **急停一律全局**：任何来源（操作员/看门狗/关节超限/内部错误）触发的 `C3_EStop` 都使所有臂立即停止并闩锁。**绝不允许单臂急停**——双臂协同场景下另一臂继续运动是不可接受的安全风险。`arm_id` 仅作诊断标注。
+3. **看门狗检测逐臂**：多臂模式下超时检测按臂独立计时（提高检测灵敏度），但触发的停止动作全局。
 4. **速度限制**：机器人端应实现末端速度软限（默认 ≤ 2 m/s）。
 5. **关节限位**：机器人端应拒绝超出物理关节限位的指令（通过 `C3_Status.arms[].health` 和 `C3_Status.error` 报告）。
 6. **PlanGate 安全**：未经过 `C3_PlanStatus {status: "ok"}` 的轨迹，机器人端不得执行。`C3_ExecuteConfirm` 中的 `goal_seq` 必须匹配当前有效预览。
@@ -392,7 +394,9 @@ VR ─── WS Close ──── Robot           [正常断开]
 ## 9. 向后兼容性
 
 - v1.2/v1.3/v1.4 客户端可忽略 `C3_GhostTrajectory`、`C3_PlanStatus`、`C3_ExecuteConfirm` 消息，不影响遥操作核心功能。
-- 单臂端发送 `C3_Frame` 时使用 `arms: [{arm_id: "main", ...}]` 1 元素数组，服务端兼容 v1.2 字段语义。
+- **接收端义务（wire format 零破坏的关键）**：v1.5 服务端 **MUST** 兼容接收 ≤v1.4 的平铺 `C3_Frame` body（顶层 `target_pose_SE3`/`gripper`/`mode`，无 `arms[]`），并等价视为 `arms: [{"arm_id": "main", "target_pose_SE3": ..., "gripper": ..., "clutch": false}]`；对 ≤v1.4 客户端回发 `C3_Status` 时按 `C3_Info.protocol_version` 协商降级为平铺格式。
+- 单臂 v1.5 端发送 `C3_Frame` 时使用 `arms: [{arm_id: "main", ...}]` 1 元素数组。
+- `mode` 字段（`"position"` / `"joint"`，≤v1.4 顶层字段）保留为 `arms[]` 元素的**可选**字段，缺省 `"position"`。
 - 新增字段均为可选/扩展，不破坏现有消息结构。
 
 ---
@@ -406,4 +410,4 @@ VR ─── WS Close ──── Robot           [正常断开]
 | v1.2 | — | 增加 `C3_EStop` 闩锁语义 + 断线保护 |
 | v1.3 | — | 增加重连再锚定流程（§5） |
 | v1.4 | 2026-07 | 增加 `C3_Reset` 消息；明确坐标约定（§7）；细化安全规则（§8）。本文件迁入 canonical 作为单一真值 |
-| v1.5 | 2026-07 | **双臂数组信封**：`C3_Frame` 和 `C3_Status` 使用 `arms[]` 数组支持多臂，单臂端发送 1 元素数组向后兼容。**新增三消息**：`C3_GhostTrajectory`（规划预览轨迹）、`C3_PlanStatus`（规划状态变更）、`C3_ExecuteConfirm`（确认执行）。**逐臂 watchdog + 全局 estop 语义**：watchdog 逐臂独立超时，estop 按 `arm_id` 区分逐臂/全局。**`C3_Status` 对称扩展**：加入 `arms[].eef_pose`、`arms[].health`。**`C3_EStop` 扩展**：加入 `arm_id` 字段支持逐臂急停。**安全规则补充**：PlanGate 安全、规划预览有效期、向后兼容性声明（§9） |
+| v1.5 | 2026-07 | **双臂数组信封**：`C3_Frame` 和 `C3_Status` 使用 `arms[]` 数组支持多臂，单臂端发送 1 元素数组向后兼容。**新增三消息**：`C3_GhostTrajectory`（规划预览轨迹）、`C3_PlanStatus`（规划状态变更）、`C3_ExecuteConfirm`（确认执行）。**逐臂 watchdog + 全局 estop 语义**：watchdog 逐臂独立超时检测；estop 一律全局停止，`arm_id` 仅作诊断标注。**`C3_Status` 对称扩展**：加入 `arms[].eef_pose`、`arms[].health`。**`C3_EStop` 扩展**：加入 `arm_id` 诊断字段（标注触发来源臂；停止范围保持全局）。**安全规则补充**：PlanGate 安全、规划预览有效期、向后兼容性声明（§9） |
