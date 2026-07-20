@@ -1,14 +1,17 @@
 """Tests for the Canonical Schema reference validator + the example episode."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from mnesis_canonical import (
+    EVENT_TYPES,
     CanonicalFrame,
     load_json_schema,
     read_jsonl,
+    validate_events,
     validate_frame,
     validate_frame_jsonschema,
     validate_frames,
@@ -234,3 +237,152 @@ def test_anchor_errors_include_cli_in_output(capsys, tmp_path, good_frame):
     assert rc == 1
     err = capsys.readouterr().err
     assert "duplicate" in err and "anchor-A" in err
+
+
+# ── events.jsonl validation (v0.2+) ────────────────────────────────────────────
+
+
+def test_validate_events_missing_file_returns_empty(tmp_path):
+    """No events.jsonl → no errors (additive-only)."""
+    assert validate_events(tmp_path) == []
+
+
+def test_validate_events_empty_file_returns_empty(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text("", encoding="utf-8")
+    assert validate_events(ep) == []
+
+
+def test_validate_events_good_events_passes(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    lines = [
+        {"t_ns": 1000000, "type": "plan_preview", "payload": {"plan_id": "p1"}},
+        {"t_ns": 2000000, "type": "execute_confirm", "payload": {"confirmed": True}},
+        {"t_ns": 3000000, "type": "estop", "payload": None},
+        {"t_ns": 4000000, "type": "episode_mark", "payload": {"mark": "start"}},
+        {"t_ns": 5000000, "type": "anchor_set", "payload": {"anchor_id": "a1"}},
+    ]
+    (ep / "events.jsonl").write_text(
+        "\n".join(json.dumps(ev) for ev in lines) + "\n", encoding="utf-8"
+    )
+    assert validate_events(ep) == []
+
+
+def test_validate_events_unknown_type_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        json.dumps({"t_ns": 1, "type": "bad_type", "payload": {}}) + "\n",
+        encoding="utf-8",
+    )
+    errs = validate_events(ep)
+    assert any("unknown event type" in e and "bad_type" in e for e in errs)
+
+
+def test_validate_events_bad_t_ns_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        json.dumps({"t_ns": "not_an_int", "type": "estop", "payload": {}}) + "\n",
+        encoding="utf-8",
+    )
+    errs = validate_events(ep)
+    assert any("t_ns" in e and "int" in e for e in errs)
+
+
+def test_validate_events_missing_type_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        json.dumps({"t_ns": 1, "payload": {}}) + "\n",
+        encoding="utf-8",
+    )
+    errs = validate_events(ep)
+    assert any("type must be a string" in e for e in errs)
+
+
+def test_validate_events_null_type_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        json.dumps({"t_ns": 1, "type": None, "payload": {}}) + "\n",
+        encoding="utf-8",
+    )
+    errs = validate_events(ep)
+    assert any("type must be a string" in e for e in errs)
+
+
+def test_validate_events_missing_payload_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        json.dumps({"t_ns": 1, "type": "estop"}) + "\n",
+        encoding="utf-8",
+    )
+    errs = validate_events(ep)
+    assert any("payload" in e for e in errs)
+
+
+def test_validate_events_null_payload_accepted(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        json.dumps({"t_ns": 1, "type": "estop", "payload": None}) + "\n",
+        encoding="utf-8",
+    )
+    assert validate_events(ep) == []
+
+
+def test_validate_events_non_dict_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        json.dumps(["not", "a", "dict"]) + "\n", encoding="utf-8"
+    )
+    errs = validate_events(ep)
+    assert any("expected JSON object" in e for e in errs)
+
+
+def test_validate_events_blank_line_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text("\n\n", encoding="utf-8")
+    errs = validate_events(ep)
+    assert any("blank line" in e for e in errs)
+
+
+def test_validate_events_invalid_json_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "events.jsonl").write_text(
+        "{bad json}\n", encoding="utf-8"
+    )
+    errs = validate_events(ep)
+    assert any("invalid JSON" in e for e in errs)
+
+
+def test_validate_events_example_episode_valid():
+    """The episode_dual_airbot example ships with events.jsonl — it must pass."""
+    ep = Path(__file__).resolve().parent.parent / "examples" / "episode_dual_airbot"
+    errs = validate_events(ep)
+    assert errs == [], errs
+
+
+def test_validate_events_other_examples_have_no_events():
+    """Existing episodes (episode_0, episode_quest, episode_robot) have no
+    events.jsonl — validate_events must return empty (additive-only)."""
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    for name in ("episode_0", "episode_quest", "episode_robot"):
+        ep = examples / name
+        assert validate_events(ep) == [], f"{name} should have no events"
+
+
+def test_event_types_are_exported():
+    assert "plan_preview" in EVENT_TYPES
+    assert "execute_confirm" in EVENT_TYPES
+    assert "estop" in EVENT_TYPES
+    assert "episode_mark" in EVENT_TYPES
+    assert "anchor_set" in EVENT_TYPES
+    assert len(EVENT_TYPES) == 5

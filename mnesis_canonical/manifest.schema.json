@@ -32,6 +32,10 @@
       "type": "integer",
       "minimum": 0,
       "description": "Wall-clock duration in milliseconds (max(t_ns) - min(t_ns))."
+    },
+    "eventsPath": {
+      "type": ["string", "null"],
+      "description": "Relative path to the events.jsonl sidecar, or null if absent."
     }
   },
   "required": ["episodeIndex", "frameCount", "jsonlSizeBytes", "durationMs"],

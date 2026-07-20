@@ -18,6 +18,7 @@ from pathlib import Path
 from .schema import (
     DEFAULT_PROFILE,
     DEVICES,
+    EVENT_TYPES,
     INT_KEYS,
     MODALITIES,
     PROFILES,
@@ -258,3 +259,67 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
             for e in errs:
                 report.errors.append((i, e))
     return report
+
+
+def validate_events(episode_dir: str | Path) -> list[str]:
+    """Validate the optional ``events.jsonl`` sidecar in an episode directory.
+
+    Returns a list of error messages (empty = valid).  If the file does not exist
+    the check passes silently (additive-only — existing episodes without events
+    are unaffected).
+
+    Each event line must be a JSON object with:
+      - ``t_ns``: int
+      - ``type``: one of ``EVENT_TYPES``
+      - ``payload``: any JSON value (required, may be null)
+    """
+    events_path = Path(episode_dir) / "events.jsonl"
+    if not events_path.exists():
+        return []
+
+    errors: list[str] = []
+    with open(events_path, encoding="utf-8") as f:
+        for line_no, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                errors.append(f"events.jsonl line {line_no}: blank line (expected JSON object)")
+                continue
+
+            try:
+                event = json.loads(line)
+            except ValueError as e:
+                errors.append(f"events.jsonl line {line_no}: invalid JSON: {e}")
+                continue
+
+            if not isinstance(event, dict):
+                errors.append(
+                    f"events.jsonl line {line_no}: expected JSON object, got {type(event).__name__}"
+                )
+                continue
+
+            # t_ns must be an int
+            t_ns = event.get("t_ns")
+            if not isinstance(t_ns, int) or isinstance(t_ns, bool):
+                errors.append(
+                    f"events.jsonl line {line_no}: t_ns must be an int, "
+                    f"got {type(t_ns).__name__ if t_ns is not None else 'null'}"
+                )
+
+            # type must be a known event type
+            ev_type = event.get("type")
+            if not isinstance(ev_type, str):
+                errors.append(
+                    f"events.jsonl line {line_no}: type must be a string, "
+                    f"got {type(ev_type).__name__ if ev_type is not None else 'null'}"
+                )
+            elif ev_type not in EVENT_TYPES:
+                errors.append(
+                    f"events.jsonl line {line_no}: unknown event type {ev_type!r}, "
+                    f"must be one of {EVENT_TYPES}"
+                )
+
+            # payload must be present (may be null)
+            if "payload" not in event:
+                errors.append(f"events.jsonl line {line_no}: missing required key 'payload'")
+
+    return errors

@@ -107,6 +107,15 @@ VECTOR_LENGTHS = {
 INT_KEYS = ("index", "episode_index", "task_index", "frame_index", "t_ns", "t_hw_ns")
 NULLABLE_KEYS = ("spatial_anchor_id",)  # optional but recommended
 
+# Events.jsonl type vocabulary (v0.2+).
+EVENT_TYPES = (
+    "plan_preview",
+    "execute_confirm",
+    "estop",
+    "episode_mark",
+    "anchor_set",
+)
+
 
 @dataclass(frozen=True)
 class CanonicalFrame:
