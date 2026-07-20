@@ -1,0 +1,40 @@
+{
+  "id": "ego_human",
+  "display_name": "Ego Human",
+  "arms": 2,
+  "dof_per_arm": 7,
+  "joint_names": [
+    "left_shoulder_pitch", "left_shoulder_roll", "left_shoulder_yaw",
+    "left_elbow",
+    "left_wrist_roll", "left_wrist_pitch", "left_wrist_yaw",
+    "right_shoulder_pitch", "right_shoulder_roll", "right_shoulder_yaw",
+    "right_elbow",
+    "right_wrist_roll", "right_wrist_pitch", "right_wrist_yaw"
+  ],
+  "joint_limits": {
+    "min": [
+      -2.897, -1.762, -2.897, -2.094,
+      -1.745, -1.309, -1.745,
+      -2.897, -1.762, -2.897, -2.094,
+      -1.745, -1.309, -1.745
+    ],
+    "max": [
+      2.897, 1.762, 2.897, 0.0,
+      1.745, 1.309, 1.745,
+      2.897, 1.762, 2.897, 0.0,
+      1.745, 1.309, 1.745
+    ]
+  },
+  "gripper_range": [0.0, 1.0],
+  "base_frame": "pelvis",
+  "assets": {
+    "urdf": "",
+    "mjcf": "",
+    "glb": "models/ego_human/glb/ego_human.glb",
+    "skeleton": "models/ego_human/skeleton.json"
+  },
+  "teleop": {
+    "default_pos_scale": 1.0,
+    "workspace_box": [[-0.5, -0.5, -0.3], [0.5, 0.5, 1.0]]
+  }
+}
