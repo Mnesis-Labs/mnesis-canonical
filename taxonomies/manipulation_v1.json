@@ -1,0 +1,105 @@
+{
+  "taxonomy_id": "manipulation_v1",
+  "version": "1.0",
+  "description": "Closed verb taxonomy for manual action annotation spans. All span.action values MUST be one of these ids.",
+  "actions": [
+    {
+      "id": "reaching",
+      "name_en": "Reaching",
+      "name_zh": "伸手",
+      "definition": "Hand moves toward a target object or location without contact.",
+      "hand_typical": "Open hand, palm facing target, fingers extended but relaxed."
+    },
+    {
+      "id": "grasping_pinching",
+      "name_en": "Grasping / Pinching",
+      "name_zh": "抓握/捏取",
+      "definition": "Fingers close around or pinch an object to establish grip.",
+      "hand_typical": "Fingers curl inward toward palm; thumb opposes fingers for pinch."
+    },
+    {
+      "id": "lifting",
+      "name_en": "Lifting",
+      "name_zh": "提起",
+      "definition": "Hand moves upward while maintaining grip on an object, raising it against gravity.",
+      "hand_typical": "Grip maintained; wrist and forearm apply upward force."
+    },
+    {
+      "id": "holding",
+      "name_en": "Holding",
+      "name_zh": "持握",
+      "definition": "Static grip maintained on an object without significant movement.",
+      "hand_typical": "Fingers wrapped around object; minimal motion; sustained grip."
+    },
+    {
+      "id": "placing_inserting",
+      "name_en": "Placing / Inserting",
+      "name_zh": "放置/插入",
+      "definition": "Hand moves an object to a target location and releases, or inserts into a receptacle.",
+      "hand_typical": "Grip maintained during approach, then fingers open to release."
+    },
+    {
+      "id": "pushing_pulling",
+      "name_en": "Pushing / Pulling",
+      "name_zh": "推/拉",
+      "definition": "Hand applies force to translate an object away from or toward the body.",
+      "hand_typical": "Palm or fingertips contact object; arm applies linear force."
+    },
+    {
+      "id": "rotating",
+      "name_en": "Rotating",
+      "name_zh": "旋转",
+      "definition": "Hand applies torque to rotate an object around an axis.",
+      "hand_typical": "Wrist pronation/supination or forearm rotation while grip is maintained."
+    },
+    {
+      "id": "opening_closing",
+      "name_en": "Opening / Closing",
+      "name_zh": "开/关",
+      "definition": "Hand operates a hinged or sliding mechanism (door, lid, drawer, valve).",
+      "hand_typical": "Grip on handle or edge; coordinated arm trajectory along mechanism path."
+    },
+    {
+      "id": "releasing",
+      "name_en": "Releasing",
+      "name_zh": "释放",
+      "definition": "Fingers open to voluntarily release a held object.",
+      "hand_typical": "Fingers extend and spread; thumb abducts; object exits palm."
+    },
+    {
+      "id": "pressing_sliding",
+      "name_en": "Pressing / Sliding",
+      "name_zh": "按压/滑动",
+      "definition": "Fingertip or palm applies normal force to a surface or slides along it.",
+      "hand_typical": "Single finger or palm contacts surface; normal or tangential force applied."
+    },
+    {
+      "id": "pouring",
+      "name_en": "Pouring",
+      "name_zh": "倾倒",
+      "definition": "Hand tilts a container to transfer its contents (liquid, granular) to another receptacle.",
+      "hand_typical": "Grip around container body; wrist rotates to tilt; coordinated with other hand for stabilization."
+    },
+    {
+      "id": "bimanual_coordination",
+      "name_en": "Bimanual Coordination",
+      "name_zh": "双手协调",
+      "definition": "Both hands work together on a single task, each performing a distinct sub-action.",
+      "hand_typical": "One hand stabilizes or holds while the other manipulates; or both hands cooperate symmetrically."
+    },
+    {
+      "id": "tool_use",
+      "name_en": "Tool Use",
+      "name_zh": "工具使用",
+      "definition": "Hand manipulates a tool (hammer, pen, scissors, etc.) to act on another object or surface.",
+      "hand_typical": "Grip adapted to tool geometry; power grip for hammer, precision grip for pen."
+    },
+    {
+      "id": "idle",
+      "name_en": "Idle",
+      "name_zh": "空闲",
+      "definition": "Hand is at rest or not engaged in any manipulation task; no active object interaction.",
+      "hand_typical": "Hand relaxed, open or lightly closed; no object contact; may be resting on surface."
+    }
+  ]
+}

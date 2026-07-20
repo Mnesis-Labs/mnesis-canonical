@@ -7,10 +7,15 @@ from pathlib import Path
 import pytest
 
 from mnesis_canonical import (
+    ANNOTATION_HANDS,
+    ANNOTATION_SOURCES,
+    ANNOTATION_VISIBILITIES,
     EVENT_TYPES,
+    MANIPULATION_ACTIONS,
     CanonicalFrame,
     load_json_schema,
     read_jsonl,
+    validate_annotations,
     validate_events,
     validate_frame,
     validate_frame_jsonschema,
@@ -386,3 +391,340 @@ def test_event_types_are_exported():
     assert "episode_mark" in EVENT_TYPES
     assert "anchor_set" in EVENT_TYPES
     assert len(EVENT_TYPES) == 5
+
+
+# ── Manipulation action taxonomy (v0.3+) ──────────────────────────────────────
+
+
+def test_manipulation_actions_are_exported():
+    assert "reaching" in MANIPULATION_ACTIONS
+    assert "grasping_pinching" in MANIPULATION_ACTIONS
+    assert "lifting" in MANIPULATION_ACTIONS
+    assert "holding" in MANIPULATION_ACTIONS
+    assert "placing_inserting" in MANIPULATION_ACTIONS
+    assert "pushing_pulling" in MANIPULATION_ACTIONS
+    assert "rotating" in MANIPULATION_ACTIONS
+    assert "opening_closing" in MANIPULATION_ACTIONS
+    assert "releasing" in MANIPULATION_ACTIONS
+    assert "pressing_sliding" in MANIPULATION_ACTIONS
+    assert "pouring" in MANIPULATION_ACTIONS
+    assert "bimanual_coordination" in MANIPULATION_ACTIONS
+    assert "tool_use" in MANIPULATION_ACTIONS
+    assert "idle" in MANIPULATION_ACTIONS
+    assert len(MANIPULATION_ACTIONS) == 14
+
+
+def test_annotation_hands_are_exported():
+    assert "left" in ANNOTATION_HANDS
+    assert "right" in ANNOTATION_HANDS
+    assert "both" in ANNOTATION_HANDS
+    assert "none" in ANNOTATION_HANDS
+    assert len(ANNOTATION_HANDS) == 4
+
+
+def test_annotation_visibilities_are_exported():
+    assert "visible" in ANNOTATION_VISIBILITIES
+    assert "occluded" in ANNOTATION_VISIBILITIES
+    assert "out_of_frame" in ANNOTATION_VISIBILITIES
+    assert len(ANNOTATION_VISIBILITIES) == 3
+
+
+def test_annotation_sources_are_exported():
+    assert "argus_v0" in ANNOTATION_SOURCES
+    assert "human" in ANNOTATION_SOURCES
+    assert "external" in ANNOTATION_SOURCES
+    assert len(ANNOTATION_SOURCES) == 3
+
+
+# ── Annotations/spans.jsonl validation (v0.3+) ─────────────────────────────────
+
+
+def test_validate_annotations_missing_file_returns_empty(tmp_path):
+    """No annotations/spans.jsonl → no errors (additive-only)."""
+    assert validate_annotations(tmp_path) == []
+
+
+def test_validate_annotations_empty_file_returns_empty(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    annotations_dir = ep / "annotations"
+    annotations_dir.mkdir()
+    (annotations_dir / "spans.jsonl").write_text("", encoding="utf-8")
+    assert validate_annotations(ep) == []
+
+
+def _write_spans(ep_dir: Path, spans: list[dict]) -> None:
+    annotations_dir = ep_dir / "annotations"
+    annotations_dir.mkdir(parents=True, exist_ok=True)
+    (annotations_dir / "spans.jsonl").write_text(
+        "\n".join(json.dumps(s) for s in spans) + "\n", encoding="utf-8"
+    )
+
+
+def test_validate_annotations_good_spans_passes(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    spans = [
+        {
+            "span_id": "s1",
+            "t_start_ns": 1000000,
+            "t_end_ns": 2000000,
+            "hand": "right",
+            "action": "reaching",
+            "action_text": "reach for cup",
+            "object": "cup",
+            "visibility": "visible",
+            "confidence": 0.95,
+            "source": "human",
+            "verified": True,
+        },
+        {
+            "span_id": "s2",
+            "t_start_ns": 2000000,
+            "t_end_ns": 4000000,
+            "hand": "left",
+            "action": "holding",
+            "source": "argus_v0",
+        },
+    ]
+    _write_spans(ep, spans)
+    assert validate_annotations(ep) == []
+
+
+def test_validate_annotations_blank_line_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    _write_spans(ep, [_min_span()])
+    # Append a blank line
+    path = ep / "annotations" / "spans.jsonl"
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+    errs = validate_annotations(ep)
+    assert any("blank line" in e for e in errs)
+
+
+def test_validate_annotations_invalid_json_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    _write_spans(ep, [_min_span()])
+    # Append a bad line
+    (ep / "annotations" / "spans.jsonl").write_text(
+        "{bad json}\n", encoding="utf-8"
+    )
+    errs = validate_annotations(ep)
+    assert any("invalid JSON" in e for e in errs)
+
+
+def test_validate_annotations_non_dict_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "annotations" / "spans.jsonl").parent.mkdir(parents=True)
+    (ep / "annotations" / "spans.jsonl").write_text(
+        json.dumps(["not", "a", "dict"]) + "\n", encoding="utf-8"
+    )
+    errs = validate_annotations(ep)
+    assert any("expected JSON object" in e for e in errs)
+
+
+def _min_span():
+    return {
+        "span_id": "s1",
+        "t_start_ns": 1,
+        "t_end_ns": 2,
+        "hand": "right",
+        "action": "idle",
+    }
+
+
+def test_validate_annotations_t_start_gt_t_end_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["t_start_ns"] = 5000000
+    s["t_end_ns"] = 1000000
+    s["action"] = "reaching"
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any(
+        "t_start_ns" in e and "5000000" in e and "t_end_ns" in e
+        for e in errs
+    )
+
+
+def test_validate_annotations_t_start_eq_t_end_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["t_start_ns"] = 1000000
+    s["t_end_ns"] = 1000000
+    s["action"] = "reaching"
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("t_start_ns" in e and "t_end_ns" in e for e in errs)
+
+
+def test_validate_annotations_bad_t_ns_types_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["t_start_ns"] = "not_an_int"
+    s["t_end_ns"] = 2000000
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("t_start_ns" in e and "int" in e for e in errs)
+
+
+def test_validate_annotations_unknown_action_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["action"] = "unknown_action"
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("unknown_action" in e for e in errs)
+
+
+def test_validate_annotations_bad_hand_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["hand"] = "left_foot"
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("hand" in e and "left_foot" in e for e in errs)
+
+
+def test_validate_annotations_confidence_out_of_range_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["confidence"] = 1.5
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("confidence" in e and "1.5" in e for e in errs)
+
+
+def test_validate_annotations_confidence_negative_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["confidence"] = -0.1
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("confidence" in e and "-0.1" in e for e in errs)
+
+
+def test_validate_annotations_confidence_edge_cases_accepted(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s1 = _min_span()
+    s1["confidence"] = 0.0
+    s2 = _min_span()
+    s2["span_id"] = "s2"
+    s2["t_start_ns"] = 2
+    s2["t_end_ns"] = 3
+    s2["hand"] = "left"
+    s2["confidence"] = 1.0
+    _write_spans(ep, [s1, s2])
+    assert validate_annotations(ep) == []
+
+
+def test_validate_annotations_bad_visibility_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["visibility"] = "invisible"
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("visibility" in e and "invisible" in e for e in errs)
+
+
+def test_validate_annotations_bad_source_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["source"] = "unknown"
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("source" in e and "unknown" in e for e in errs)
+
+
+def test_validate_annotations_bad_verified_type_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["verified"] = "yes"
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("verified" in e and "bool" in e for e in errs)
+
+
+def test_validate_annotations_bad_action_text_type_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["action_text"] = 42
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("action_text" in e for e in errs)
+
+
+def test_validate_annotations_bad_object_type_rejected(tmp_path):
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["object"] = True
+    _write_spans(ep, [s])
+    errs = validate_annotations(ep)
+    assert any("object" in e for e in errs)
+
+
+def test_validate_annotations_all_actions_accepted(tmp_path):
+    """Every MANIPULATION_ACTIONS value should be accepted as a valid action."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    spans = []
+    for i, action in enumerate(MANIPULATION_ACTIONS):
+        spans.append({
+            "span_id": f"s{i}",
+            "t_start_ns": i * 1000,
+            "t_end_ns": (i + 1) * 1000,
+            "hand": "right",
+            "action": action,
+        })
+    _write_spans(ep, spans)
+    assert validate_annotations(ep) == []
+
+
+def test_validate_annotations_all_hands_accepted(tmp_path):
+    """Every ANNOTATION_HANDS value should be accepted."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    spans = []
+    for i, hand in enumerate(ANNOTATION_HANDS):
+        spans.append({
+            "span_id": f"s{i}",
+            "t_start_ns": i * 1000,
+            "t_end_ns": (i + 1) * 1000,
+            "hand": hand,
+            "action": "idle",
+        })
+    _write_spans(ep, spans)
+    assert validate_annotations(ep) == []
+
+
+def test_validate_annotations_example_episode_hands_valid():
+    """The episode_hands example ships with annotations/spans.jsonl — it must pass."""
+    examples = Path(__file__).resolve().parent.parent / "examples" / "episode_hands"
+    errs = validate_annotations(examples)
+    assert errs == [], errs
+
+
+def test_validate_annotations_existing_episodes_have_no_annotations():
+    """Existing episodes have no annotations/spans.jsonl — must return empty (additive-only)."""
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    for name in ("episode_0", "episode_quest", "episode_robot", "episode_dual_airbot"):
+        ep = examples / name
+        assert validate_annotations(ep) == [], f"{name} should have no annotations"

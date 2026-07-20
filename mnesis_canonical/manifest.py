@@ -31,6 +31,7 @@ def build_manifest(
     video_path: str | None = None,
     video_size_bytes: int = 0,
     events_path: str | None = None,
+    annotations_path: str | None = None,
 ) -> dict:
     """Build a manifest dict from in-memory frames (pure; no I/O).
 
@@ -49,6 +50,8 @@ def build_manifest(
     }
     if events_path is not None:
         result["eventsPath"] = events_path
+    if annotations_path is not None:
+        result["annotationsPath"] = annotations_path
     return result
 
 
@@ -66,12 +69,19 @@ def manifest_for_episode(episode_dir: str | Path) -> dict:
         video_path, video_size = None, 0
     events = episode_dir / "events.jsonl"
     events_path: str | None = events.name if events.exists() else None
+    annotations_dir = episode_dir / "annotations"
+    annotations_path: str | None = (
+        "annotations/spans.jsonl"
+        if (annotations_dir / "spans.jsonl").exists()
+        else None
+    )
     return build_manifest(
         frames,
         jsonl_size_bytes=jsonl.stat().st_size,
         video_path=video_path,
         video_size_bytes=video_size,
         events_path=events_path,
+        annotations_path=annotations_path,
     )
 
 
@@ -177,6 +187,14 @@ def validate_manifest(episode_dir: str | Path) -> dict:
         if not events_path.exists():
             errors.append(
                 f"eventsPath '{manifest['eventsPath']}' does not exist on disk"
+            )
+
+    # --- annotationsPath consistency when present ---
+    if manifest.get("annotationsPath") is not None:
+        annotations_path = episode_dir / manifest["annotationsPath"]
+        if not annotations_path.exists():
+            errors.append(
+                f"annotationsPath '{manifest['annotationsPath']}' does not exist on disk"
             )
 
     return {"ok": len(errors) == 0, "errors": errors}

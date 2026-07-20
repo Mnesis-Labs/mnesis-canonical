@@ -28,6 +28,9 @@ _MANIFEST_KEYS = {
 # Expected keys when events.jsonl is present.
 _MANIFEST_KEYS_WITH_EVENTS = _MANIFEST_KEYS | {"eventsPath"}
 
+# Expected keys when annotations/spans.jsonl is present (without events.jsonl).
+_MANIFEST_KEYS_WITH_ANNOTATIONS = _MANIFEST_KEYS | {"annotationsPath"}
+
 
 def test_build_manifest_rejects_empty():
     with pytest.raises(ValueError):
@@ -50,7 +53,12 @@ def test_build_manifest_duration_from_t_ns():
 def test_manifest_for_each_example_is_consistent(jsonl):
     m = manifest_for_episode(jsonl.parent)
     events_exists = (jsonl.parent / "events.jsonl").exists()
-    expected_keys = _MANIFEST_KEYS_WITH_EVENTS if events_exists else _MANIFEST_KEYS
+    annotations_exists = (jsonl.parent / "annotations" / "spans.jsonl").exists()
+    expected_keys = set(_MANIFEST_KEYS)
+    if events_exists:
+        expected_keys.add("eventsPath")
+    if annotations_exists:
+        expected_keys.add("annotationsPath")
     assert set(m) == expected_keys
     frames = read_jsonl(jsonl)
     assert m["frameCount"] == len(frames)
@@ -358,3 +366,124 @@ def test_manifest_build_without_events_path(tmp_path):
     frames = [{"episode_index": 1, "t_ns": 1_000_000}]
     m = build_manifest(frames, jsonl_size_bytes=50)
     assert "eventsPath" not in m
+
+
+# ── annotationsPath manifest (v0.3+) ────────────────────────────────────────────
+
+
+def test_manifest_with_annotations_path_includes_field(tmp_path):
+    """manifest_for_episode includes annotationsPath when annotations/spans.jsonl exists."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":2,"t_ns":1000000}\n{"episode_index":2,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    annotations_dir = ep / "annotations"
+    annotations_dir.mkdir()
+    (annotations_dir / "spans.jsonl").write_text(
+        '{"span_id":"s1","t_start_ns":500000,"t_end_ns":1500000,"hand":"right","action":"reaching"}\n',
+        encoding="utf-8",
+    )
+    m = manifest_for_episode(ep)
+    assert "annotationsPath" in m
+    assert "eventsPath" not in m
+    assert m["annotationsPath"] == "annotations/spans.jsonl"
+
+
+def test_manifest_without_annotations_excludes_annotations_field(tmp_path):
+    """manifest_for_episode omits annotationsPath when annotations/spans.jsonl is absent."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    m = manifest_for_episode(ep)
+    assert "annotationsPath" not in m
+
+
+def test_validate_manifest_annotations_path_consistent(tmp_path):
+    """annotationsPath pointing to an existing file passes."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    annotations_dir = ep / "annotations"
+    annotations_dir.mkdir()
+    (annotations_dir / "spans.jsonl").write_text(
+        '{"span_id":"s1","t_start_ns":500000,"t_end_ns":1500000,"hand":"right","action":"reaching"}\n',
+        encoding="utf-8",
+    )
+    manifest = build_manifest(
+        read_jsonl(jsonl),
+        jsonl_size_bytes=jsonl.stat().st_size,
+        annotations_path="annotations/spans.jsonl",
+    )
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_validate_manifest_annotations_path_missing_file(tmp_path):
+    """annotationsPath pointing to a non-existent file fails."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    manifest = {
+        "episodeIndex": 0,
+        "frameCount": 1,
+        "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None,
+        "videoSizeBytes": 0,
+        "durationMs": 0,
+        "annotationsPath": "annotations/spans.jsonl",  # file does not exist
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("annotationsPath" in e and "does not exist" in e for e in result["errors"])
+
+
+def test_validate_manifest_annotations_path_null_omitted(tmp_path):
+    """No annotationsPath in manifest → no annotations check (additive-only)."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    manifest = {
+        "episodeIndex": 0,
+        "frameCount": 1,
+        "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None,
+        "videoSizeBytes": 0,
+        "durationMs": 0,
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_manifest_build_with_annotations_path(tmp_path):
+    """build_manifest accepts annotations_path parameter."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50, annotations_path="annotations/spans.jsonl")
+    assert m["annotationsPath"] == "annotations/spans.jsonl"
+    assert m["frameCount"] == 1
+
+
+def test_manifest_build_without_annotations_path(tmp_path):
+    """build_manifest omits annotationsPath when not provided."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50)
+    assert "annotationsPath" not in m

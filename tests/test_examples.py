@@ -9,6 +9,7 @@ from mnesis_canonical import (
     DEVICES,
     MODALITIES,
     read_jsonl,
+    validate_annotations,
     validate_events,
     validate_frames,
 )
@@ -18,9 +19,13 @@ EPISODES = sorted(EXAMPLES_DIR.glob("*/data.jsonl"))
 
 
 def test_examples_discovered():
-    # phone (episode_0), quest, robot, dual_airbot — the capture surfaces.
+    # phone (episode_0), quest, robot, dual_airbot, hands — the capture surfaces.
     names = {p.parent.name for p in EPISODES}
-    assert {"episode_0", "episode_quest", "episode_robot", "episode_dual_airbot"} <= names
+    expected = {
+        "episode_0", "episode_quest", "episode_robot",
+        "episode_dual_airbot", "episode_hands",
+    }
+    assert expected <= names
 
 
 @pytest.mark.parametrize("path", EPISODES, ids=lambda p: p.parent.name)
@@ -48,4 +53,13 @@ def test_example_episodes_with_events_pass_validation():
         ep_dir = jsonl_path.parent
         if (ep_dir / "events.jsonl").exists():
             errs = validate_events(ep_dir)
+            assert errs == [], f"{ep_dir.name}: {errs}"
+
+
+def test_example_episodes_with_annotations_pass_validation():
+    """Example episodes that include annotations/spans.jsonl must pass validate_annotations."""
+    for jsonl_path in EPISODES:
+        ep_dir = jsonl_path.parent
+        if (ep_dir / "annotations" / "spans.jsonl").exists():
+            errs = validate_annotations(ep_dir)
             assert errs == [], f"{ep_dir.name}: {errs}"

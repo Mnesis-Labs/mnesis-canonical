@@ -13,9 +13,13 @@ from .isaac import (
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
 from .manifest import build_manifest, manifest_for_episode, validate_manifest, write_manifest
 from .schema import (
+    ANNOTATION_HANDS,
+    ANNOTATION_SOURCES,
+    ANNOTATION_VISIBILITIES,
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
+    MANIPULATION_ACTIONS,
     MODALITIES,
     PROFILES,
     REQUIRED_KEYS,
@@ -28,18 +32,23 @@ from .schema import (
 from .validate import (
     ValidationReport,
     load_json_schema,
+    validate_annotations,
     validate_events,
     validate_frame,
     validate_frame_jsonschema,
     validate_frames,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "CanonicalFrame",
     "DEFAULT_PROFILE",
     "EVENT_TYPES",
+    "MANIPULATION_ACTIONS",
+    "ANNOTATION_HANDS",
+    "ANNOTATION_VISIBILITIES",
+    "ANNOTATION_SOURCES",
     "PROFILES",
     "REQUIRED_KEYS",
     "ROBOT_V2_VARIABLE_VECTORS",
@@ -51,6 +60,7 @@ __all__ = [
     "validate_frames",
     "validate_frame_jsonschema",
     "validate_events",
+    "validate_annotations",
     "load_json_schema",
     "ValidationReport",
     "read_jsonl",
