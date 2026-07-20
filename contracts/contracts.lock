@@ -2,7 +2,7 @@
   "version": 1,
   "files": {
     "canonical_frame_schema_REFERENCE.md": "e09eefbc12a8765f2ca24b94d73b8cd988dbd63ac292383ab01e00ee6bf5e639",
-    "xr_bridge_SPEC.md": "7b0b48ac0868c10e60ef95903e472880c3cb5dd1d85798ea8ec46ad6d51b68f5",
-    "XR_ROBOT_CONTRACT.md": "8fa6cb0b9bf9147dd15b51ef1fa02b06e4d45a75d307a167f7092a429511969b"
+    "xr_bridge_SPEC.md": "7792f19f3ec01338343695b94587609d5709be78c2574aa83fa42c96e21ceafb",
+    "XR_ROBOT_CONTRACT.md": "8b1f0abf2f3d60eab0b539f19e09d35a37a3e78dfde4630cbf1a0253b7066de0"
   }
 }
