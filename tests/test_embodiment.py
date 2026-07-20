@@ -13,6 +13,15 @@ from mnesis_canonical.embodiment_check import (
     validate_embodiment,
     validate_embodiment_jsonschema,
 )
+from mnesis_canonical.embodiment_registry import (
+    list_embodiment_ids as _list_embodiment_ids,
+)
+from mnesis_canonical.embodiment_registry import (
+    list_embodiments as _list_embodiments,
+)
+from mnesis_canonical.embodiment_registry import (
+    load_embodiment as _load_embodiment,
+)
 
 _EMBODIMENTS_DIR = Path(__file__).resolve().parent.parent / "embodiments"
 
@@ -139,3 +148,80 @@ def test_ruff_clean_format():
         parsed = json.loads(raw)
         assert isinstance(parsed, dict)
         assert parsed["id"] == path.stem
+
+
+# --- Loader API tests (issue #27: package-data + consumer-facing API) ---
+
+_PKG_EMBODIMENTS_DIR = Path(__file__).resolve().parent.parent / "mnesis_canonical" / "embodiments"
+
+
+def test_package_embodiments_exist():
+    """The package embodiments directory must have the 5 embodiment files."""
+    paths = sorted(p for p in _PKG_EMBODIMENTS_DIR.iterdir()
+                   if p.suffix == ".json" and p.name != "embodiment.schema.json")
+    assert len(paths) >= 5, f"Expected >=5, found {len(paths)}"
+
+
+def test_loader_list_embodiments_returns_5():
+    """list_embodiments() must return exactly 5 entries."""
+    result = _list_embodiments()
+    assert len(result) == 5, f"Expected 5, got {len(result)}"
+
+
+def test_loader_list_embodiment_ids():
+    """list_embodiment_ids() must return the five expected IDs."""
+    ids = _list_embodiment_ids()
+    assert ids == sorted([
+        "ego_human", "alohamini", "so_arm101", "airbot_play", "dual_airbot_play",
+    ])
+
+
+def test_loader_expected_ids_present():
+    """All five required embodiment IDs must be present."""
+    ids = {e["id"] for e in _list_embodiments()}
+    required = {"ego_human", "alohamini", "so_arm101", "airbot_play", "dual_airbot_play"}
+    missing = required - ids
+    assert not missing, f"Missing: {missing}"
+
+
+def test_loader_load_embodiment_existing():
+    """load_embodiment() must return the correct dict for a known id."""
+    data = _load_embodiment("airbot_play")
+    assert data["id"] == "airbot_play"
+    assert data["display_name"] == "AIRBOT Play"
+    assert data["arms"] == 1
+
+
+def test_loader_load_embodiment_unknown():
+    """load_embodiment() must raise LookupError for an unknown id."""
+    with pytest.raises(LookupError, match="not found"):
+        _load_embodiment("nonexistent_robot")
+
+
+def test_loader_load_embodiment_validate():
+    """load_embodiment(validate=True) must pass for all known embodiments."""
+    pytest.importorskip("jsonschema")
+    for eid in ("ego_human", "alohamini", "so_arm101", "airbot_play", "dual_airbot_play"):
+        data = _load_embodiment(eid, validate=True)
+        assert data["id"] == eid
+
+
+def test_package_data_sync_with_root():
+    """Package-level embodiments must match root-level embodiments byte-for-byte."""
+    root_dir = _EMBODIMENTS_DIR
+    pkg_dir = _PKG_EMBODIMENTS_DIR
+    for fname in ("airbot_play.json", "alohamini.json", "dual_airbot_play.json",
+                  "ego_human.json", "so_arm101.json"):
+        root_bytes = (root_dir / fname).read_bytes()
+        pkg_bytes = (pkg_dir / fname).read_bytes()
+        assert root_bytes == pkg_bytes, (
+            f"{fname} differs between root embodiments/ and package embodiments/"
+        )
+
+
+def test_loader_import_from_top_level():
+    """The loader API must be importable from the top-level package."""
+    from mnesis_canonical import list_embodiments as top_list
+    from mnesis_canonical import load_embodiment as top_load
+    assert len(top_list()) == 5
+    assert top_load("airbot_play")["id"] == "airbot_play"

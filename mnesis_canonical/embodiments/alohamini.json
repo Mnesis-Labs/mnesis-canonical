@@ -1,0 +1,32 @@
+{
+  "id": "alohamini",
+  "display_name": "AlohaMini",
+  "arms": 2,
+  "dof_per_arm": 6,
+  "joint_names": [
+    "left_joint1", "left_joint2", "left_joint3", "left_joint4", "left_joint5", "left_joint6",
+    "right_joint1", "right_joint2", "right_joint3", "right_joint4", "right_joint5", "right_joint6"
+  ],
+  "joint_limits": {
+    "min": [
+      -1.92, -1.75, -1.75, -1.92, -1.75, -1.6,
+      -1.92, -1.75, -1.75, -1.92, -1.75, -1.6
+    ],
+    "max": [
+      1.92, 1.75, 1.75, 1.92, 1.75, 1.6,
+      1.92, 1.75, 1.75, 1.92, 1.75, 1.6
+    ]
+  },
+  "gripper_range": [0.0, 1.0],
+  "base_frame": "chassis",
+  "assets": {
+    "urdf": "",
+    "mjcf": "models/alohamini/alohamini.xml",
+    "glb": "models/alohamini/glb/alohamini.glb",
+    "skeleton": ""
+  },
+  "teleop": {
+    "default_pos_scale": 0.5,
+    "workspace_box": [[-0.4, -0.4, 0.0], [0.4, 0.4, 0.5]]
+  }
+}
