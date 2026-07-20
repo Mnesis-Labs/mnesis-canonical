@@ -4,20 +4,38 @@
   "arms": 1,
   "dof_per_arm": 6,
   "joint_names": [
-    "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6",
+    "joint_1",
+    "joint_2",
+    "joint_3",
+    "joint_4",
+    "joint_5",
+    "joint_6",
     "gripper"
   ],
   "joint_limits": {
     "min": [
-      -2.967, -2.094, -2.094, -3.142, -2.094, -3.142,
+      -3.1416,
+      -2.9671,
+      -0.087266,
+      -3.0107,
+      -1.7628,
+      -3.0107,
       0.0
     ],
     "max": [
-      2.967, 2.094, 2.094, 3.142, 2.094, 3.142,
-      0.08
+      2.0944,
+      0.17453,
+      3.1416,
+      3.0107,
+      1.7628,
+      3.0107,
+      0.072
     ]
   },
-  "gripper_range": [0.0, 0.08],
+  "gripper_range": [
+    0.0,
+    0.072
+  ],
   "base_frame": "base",
   "assets": {
     "urdf": "models/airbot_play/airbot_play.urdf",
@@ -27,6 +45,17 @@
   },
   "teleop": {
     "default_pos_scale": 0.3,
-    "workspace_box": [[-0.5, -0.5, 0.0], [0.5, 0.5, 0.6]]
+    "workspace_box": [
+      [
+        -0.5,
+        -0.5,
+        0.0
+      ],
+      [
+        0.5,
+        0.5,
+        0.6
+      ]
+    ]
   }
 }
