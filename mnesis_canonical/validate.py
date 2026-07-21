@@ -193,6 +193,28 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
         elif not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in val):
             errors.append("observation.eef_pose.right must contain only numbers")
 
+    # --- optional gripper channel validation (v0.4+, all profiles) ---
+    # Additive: absence = source provides no gripper info (NOT 0.0). When present,
+    # must be a finite number normalized to the closed interval [0.0, 1.0]
+    # (0.0 = fully open, 1.0 = fully closed).
+    if "action.gripper" in frame:
+        g = frame["action.gripper"]
+        if not isinstance(g, (int, float)) or isinstance(g, bool):
+            errors.append(
+                f"action.gripper must be a number in [0.0, 1.0], "
+                f"got {type(g).__name__}"
+            )
+        else:
+            import math
+            if isinstance(g, float) and (math.isnan(g) or math.isinf(g)):
+                errors.append(
+                    f"action.gripper must be a finite number in [0.0, 1.0], got {g!r}"
+                )
+            elif g < 0.0 or g > 1.0:
+                errors.append(
+                    f"action.gripper must be in [0.0, 1.0], got {g}"
+                )
+
     dev, mod = frame["source.device"], frame["source.modality"]
     if not isinstance(dev, str) or not isinstance(mod, str):
         errors.append("source.device / source.modality must be strings")

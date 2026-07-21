@@ -109,6 +109,12 @@
       "minItems": 7,
       "maxItems": 7,
       "description": "Right end-effector pose [tx,ty,tz, qx,qy,qz,qw] (robot_v2 profile, optional)."
+    },
+    "action.gripper": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Optional gripper channel (v0.4+, additive, all profiles). Normalized 0.0 (fully open) .. 1.0 (fully closed). Absent = source provides no gripper info (NOT 0.0). Physical stroke is described by the embodiment registry, not per-frame."
     }
   },
   "allOf": [

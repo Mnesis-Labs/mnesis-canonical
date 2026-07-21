@@ -176,6 +176,11 @@ class CanonicalFrame:
     observation_images: dict[str, str] | None = None
     eef_pose_left: list[float] | None = None
     eef_pose_right: list[float] | None = None
+    # Optional gripper channel (v0.4+, additive). Normalized 0.0 (fully open)
+    # .. 1.0 (fully closed). None = source does not provide gripper info
+    # (semantically distinct from 0.0). Physical stroke lives in the embodiment
+    # registry, not per-frame.
+    action_gripper: float | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -206,6 +211,8 @@ class CanonicalFrame:
             d["observation.eef_pose.left"] = list(self.eef_pose_left)
         if self.eef_pose_right is not None:
             d["observation.eef_pose.right"] = list(self.eef_pose_right)
+        if self.action_gripper is not None:
+            d["action.gripper"] = self.action_gripper
         return d
 
     @classmethod
@@ -247,4 +254,5 @@ class CanonicalFrame:
                 list(d["observation.eef_pose.right"])
                 if "observation.eef_pose.right" in d else None
             ),
+            action_gripper=d.get("action.gripper"),
         )
