@@ -12,6 +12,22 @@
 | C4 | **Robot-Bridge API**（平台↔真机：关节读写/示教/安全），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **草案 TBD** | Daedalus（待定义） | Ambrosia（`bridge/hw_bridge.py` 现状=临时直连，待迁移到本契约） | 待建 |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
 
+## C2 幂等语义（重复上传去重）
+
+> 来源：**Parthenon#18**（Muso 拍板方案 A）。依据：Ambrosia main `app/main.py:825-826` 的 dedup 实现。这是把既有行为写成文，不是变更契约；三个采集面（Iris 手机 / Daedalus 机器人 / Eidolon Quest）统一参照。
+
+服务端去重键的构造（Ambrosia `app/main.py:825-826`）：
+
+```python
+dedup_key = f"{episode_index}|{device}|{hashlib.sha256(jsonl_bytes).hexdigest()}"
+content_hash = hashlib.sha256(dedup_key.encode()).hexdigest()
+```
+
+1. **幂等键 = 内容哈希**：由 `episode_index | source.device | sha256(data.jsonl 字节)` 三元组构成。重复 POST **同一内容** → 返回**同一 episode id**，库中只存一条。
+2. **不是 header 幂等**：服务端**不消费 `Idempotency-Key` 请求头**。客户端发不发该头都不影响去重结果——去重完全由上述内容哈希决定。
+3. **客户端约束（关键）**：**重试必须复用同一份已序列化的字节，不得重新打包**。若重试前重新生成 `data.jsonl`（时间戳 / 字段序变化）或重新压缩，`sha256(jsonl_bytes)` 即变，服务端会把它当作**新 episode** 入库，产生重复。
+4. **实践指引**：客户端应在**首次序列化后缓存字节**，整个重试链路复用该缓存，而不是每次从源数据重新构建。这样才能保证网络抖动 / 超时重试下的端到端幂等。
+
 ## 职责分界（防重复建设）
 - **物理/控制/训练归 Daedalus**：真机驱动、LeRobot 数据/训练、物理精确 MuJoCo、xr_bridge。
 - **数据/展示/评测归 Ambrosia**：ingest→校验→质量门→标注→数据集/评测、控制台（含浏览器内 MuJoCo-WASM **回放与演示**）。
