@@ -1,7 +1,7 @@
 # xr_bridge WebSocket 消息 SPEC 摘要
 
 > **所属契约**: C3 — xr_bridge WS（详情见 `XR_ROBOT_CONTRACT.md`）
-> **版本**: v1.5
+> **版本**: v1.6
 > **本文件**: xr_bridge WebSocket 消息格式的简洁摘要，供快速参考。完整协议细节和语义见 `XR_ROBOT_CONTRACT.md`。
 
 ---
@@ -44,6 +44,8 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 | `C3_GhostTrajectory` | 机器 → VR | 规划预览，降采样关节轨迹 + 末端轨迹点 |
 | `C3_PlanStatus` | 机器 → VR | 规划状态变更，planning/ok/unreachable/collision/expired |
 | `C3_ExecuteConfirm` | VR → 机器 | 确认执行，携带 goal_seq |
+| `C3_CameraControl` | VR → 机器 | **v1.6** 相机控制协商，下发 `{camera_id,width,height,fps,bitrate,codec}` |
+| `C3_CameraStatus` | 机器 → VR | **v1.6** 相机协商结果回报，实际生效参数 + 传输线 |
 
 ## 消息 body 结构
 
@@ -55,9 +57,16 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
   "arms": [{"name": "string", "dof": int, "joint_names": ["string"]}],
   "protocol_version": "string",
   "can_estop": bool,
-  "watchdog_timeout_ms": int
+  "watchdog_timeout_ms": int,
+  "video_capabilities": {
+    "transports": ["mjpeg", "webrtc"],
+    "codecs": ["mjpeg", "h264"],
+    "cameras": ["head", "wrist_left", "wrist_right"]
+  }
 }
 ```
+
+> `video_capabilities`（**v1.6 可选**）：视频传输能力声明。`transports` 顺序 = 偏好优先级（`mjpeg` 已落地 / `webrtc` 为 [DQ-1] 预留）。缺省等价 `{"transports":["mjpeg"]}`，向后兼容 ≤v1.5。
 
 ### C3_Bind (VR → 机器)
 
@@ -207,6 +216,55 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 | `arm_id` | string | 目标臂标识 |
 | `goal_seq` | uint32 | 确认执行的规划目标序列号 |
 
+### C3_CameraControl (VR/头显 → 机器, v1.6)
+
+相机控制协商请求。语义对齐业界 `OPEN_CAMERA` 式协议，走本契约 WS 信封。
+
+```json
+{
+  "camera_id": "string",
+  "width": int,
+  "height": int,
+  "fps": int,
+  "bitrate": int,
+  "codec": "mjpeg | h264"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `camera_id` | string | 目标相机（对应 `C3_Info.video_capabilities.cameras`） |
+| `width` / `height` | int | 请求分辨率（像素） |
+| `fps` | int | 请求帧率 |
+| `bitrate` | int | 请求目标码率（bps）；`mjpeg` 可忽略 |
+| `codec` | string | 请求编码（属于 `video_capabilities.codecs`） |
+
+### C3_CameraStatus (机器 → VR, v1.6)
+
+对 `C3_CameraControl` 的应答，回报实际生效参数与传输线。
+
+```json
+{
+  "camera_id": "string",
+  "accepted": bool,
+  "width": int,
+  "height": int,
+  "fps": int,
+  "bitrate": int,
+  "codec": "mjpeg | h264",
+  "transport": "mjpeg | webrtc",
+  "message": "string | null"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `camera_id` | string | 相机标识 |
+| `accepted` | bool | 是否接受请求（`false` = 就近回退/拒绝） |
+| `width`/`height`/`fps`/`bitrate`/`codec` | 见上 | **实际生效**参数（可能被 clamp） |
+| `transport` | string | 实际视频线：`mjpeg` / `webrtc` |
+| `message` | string\|null | 可读说明（可选） |
+
 ## 关键参数
 
 | 参数 | 默认值 |
@@ -231,6 +289,7 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 
 - v1.2/v1.3/v1.4 客户端忽略 `C3_GhostTrajectory`、`C3_PlanStatus`、`C3_ExecuteConfirm` 消息即可正常工作。
 - 单臂端发送 `C3_Frame` 时使用 `arms: [{arm_id: "main", ...}]` 1 元素数组，与 v1.5 服务端完全兼容。
+- ≤v1.5 客户端忽略 `C3_CameraControl` / `C3_CameraStatus` 消息与 `C3_Info.video_capabilities` 字段即可正常工作（v1.6 additive）。
 - 新增字段均为可选/扩展，不破坏现有消息结构。
 
 ## 坐标约定

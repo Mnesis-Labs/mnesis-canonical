@@ -2,6 +2,7 @@
 
 > **所属契约**: C1 — Canonical Frame Schema
 > **版本**: v0.2（additive-only; v0.1 帧仍通过校验）
+> **additive 增补**: C8 夹爪通道 `observation.gripper[.left|.right]`（[0,1] 连续量，可选；对齐 C3 `arms[].gripper`）
 > **定义方**: canonical（本仓）
 > **消费方**: Iris · Eidolon · Daedalus · Ambrosia
 
@@ -76,6 +77,9 @@ check-jsonschema --schemafile mnesis_canonical/canonical_frame.schema.json episo
 | `action` | float[N] | 6 or N | *all* | 相对增量 (ego_v1) 或变长 (robot_v2) |
 | `observation.eef_pose.left` | float[7] | 7 | robot_v2 opt | 左末端执行器位姿 |
 | `observation.eef_pose.right` | float[7] | 7 | robot_v2 opt | 右末端执行器位姿 |
+| `observation.gripper` | float | — | *all* opt | **C8** 夹爪开度 [0,1]（0=闭合，1=张开）；单/主夹爪 |
+| `observation.gripper.left` | float | — | robot_v2 opt | **C8** 左夹爪开度 [0,1]（双臂） |
+| `observation.gripper.right` | float | — | robot_v2 opt | **C8** 右夹爪开度 [0,1]（双臂） |
 | `spatial_anchor_id` | str\|null | — | *all* | 空间锚点 ID |
 | `profile` | str | — | *all* opt | 可选; `ego_v1` (默认) / `robot_v2` |
 | `embodiment_id` | str\|null | — | *all* opt | 引用 embodiment registry |

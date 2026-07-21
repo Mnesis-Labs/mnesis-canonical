@@ -22,6 +22,9 @@ from .schema import (
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
+    GRIPPER_KEYS,
+    GRIPPER_MAX,
+    GRIPPER_MIN,
     INT_KEYS,
     MANIPULATION_ACTIONS,
     MODALITIES,
@@ -192,6 +195,23 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
             errors.append("observation.eef_pose.right must be a list of length 7")
         elif not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in val):
             errors.append("observation.eef_pose.right must contain only numbers")
+
+    # --- gripper channel validation (C8, optional/additive) ---
+    # Each gripper key, when present, must be a finite number in [0, 1]
+    # (0 = closed, 1 = open).  Mirrors C3 xr_bridge arms[].gripper semantics.
+    import math
+    for gkey in GRIPPER_KEYS:
+        if gkey not in frame:
+            continue
+        gval = frame[gkey]
+        if isinstance(gval, bool) or not isinstance(gval, (int, float)):
+            errors.append(f"{gkey} must be a number in [{GRIPPER_MIN}, {GRIPPER_MAX}]")
+        elif isinstance(gval, float) and (math.isnan(gval) or math.isinf(gval)):
+            errors.append(f"{gkey} must be a finite number, got {gval!r}")
+        elif gval < GRIPPER_MIN or gval > GRIPPER_MAX:
+            errors.append(
+                f"{gkey} must be in [{GRIPPER_MIN}, {GRIPPER_MAX}], got {gval}"
+            )
 
     dev, mod = frame["source.device"], frame["source.modality"]
     if not isinstance(dev, str) or not isinstance(mod, str):
