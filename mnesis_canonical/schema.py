@@ -50,6 +50,21 @@ DEFAULT_PROFILE = "ego_v1"
 # When profile is "robot_v2", these fields are variable-length (no fixed-size check).
 ROBOT_V2_VARIABLE_VECTORS = ("observation.state", "action")
 
+# Gripper channel (C8, v0.2+ additive).  Continuous gripper opening as a
+# first-class scalar in [0, 1] (0 = fully closed, 1 = fully open).  Semantics
+# align with the C3 xr_bridge wire field ``arms[].gripper`` (夹爪开度 [0,1]).
+#   observation.gripper        — single / main gripper (any profile, optional)
+#   observation.gripper.left   — left  gripper (robot_v2 bimanual, optional)
+#   observation.gripper.right  — right gripper (robot_v2 bimanual, optional)
+# All optional and additive: frames without a gripper key validate unchanged.
+GRIPPER_KEYS = (
+    "observation.gripper",
+    "observation.gripper.left",
+    "observation.gripper.right",
+)
+GRIPPER_MIN = 0.0
+GRIPPER_MAX = 1.0
+
 # Required JSON keys for the default ego_v1 profile (dotted keys — LeRobot-style flat columns).
 _REQUIRED_KEYS_EGO_V1 = (
     "index",
@@ -176,6 +191,9 @@ class CanonicalFrame:
     observation_images: dict[str, str] | None = None
     eef_pose_left: list[float] | None = None
     eef_pose_right: list[float] | None = None
+    gripper: float | None = None
+    gripper_left: float | None = None
+    gripper_right: float | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -206,6 +224,12 @@ class CanonicalFrame:
             d["observation.eef_pose.left"] = list(self.eef_pose_left)
         if self.eef_pose_right is not None:
             d["observation.eef_pose.right"] = list(self.eef_pose_right)
+        if self.gripper is not None:
+            d["observation.gripper"] = self.gripper
+        if self.gripper_left is not None:
+            d["observation.gripper.left"] = self.gripper_left
+        if self.gripper_right is not None:
+            d["observation.gripper.right"] = self.gripper_right
         return d
 
     @classmethod
@@ -247,4 +271,7 @@ class CanonicalFrame:
                 list(d["observation.eef_pose.right"])
                 if "observation.eef_pose.right" in d else None
             ),
+            gripper=d.get("observation.gripper"),
+            gripper_left=d.get("observation.gripper.left"),
+            gripper_right=d.get("observation.gripper.right"),
         )

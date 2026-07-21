@@ -109,6 +109,24 @@
       "minItems": 7,
       "maxItems": 7,
       "description": "Right end-effector pose [tx,ty,tz, qx,qy,qz,qw] (robot_v2 profile, optional)."
+    },
+    "observation.gripper": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Gripper opening [0,1] (0=closed, 1=open). C8 channel, optional, any profile. Aligns with C3 xr_bridge arms[].gripper."
+    },
+    "observation.gripper.left": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Left gripper opening [0,1] (0=closed, 1=open). C8 channel, robot_v2 bimanual, optional."
+    },
+    "observation.gripper.right": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Right gripper opening [0,1] (0=closed, 1=open). C8 channel, robot_v2 bimanual, optional."
     }
   },
   "allOf": [

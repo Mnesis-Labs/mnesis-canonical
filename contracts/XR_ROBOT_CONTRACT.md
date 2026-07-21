@@ -1,7 +1,7 @@
 # XR_ROBOT_CONTRACT — xr_bridge WebSocket 实时遥操作契约
 
 > **契约编号**: C3
-> **版本**: v1.5
+> **版本**: v1.6
 > **Owner（定义方）**: Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md` 镜像于此）
 > **消费方**: Eidolon（Quest VR 前端）
 > **两侧测试**: Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试
@@ -105,9 +105,14 @@ VR ─── WS Close ──── Robot           [正常断开]
   "arms": [
     {"name": "main", "dof": 7, "joint_names": ["j1",...,"j7"]}
   ],
-  "protocol_version": "1.5",
+  "protocol_version": "1.6",
   "can_estop": true,
-  "watchdog_timeout_ms": 500
+  "watchdog_timeout_ms": 500,
+  "video_capabilities": {
+    "transports": ["mjpeg", "webrtc"],
+    "codecs": ["mjpeg", "h264"],
+    "cameras": ["head", "wrist_left", "wrist_right"]
+  }
 }
 ```
 
@@ -121,6 +126,17 @@ VR ─── WS Close ──── Robot           [正常断开]
 | `protocol_version` | string | 协议版本号 |
 | `can_estop` | bool | 是否支持急停 |
 | `watchdog_timeout_ms` | uint | 看门狗超时毫秒数 |
+| `video_capabilities` | object | **v1.6 可选**，视频传输能力声明（见 §3.12）。缺省 = 仅 `mjpeg`（保守默认），向后兼容 ≤v1.5 |
+
+**`video_capabilities` 字段（v1.6，additive）**：机器/被控端声明其支持的视频线能力，供头显在下发相机协商前选择传输方式。为已拍板的 **WebRTC 线（[DQ-1]）预留**，消费端（Ambrosia/YC 后接入）据此协商。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `video_capabilities.transports` | string[] | 支持的视频传输：`"mjpeg"`（帧序列，已落地）/ `"webrtc"`（低延迟串流，[DQ-1] 预留）。**顺序 = 偏好优先级**（首选在前） |
+| `video_capabilities.codecs` | string[] | 支持的编码，如 `"mjpeg"` / `"h264"`（可选） |
+| `video_capabilities.cameras` | string[] | 可协商的相机 id 列表（对应 `C3_CameraControl.camera_id`；可选） |
+
+> **协商语义**：头显读取 `video_capabilities.transports`，取双方交集的首选项作为视频线。若字段缺省，等价于 `{"transports": ["mjpeg"]}`——`webrtc` 线视为不可用，退回 MJPEG。
 
 ### 3.2 `C3_Bind` — VR -> 机器（选择被控臂）
 
@@ -325,6 +341,58 @@ VR ─── WS Close ──── Robot           [正常断开]
 | `arm_id` | string | 目标臂标识 |
 | `goal_seq` | uint32 | 确认执行的规划目标序列号。机器端 PlanGate 校验：若 `goal_seq` 已过期或不匹配当前预览，则拒绝执行，返回 `C3_PlanStatus {status: "expired"}` |
 
+### 3.12 `C3_CameraControl` — VR/头显 -> 机器（相机控制协商，v1.6 新增）
+
+头显向机器/被控端**下发相机参数协商请求**，请求指定相机以给定分辨率/帧率/码率/编码提供视频流。语义对齐业界 `OPEN_CAMERA` 式相机协商协议，但走本契约的 WS 信封（不新开传输通道）。
+
+```json
+{
+  "camera_id": "head",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "bitrate": 4000000,
+  "codec": "h264"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `camera_id` | string | 目标相机标识（对应 `C3_Info.video_capabilities.cameras`，如 `"head"` / `"wrist_left"`） |
+| `width` | uint | 请求的帧宽（像素） |
+| `height` | uint | 请求的帧高（像素） |
+| `fps` | uint | 请求的帧率 |
+| `bitrate` | uint | 请求的目标码率（bps）；`mjpeg` 线可忽略 |
+| `codec` | string | 请求的编码（`"mjpeg"` / `"h264"`；应属于 `C3_Info.video_capabilities.codecs`） |
+
+> **协商语义（请求 → 生效）**：本消息是**请求**，非命令。机器端在能力范围内就近满足（clamp 到支持的分辨率/帧率），并以 `C3_CameraStatus` 回报**实际生效参数**。未协商前的默认相机流参数由 `C3_Info` 之外的既有约定决定（≤v1.5 行为不变）。
+
+### 3.13 `C3_CameraStatus` — 机器 -> VR（相机协商结果回报，v1.6 新增）
+
+机器端对 `C3_CameraControl` 的应答，回报某相机**实际生效**的流参数与所走传输线。
+
+```json
+{
+  "camera_id": "head",
+  "accepted": true,
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "bitrate": 4000000,
+  "codec": "h264",
+  "transport": "webrtc",
+  "message": null
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `camera_id` | string | 相机标识 |
+| `accepted` | bool | 是否接受请求（`false` = 回退到就近参数或拒绝，见 `message`） |
+| `width` / `height` / `fps` / `bitrate` / `codec` | 见上 | **实际生效**参数（可能被 clamp，与请求不同） |
+| `transport` | string | 实际所走视频线：`"mjpeg"` / `"webrtc"`（取自 `C3_Info.video_capabilities.transports` 协商结果） |
+| `message` | string\|null | 可读说明（如 `"fps clamped 60→30"`）；可选 |
+
 ---
 
 ## 4. 急停闩锁（E-Stop Latch）
@@ -397,6 +465,7 @@ VR ─── WS Close ──── Robot           [正常断开]
 - **接收端义务（wire format 零破坏的关键）**：v1.5 服务端 **MUST** 兼容接收 ≤v1.4 的平铺 `C3_Frame` body（顶层 `target_pose_SE3`/`gripper`/`mode`，无 `arms[]`），并等价视为 `arms: [{"arm_id": "main", "target_pose_SE3": ..., "gripper": ..., "clutch": false}]`；对 ≤v1.4 客户端回发 `C3_Status` 时按 `C3_Info.protocol_version` 协商降级为平铺格式。
 - 单臂 v1.5 端发送 `C3_Frame` 时使用 `arms: [{arm_id: "main", ...}]` 1 元素数组。
 - `mode` 字段（`"position"` / `"joint"`，≤v1.4 顶层字段）保留为 `arms[]` 元素的**可选**字段，缺省 `"position"`。
+- **v1.6 新增均为 additive**：≤v1.5 客户端可忽略 `C3_CameraControl` / `C3_CameraStatus` 消息与 `C3_Info.video_capabilities` 字段，遥操作核心功能不受影响；未声明 `video_capabilities` 等价于仅支持 `mjpeg`，`webrtc` 线视为不可用。
 - 新增字段均为可选/扩展，不破坏现有消息结构。
 
 ---
@@ -411,3 +480,4 @@ VR ─── WS Close ──── Robot           [正常断开]
 | v1.3 | — | 增加重连再锚定流程（§5） |
 | v1.4 | 2026-07 | 增加 `C3_Reset` 消息；明确坐标约定（§7）；细化安全规则（§8）。本文件迁入 canonical 作为单一真值 |
 | v1.5 | 2026-07 | **双臂数组信封**：`C3_Frame` 和 `C3_Status` 使用 `arms[]` 数组支持多臂，单臂端发送 1 元素数组向后兼容。**新增三消息**：`C3_GhostTrajectory`（规划预览轨迹）、`C3_PlanStatus`（规划状态变更）、`C3_ExecuteConfirm`（确认执行）。**逐臂 watchdog + 全局 estop 语义**：watchdog 逐臂独立超时检测；estop 一律全局停止，`arm_id` 仅作诊断标注。**`C3_Status` 对称扩展**：加入 `arms[].eef_pose`、`arms[].health`。**`C3_EStop` 扩展**：加入 `arm_id` 诊断字段（标注触发来源臂；停止范围保持全局）。**安全规则补充**：PlanGate 安全、规划预览有效期、向后兼容性声明（§9） |
+| v1.6 | 2026-07 | **相机控制协商**（additive）：新增 `C3_CameraControl`（头显 → 机器，下发 `{camera_id,width,height,fps,bitrate,codec}` 协商，语义对齐业界 `OPEN_CAMERA` 式协议，走本契约 WS 信封）+ `C3_CameraStatus`（机器 → VR，回报实际生效参数与传输线）。**视频传输能力声明**（additive）：`C3_Info.video_capabilities`（`transports: webrtc\|mjpeg` 等）——为已拍板的 **WebRTC 线（[DQ-1]）预留**，消费端 YC 后接入；缺省等价仅 `mjpeg`。≤v1.5 客户端忽略新消息/字段即可，wire format 零破坏（§9）。**夹爪通道 C8** 在 canonical 帧侧同步落地（`observation.gripper[.left\|.right]`，`[0,1]`，对齐 `arms[].gripper`），见 `canonical_frame_schema_REFERENCE.md` |

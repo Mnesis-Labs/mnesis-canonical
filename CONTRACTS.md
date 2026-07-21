@@ -8,7 +8,7 @@
 | C1 | **Canonical Frame Schema**（JSONL 帧格式：字段/向量长/双时间戳/词表） | v0.1 | canonical（`SPEC.md` + `canonical_frame.schema.json`） | Iris·Eidolon·Daedalus·Ambrosia | canonical `tests/` · Iris `CanonicalSchemaContractTest` · Ambrosia ingest 校验 |
 | C2 | **Episodes Ingest HTTP**（`POST /api/episodes` multipart：`manifest`+`jsonl`+`video?`+`frames?`；`X-App-Token?`） | v1.1 | Ambrosia（`docs/SPRINT_S4_CLINE.md` 契约节 + `docs/HANDOFF_S4.md`） | Iris·Eidolon·Daedalus | Ambrosia `tests/test_iris_contract.py`（Ct-1..11） · Iris `EpisodeUploaderHeaderTest`+S4 D2 |
 | C2a | frames.zip 规范：根目录 `%06d.jpg`（与 `frame_index` 对齐，1fps）；包≤200MB/帧≤5MB/≤3600 帧。服务端宽容收 png/jpg/jpeg/webp/bmp，规范名以 jpg 为准 | v1.1 | Ambrosia | Iris（Eidolon/Daedalus 后续） | 同上 |
-| C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate） | v1.5 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
+| C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明） | v1.6 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：关节读写/示教/安全），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **草案 TBD** | Daedalus（待定义） | Ambrosia（`bridge/hw_bridge.py` 现状=临时直连，待迁移到本契约） | 待建 |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
 
@@ -27,6 +27,26 @@ content_hash = hashlib.sha256(dedup_key.encode()).hexdigest()
 2. **不是 header 幂等**：服务端**不消费 `Idempotency-Key` 请求头**。客户端发不发该头都不影响去重结果——去重完全由上述内容哈希决定。
 3. **客户端约束（关键）**：**重试必须复用同一份已序列化的字节，不得重新打包**。若重试前重新生成 `data.jsonl`（时间戳 / 字段序变化）或重新压缩，`sha256(jsonl_bytes)` 即变，服务端会把它当作**新 episode** 入库，产生重复。
 4. **实践指引**：客户端应在**首次序列化后缓存字节**，整个重试链路复用该缓存，而不是每次从源数据重新构建。这样才能保证网络抖动 / 超时重试下的端到端幂等。
+
+## D-18 契约 vNext 落地（第五批 · C8 夹爪 + 相机控制协商 + 视频能力声明）
+
+> 来源：mnesis-canonical#38（D-18 / 4a S21）。三件全部 **additive**，v1.3/v0.3 既有测试零改动全绿。canonical lane 先做本张。
+
+三处补齐：
+1. **C8 夹爪通道**（帧侧，C1）：canonical 帧新增可选 `observation.gripper` / `observation.gripper.left` / `observation.gripper.right`，连续量 `[0,1]`（0=闭合，1=张开），语义对齐 C3 `arms[].gripper`。定义见 `SPEC.md` §Gripper channel + `contracts/canonical_frame_schema_REFERENCE.md`。**原 C8「夹爪/末端执行通道」议题**（登记于本文 Tech Lead 提案区，单独立卡 #31）在此落地帧侧表示。
+2. **相机控制协商**（线侧，C3 → v1.6）：新增 `C3_CameraControl`（头显 → 机器，`{camera_id,width,height,fps,bitrate,codec}`）+ `C3_CameraStatus`（机器 → VR，实际生效参数）。语义对齐业界 `OPEN_CAMERA` 式协议，走既有 WS 信封。
+3. **视频传输能力声明**（线侧，C3 → v1.6）：`C3_Info.video_capabilities`（`transports: webrtc|mjpeg` 等），为已拍板 WebRTC 线（[DQ-1]）预留，消费端 YC 后接入。
+
+### 消费端 `contracts.lock` 升版路径（各消费方对齐步骤）
+
+canonical 侧 `contracts/contracts.lock` 已随本次改动重算（`XR_ROBOT_CONTRACT.md`、`xr_bridge_SPEC.md`、`canonical_frame_schema_REFERENCE.md` 三文件哈希更新）。各仓持有 C3 镜像 / C1 校验的消费方按下述升版：
+
+- **Daedalus**（C3 Owner，xr_bridge 服务端）：将 `docs/integration/XR_ROBOT_CONTRACT.md` 镜像同步到 v1.6；在 `C3_Info` 增发 `video_capabilities`；实现 `C3_CameraControl` 接收 + `C3_CameraStatus` 应答（clamp 到硬件能力）。harness 增加相机协商用例。**旧客户端零改动**：未实现方忽略新消息即可。
+- **Eidolon**（C3 消费方，Quest 前端）：升到 v1.6 后可读 `video_capabilities` 选择视频线、下发 `C3_CameraControl`；未升版时忽略新消息，遥操作核心不受影响。采 gripper 时按 `observation.gripper*` 写入 canonical 帧。
+- **airbot 仓 / Daedalus（C1 消费方，机器人采集面）**：`observation.gripper*` 为可选 additive——升 `mnesis-canonical` 版本后即可产出/校验带夹爪的帧；不升版的旧数据仍全绿。
+- **Ambrosia**（C1 消费方，ingest）：升 `mnesis-canonical` 依赖版本，ingest 校验自动接受 `observation.gripper*`（可选，范围 `[0,1]`）；无需改 schema 门。WebRTC 线 YC 后按 `video_capabilities` 接入。
+
+升版校验：`python -m mnesis_canonical.contracts_check`（哈希一致）+ `pytest -q`（既有测试零改动全绿）。
 
 ## 职责分界（防重复建设）
 - **物理/控制/训练归 Daedalus**：真机驱动、LeRobot 数据/训练、物理精确 MuJoCo、xr_bridge。

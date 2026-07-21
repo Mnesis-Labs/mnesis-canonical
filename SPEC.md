@@ -48,6 +48,21 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
 - `observation.eef_pose.left` and `observation.eef_pose.right` (optional) —
   each `float[7]` `[tx,ty,tz, qx,qy,qz,qw]`.
 
+### Gripper channel (C8, additive)
+The gripper is a **continuous scalar in `[0, 1]`** (0 = fully closed, 1 = fully
+open) carried as an optional first-class field — not folded into
+`observation.state`/`action` — so consumers can read it without knowing a
+registry's vector layout:
+
+- `observation.gripper` — single / main gripper (any profile).
+- `observation.gripper.left` / `observation.gripper.right` — per-side grippers
+  for bimanual `robot_v2` embodiments (mirrors `observation.eef_pose.{left,right}`).
+
+Semantics align 1:1 with the C3 xr_bridge wire field `arms[].gripper` (`夹爪开度
+[0,1]`, see `contracts/XR_ROBOT_CONTRACT.md`): a teleop frame records the
+commanded/executed gripper opening on the same `[0,1]` scale. All gripper keys
+are **optional and additive** — frames without them validate unchanged.
+
 ## Fields (all required unless noted)
 | Key | Type | Profile | Meaning |
 |---|---|---|---|
@@ -65,6 +80,9 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
 | `action` | float[6] or float[N] | *all* | Relative delta `[tx,ty,tz, rx,ry,rz]` (`ego_v1`, 6) or variable-length N (`robot_v2`) |
 | `observation.eef_pose.left` | float[7] | `robot_v2` optional | Left end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` |
 | `observation.eef_pose.right` | float[7] | `robot_v2` optional | Right end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` |
+| `observation.gripper` | float | *all* optional | **C8** gripper opening `[0,1]` (0=closed, 1=open); single/main gripper |
+| `observation.gripper.left` | float | `robot_v2` optional | **C8** left gripper opening `[0,1]` (bimanual) |
+| `observation.gripper.right` | float | `robot_v2` optional | **C8** right gripper opening `[0,1]` (bimanual) |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) |
 | `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) |
