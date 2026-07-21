@@ -12,6 +12,25 @@ are decoupled:
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
 
+## [Unreleased]
+
+### Added
+
+- **D-19a — Ecosystem importers** (`mnesis-import` CLI, additive; no contract change).
+  - `mnesis-import xrobotoolkit <teleop_log_*.pkl>` — XRoboToolkit 50 Hz teleop
+    pickle (joint state + EE pose + JPG camera frames + XR input + synced
+    timestamps) → canonical `robot_v2` episode. Explicit pickle-key→canonical
+    field mapping table; missing-field fill strategy recorded in an
+    `import_meta.json` sidecar (`source=imported_xrobotoolkit`, quality downgrade
+    marker) so frames stay conformant with the read-only canonical contract.
+  - `--format airbot-mcap` second input — airbot_ie/AIRDC `.mcap` smoke path via a
+    pure-stdlib MCAP subset reader (`importers/_mcap.py`). Real airbot FlatBuffers
+    message decoding is a documented follow-up (`docs/RELEASE_CHECKLIST_v1.0.md`).
+  - Synthetic, self-made test fixtures under `tests/fixtures/` (no third-party
+    real data); regenerate via `tests/fixtures/_generate.py`.
+- **D-19a — `docs/RELEASE_CHECKLIST_v1.0.md`** — v1.0 三件套内容清单 + 发布步骤
+  (发布时点由 Muso 最终确认).
+
 ## [0.3.0] — 2026-07-21
 
 ### Added
