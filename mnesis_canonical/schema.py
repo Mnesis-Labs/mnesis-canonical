@@ -124,7 +124,8 @@ ANNOTATION_HANDS = ("left", "right", "both", "none")
 ANNOTATION_VISIBILITIES = ("visible", "occluded", "out_of_frame")
 
 # Source enum values for spans.
-ANNOTATION_SOURCES = ("argus_v0", "human", "external")
+# ``iris_heuristic`` =端上启发式粗分段 (Mnesis-Iris, spans.draft.jsonl); additive.
+ANNOTATION_SOURCES = ("argus_v0", "human", "external", "iris_heuristic")
 
 # Manipulation action taxonomy (v0.3+).  Every span.action MUST be one of these.
 # These mirror the verbs in taxonomies/manipulation_v1.json.
