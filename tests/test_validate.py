@@ -433,7 +433,8 @@ def test_annotation_sources_are_exported():
     assert "argus_v0" in ANNOTATION_SOURCES
     assert "human" in ANNOTATION_SOURCES
     assert "external" in ANNOTATION_SOURCES
-    assert len(ANNOTATION_SOURCES) == 3
+    assert "iris_heuristic" in ANNOTATION_SOURCES
+    assert len(ANNOTATION_SOURCES) == 4
 
 
 # ── Annotations/spans.jsonl validation (v0.3+) ─────────────────────────────────
@@ -649,6 +650,16 @@ def test_validate_annotations_bad_source_rejected(tmp_path):
     _write_spans(ep, [s])
     errs = validate_annotations(ep)
     assert any("source" in e and "unknown" in e for e in errs)
+
+
+def test_validate_annotations_iris_heuristic_source_passes(tmp_path):
+    """D-13: iris_heuristic is an accepted span source (端上启发式粗分段)."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    s = _min_span()
+    s["source"] = "iris_heuristic"
+    _write_spans(ep, [s])
+    assert validate_annotations(ep) == []
 
 
 def test_validate_annotations_bad_verified_type_rejected(tmp_path):
