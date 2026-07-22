@@ -12,6 +12,24 @@ are decoupled:
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
 
+## [0.4.0] — 2026-07-21
+
+### Added
+
+- **D-13 前置 — Optional `action.gripper` field** (additive-only; Parthenon#16
+  问题二 = A). Frame-level optional `float` gripper channel, **normalized**
+  `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed). Absence means the
+  source provides no gripper info — semantically **distinct from `0.0`** — and
+  consumers must handle a missing field as "no gripper". Out-of-range or
+  non-numeric values are rejected with a clear error; the `action` vector length
+  is unchanged (gripper is an independent field, not a widened `action`).
+  - `CanonicalFrame.action_gripper` (`to_dict()` emits `"action.gripper"` only
+    when non-None; `from_dict()` reads it, absent → None).
+  - `validate_frame` range/type check; `canonical_frame.schema.json` optional
+    `action.gripper` property (`0.0 ≤ x ≤ 1.0`).
+  - SPEC.md field row + compatibility note; CONTRACTS.md C1 change record.
+- Existing data without `action.gripper` validates unchanged (regression covered).
+
 ## [0.3.0] — 2026-07-21
 
 ### Added
@@ -94,6 +112,7 @@ are decoupled:
 - `examples/episode_0` (phone / ego_human).
 - Dual-timestamp design, quaternion `{x,y,z,w}` scalar-last, relative-delta action.
 
+[0.4.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.1.0
