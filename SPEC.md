@@ -123,6 +123,52 @@ open items to align with the platform authority before freezing. ✅ = settled,
 
 Until these are resolved, conversion stays a **documented adapter concern**, not a wire-format change — the Canonical fields above are stable.
 
+## Embodiment registry — `capture` section (additive, v0.5+)
+
+The embodiment registry (`embodiments/<id>.json`, schema
+`embodiments/embodiment.schema.json`) is the **single source of truth** for a
+robot's identity, kinematics, and — as of v0.5 — its **capture-side defaults**.
+Both additions are **optional and additive**: registry entries without them keep
+validating, and consumers that don't read them are unaffected. The point is
+"switch machine → already configured": a device swaps embodiment id and picks up
+frame rate, camera rig, gripper semantics, teaching mode, and calibration needs
+without each consumer hard-coding them.
+
+### `capture` (optional object)
+| Key | Type | Meaning |
+|---|---|---|
+| `default_fps` | number > 0 | Default recording frame rate (fps). |
+| `max_duration_s` | number > 0 | Recommended per-episode duration cap (seconds). |
+| `cameras` | array | Default camera rig: each `{ name, resolution:[w,h], fps? }`. `name` matches `observation.images.<cam>`. |
+| `gripper_capture` | object | `{ mode: "continuous"\|"binary"\|"none", normalized_range?:[0,1] }`. Physical stroke stays in `gripper_range`, not here. |
+| `demonstration_modes` | array | Supported teaching modes — subset of `kinesthetic`, `leader_follower`, `teleop_only`. Consumers switch capture UI on this. |
+| `calibration` | object | `{ hand_eye_required: bool }` — whether camera↔arm extrinsic calibration is required before a valid session. |
+
+### `capture_profiles` (optional array)
+Named presets a registry entry may carry several of; a consumer selects one by
+`name` to configure a session: `{ name, task?, fps?, cameras?, annotation_template? }`.
+`cameras` is a subset of `capture.cameras` names; `annotation_template` references
+a taxonomy id (e.g. `manipulation_v1` → `taxonomies/manipulation_v1.json`).
+
+### Two-machine truth (v0.5)
+| Machine | fps | cameras | gripper | demo mode | hand-eye |
+|---|---|---|---|---|---|
+| `so_arm101` (SO-ARM101) | 30 | front + wrist @640×480 | continuous | `leader_follower` | not required |
+| `airbot_play` (AIRBOT Play) | 30 | wrist @640×480 + front @1280×720 | continuous | `kinesthetic` (gravity-comp drag) | not required |
+
+### Consumer upgrade path (ambrosia / airbot capture ends)
+Additive, so no forced migration; adopt lazily:
+1. **Read on change:** on embodiment select, read `capture` (fall back to your
+   current defaults when absent) to set fps / camera rig / duration cap.
+2. **Gripper UI:** branch on `gripper_capture.mode` (`continuous` slider vs
+   `binary` toggle vs hidden).
+3. **Teaching UI:** show the capture flow implied by `demonstration_modes`
+   (leader-follower pairing for SO-ARM101, gravity-comp drag for AIRBOT Play).
+4. **Calibration gate:** if `calibration.hand_eye_required` is true, block record
+   until calibration is present.
+5. **Presets:** offer `capture_profiles` by `name`; a missing/empty list means
+   "no presets — use `capture` defaults".
+
 ## Versioning
 - Spec is versioned (`v0.2`). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
 

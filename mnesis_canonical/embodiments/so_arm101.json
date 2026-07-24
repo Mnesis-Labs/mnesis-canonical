@@ -25,5 +25,30 @@
   "teleop": {
     "default_pos_scale": 0.5,
     "workspace_box": [[-0.3, -0.3, 0.0], [0.3, 0.3, 0.45]]
-  }
+  },
+  "capture": {
+    "default_fps": 30,
+    "max_duration_s": 60,
+    "cameras": [
+      { "name": "front", "resolution": [640, 480], "fps": 30 },
+      { "name": "wrist", "resolution": [640, 480], "fps": 30 }
+    ],
+    "gripper_capture": {
+      "mode": "continuous",
+      "normalized_range": [0.0, 1.0]
+    },
+    "demonstration_modes": ["leader_follower"],
+    "calibration": {
+      "hand_eye_required": false
+    }
+  },
+  "capture_profiles": [
+    {
+      "name": "tabletop_pick_place_v1",
+      "task": "tabletop pick-and-place",
+      "fps": 30,
+      "cameras": ["front", "wrist"],
+      "annotation_template": "manipulation_v1"
+    }
+  ]
 }
