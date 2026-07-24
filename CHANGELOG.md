@@ -12,6 +12,28 @@ are decoupled:
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
 
+## [Unreleased]
+
+### Added
+
+- **Issue #41 — Embodiment registry `capture` section + `capture_profiles`
+  presets** (additive-only; Muso 站会直派 2026-07-22). The embodiment registry
+  now carries optional capture-side truth so a device reconfigures by embodiment
+  id instead of each consumer hard-coding it. Existing registry entries without
+  these keys validate unchanged (existing tests untouched).
+  - `capture` (optional object): `default_fps`, `max_duration_s`,
+    `cameras[{name, resolution, fps?}]`, `gripper_capture{mode, normalized_range?}`,
+    `demonstration_modes` (⊆ `kinesthetic`/`leader_follower`/`teleop_only`),
+    `calibration{hand_eye_required}`.
+  - `capture_profiles` (optional array): named presets
+    `{name, task?, fps?, cameras?, annotation_template?}`; a registry entry may
+    carry several.
+  - Real values for `so_arm101` (leader-follower, front+wrist @640×480) and
+    `airbot_play` (kinesthetic gravity-comp drag, wrist @640×480 + front @1280×720).
+  - `embodiment.schema.json` (root + package copies in sync); SPEC.md
+    §"Embodiment registry — capture section" with the consumer upgrade path;
+    conformance `tests/test_capture.py`.
+
 ## [0.4.0] — 2026-07-21
 
 ### Added
