@@ -7,8 +7,9 @@ existing data without the field must validate unchanged.
 from __future__ import annotations
 
 import math
-import pytest
 from pathlib import Path
+
+import pytest
 
 from mnesis_canonical import (
     GRIPPER_KEYS,
