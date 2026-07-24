@@ -4,7 +4,14 @@ on:
     types: [opened, ready_for_review]
 jobs:
   review:
-    if: startsWith(github.head_ref, 'agent/') || startsWith(github.head_ref, 'claude/')
+    # SECURITY: 本 job 跑在自托管 runner（Muso 本机 Windows），且直接执行
+    # D:\Github\_ops\orchestration\run-review.ps1。canonical 是 public 仓，
+    # 任何人都能开 fork PR——若不限定 head repo，外部分支只要命名为
+    # `agent/*` 就能触发本机执行（自托管 runner 经典事故形态）。
+    # 因此第一个条件必须是「PR 来自本仓自身分支」，分支名前缀条件在其后。
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (startsWith(github.head_ref, 'agent/') || startsWith(github.head_ref, 'claude/'))
     runs-on: [self-hosted, mnesis-mnesis-canonical]
     steps:
       - name: reviewer
