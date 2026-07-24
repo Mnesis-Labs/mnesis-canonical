@@ -47,6 +47,15 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
   the registry.
 - `observation.eef_pose.left` and `observation.eef_pose.right` (optional) —
   each `float[7]` `[tx,ty,tz, qx,qy,qz,qw]`.
+- `observation.gripper` (optional, any profile; `.left` / `.right` for bimanual
+  `robot_v2`) — gripper **closedness** as a continuous scalar in `[0.0, 1.0]`,
+  **`0.0` = fully open, `1.0` = fully closed**. Carried as a first-class field so
+  consumers read it without knowing a registry's vector layout. The direction is
+  **identical to `action.gripper`** and to the C3 xr_bridge wire field
+  `arms[].gripper` (see `contracts/XR_ROBOT_CONTRACT.md`): a teleop frame records
+  the commanded gripper via `action.gripper` and the observed gripper via
+  `observation.gripper` on the **same** `[0,1]` closedness scale. All gripper
+  keys are **optional and additive** — frames without them validate unchanged.
 
 ## Fields (all required unless noted)
 | Key | Type | Profile | Meaning |
@@ -66,6 +75,9 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
 | `observation.eef_pose.left` | float[7] | `robot_v2` optional | Left end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` |
 | `observation.eef_pose.right` | float[7] | `robot_v2` optional | Right end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` |
 | `action.gripper` | float | *all* optional | Gripper channel (v0.4+), **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed. **Absence ≠ `0.0`** (absent = source provides no gripper info). Per-machine physical stroke lives in the embodiment registry, not per-frame |
+| `observation.gripper` | float | *all* optional | Gripper **closedness** observation, **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed (direction identical to `action.gripper`). Single / main gripper |
+| `observation.gripper.left` | float | `robot_v2` optional | Left gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual |
+| `observation.gripper.right` | float | `robot_v2` optional | Right gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) |
 | `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) |
@@ -94,6 +106,7 @@ episodes/ep_<n>/
 - **Isaac / GR00T**: keep field names + units (SI metres, rad) compatible so episodes can feed NVIDIA physical-AI pipelines without re-labeling. Diff/decisions tracked here before any field is frozen.
 - **Profile backward compatibility**: v0.1 frames (no `profile` field) are treated as `ego_v1` and pass all validation unchanged.
 - **`action.gripper` (v0.4+, additive-only)**: old data without this field is **valid** — consumers MUST treat a missing `action.gripper` as "no gripper info" and MUST NOT default it to `0.0` (open) or any other value. When present it is a normalized `float` in `[0.0, 1.0]`; out-of-range or non-numeric values are rejected. The `action` vector length is unchanged (`ego_v1` = 6, `robot_v2` = N); the gripper is an **independent optional field**, not a widened `action`.
+- **`observation.gripper[.left|.right]` (additive-only)**: the observation-side gripper closedness. **Same direction as `action.gripper`** — `0.0` = fully open, `1.0` = fully closed — so within one frame `action.gripper` and `observation.gripper` share a single, unambiguous scale (both `0.3` = the same "mostly open" state). Absence means no gripper observation (NOT `0.0`). Optional across all profiles; `.left` / `.right` are for bimanual `robot_v2`.
 
 ### Isaac Lab / GR00T field mapping (v0.2, working)
 NVIDIA GR00T ingests **LeRobot-format** datasets, so the LeRobot-native columns

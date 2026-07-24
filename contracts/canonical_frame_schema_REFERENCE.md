@@ -2,6 +2,7 @@
 
 > **所属契约**: C1 — Canonical Frame Schema
 > **版本**: v0.2（additive-only; v0.1 帧仍通过校验）
+> **additive 增补**: 夹爪观测通道 `observation.gripper[.left|.right]`（闭合程度 [0.0,1.0]，`0.0`=完全张开 / `1.0`=完全闭合，可选；方向与 `action.gripper`、C3 `arms[].gripper` 一致）
 > **定义方**: canonical（本仓）
 > **消费方**: Iris · Eidolon · Daedalus · Ambrosia
 
@@ -76,6 +77,10 @@ check-jsonschema --schemafile mnesis_canonical/canonical_frame.schema.json episo
 | `action` | float[N] | 6 or N | *all* | 相对增量 (ego_v1) 或变长 (robot_v2) |
 | `observation.eef_pose.left` | float[7] | 7 | robot_v2 opt | 左末端执行器位姿 |
 | `observation.eef_pose.right` | float[7] | 7 | robot_v2 opt | 右末端执行器位姿 |
+| `action.gripper` | float | — | *all* opt | 夹爪闭合程度 [0.0,1.0]（`0.0`=完全张开，`1.0`=完全闭合）；指令侧 |
+| `observation.gripper` | float | — | *all* opt | 夹爪闭合程度 [0.0,1.0]（`0.0`=完全张开，`1.0`=完全闭合）；单/主夹爪，方向与 `action.gripper` 一致 |
+| `observation.gripper.left` | float | — | robot_v2 opt | 左夹爪闭合程度 [0.0,1.0]（`0.0`=完全张开，`1.0`=完全闭合）；双臂 |
+| `observation.gripper.right` | float | — | robot_v2 opt | 右夹爪闭合程度 [0.0,1.0]（`0.0`=完全张开，`1.0`=完全闭合）；双臂 |
 | `spatial_anchor_id` | str\|null | — | *all* | 空间锚点 ID |
 | `profile` | str | — | *all* opt | 可选; `ego_v1` (默认) / `robot_v2` |
 | `embodiment_id` | str\|null | — | *all* opt | 引用 embodiment registry |
