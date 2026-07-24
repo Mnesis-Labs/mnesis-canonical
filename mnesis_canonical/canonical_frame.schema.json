@@ -115,6 +115,24 @@
       "minimum": 0.0,
       "maximum": 1.0,
       "description": "Optional gripper channel (v0.4+, additive, all profiles). Normalized 0.0 (fully open) .. 1.0 (fully closed). Absent = source provides no gripper info (NOT 0.0). Physical stroke is described by the embodiment registry, not per-frame."
+    },
+    "observation.gripper": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Optional gripper observation closedness [0,1] (0.0=fully open, 1.0=fully closed). Additive, any profile; direction identical to action.gripper and C3 xr_bridge arms[].gripper. Single / main gripper."
+    },
+    "observation.gripper.left": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Optional left gripper observation closedness [0,1] (0.0=fully open, 1.0=fully closed). robot_v2 bimanual, additive."
+    },
+    "observation.gripper.right": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Optional right gripper observation closedness [0,1] (0.0=fully open, 1.0=fully closed). robot_v2 bimanual, additive."
     }
   },
   "allOf": [

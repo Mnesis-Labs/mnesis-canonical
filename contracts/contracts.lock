@@ -1,8 +1,8 @@
 {
   "version": 1,
   "files": {
-    "canonical_frame_schema_REFERENCE.md": "e09eefbc12a8765f2ca24b94d73b8cd988dbd63ac292383ab01e00ee6bf5e639",
-    "xr_bridge_SPEC.md": "7792f19f3ec01338343695b94587609d5709be78c2574aa83fa42c96e21ceafb",
-    "XR_ROBOT_CONTRACT.md": "b16013ee9c8a9e1afd5455d3ec14b261d9dba987d9410fe5ff4d32147cefff40"
+    "canonical_frame_schema_REFERENCE.md": "0fe08ce757ae76ebf95f053e38b1815574358fdba1e773ebf154162ac3ed062d",
+    "xr_bridge_SPEC.md": "cd78fd17f1076aac69e2902d628a496dc76249b11195a9b58e2ec4fd57c0f400",
+    "XR_ROBOT_CONTRACT.md": "6659181001eca3c9b8ee108e95411c38efeb1b73b91cb3a25c21ea69d612d2f4"
   }
 }

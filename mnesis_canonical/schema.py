@@ -50,6 +50,24 @@ DEFAULT_PROFILE = "ego_v1"
 # When profile is "robot_v2", these fields are variable-length (no fixed-size check).
 ROBOT_V2_VARIABLE_VECTORS = ("observation.state", "action")
 
+# Gripper observation channel (additive, optional).  Continuous gripper
+# **closedness** as a first-class scalar in [0, 1] — direction identical to
+# ``action.gripper`` and to the C3 xr_bridge wire field ``arms[].gripper``:
+#   0.0 = fully open (完全张开)   1.0 = fully closed (完全闭合)
+# Carried outside ``observation.state``/``action`` so consumers can read it
+# without knowing a registry's vector layout.
+#   observation.gripper        — single / main gripper (any profile, optional)
+#   observation.gripper.left   — left  gripper (robot_v2 bimanual, optional)
+#   observation.gripper.right  — right gripper (robot_v2 bimanual, optional)
+# All optional and additive: frames without a gripper key validate unchanged.
+GRIPPER_KEYS = (
+    "observation.gripper",
+    "observation.gripper.left",
+    "observation.gripper.right",
+)
+GRIPPER_MIN = 0.0
+GRIPPER_MAX = 1.0
+
 # Required JSON keys for the default ego_v1 profile (dotted keys — LeRobot-style flat columns).
 _REQUIRED_KEYS_EGO_V1 = (
     "index",
@@ -181,6 +199,12 @@ class CanonicalFrame:
     # (semantically distinct from 0.0). Physical stroke lives in the embodiment
     # registry, not per-frame.
     action_gripper: float | None = None
+    # Optional gripper *observation* channel (additive). Same normalized
+    # closedness scale as action_gripper: 0.0 = fully open .. 1.0 = fully
+    # closed. None = no gripper observation (distinct from 0.0).
+    gripper: float | None = None
+    gripper_left: float | None = None
+    gripper_right: float | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -213,6 +237,12 @@ class CanonicalFrame:
             d["observation.eef_pose.right"] = list(self.eef_pose_right)
         if self.action_gripper is not None:
             d["action.gripper"] = self.action_gripper
+        if self.gripper is not None:
+            d["observation.gripper"] = self.gripper
+        if self.gripper_left is not None:
+            d["observation.gripper.left"] = self.gripper_left
+        if self.gripper_right is not None:
+            d["observation.gripper.right"] = self.gripper_right
         return d
 
     @classmethod
@@ -255,4 +285,7 @@ class CanonicalFrame:
                 if "observation.eef_pose.right" in d else None
             ),
             action_gripper=d.get("action.gripper"),
+            gripper=d.get("observation.gripper"),
+            gripper_left=d.get("observation.gripper.left"),
+            gripper_right=d.get("observation.gripper.right"),
         )

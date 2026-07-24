@@ -22,6 +22,9 @@ from .schema import (
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
+    GRIPPER_KEYS,
+    GRIPPER_MAX,
+    GRIPPER_MIN,
     INT_KEYS,
     MANIPULATION_ACTIONS,
     MODALITIES,
@@ -214,6 +217,24 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
                 errors.append(
                     f"action.gripper must be in [0.0, 1.0], got {g}"
                 )
+
+    # --- gripper observation channel validation (additive, optional) ---
+    # Each gripper key, when present, must be a finite number in [0, 1].
+    # Direction mirrors action.gripper / C3 arms[].gripper: 0.0 = fully open,
+    # 1.0 = fully closed (closedness).  Absent keys validate unchanged.
+    import math
+    for gkey in GRIPPER_KEYS:
+        if gkey not in frame:
+            continue
+        gval = frame[gkey]
+        if isinstance(gval, bool) or not isinstance(gval, (int, float)):
+            errors.append(f"{gkey} must be a number in [{GRIPPER_MIN}, {GRIPPER_MAX}]")
+        elif isinstance(gval, float) and (math.isnan(gval) or math.isinf(gval)):
+            errors.append(f"{gkey} must be a finite number, got {gval!r}")
+        elif gval < GRIPPER_MIN or gval > GRIPPER_MAX:
+            errors.append(
+                f"{gkey} must be in [{GRIPPER_MIN}, {GRIPPER_MAX}], got {gval}"
+            )
 
     dev, mod = frame["source.device"], frame["source.modality"]
     if not isinstance(dev, str) or not isinstance(mod, str):

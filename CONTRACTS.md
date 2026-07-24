@@ -14,6 +14,10 @@
 
 ### C1 变更记录（additive-only；老数据零破坏）
 - **2026-07-21 · `action.gripper`（Parthenon#16 问题二 = A，Muso 拍板）**：帧新增可选字段 `action.gripper`，类型 `float`，**归一化 `[0.0, 1.0]`**（`0.0`=完全张开，`1.0`=完全闭合）。字段缺失 = 该数据源不提供夹爪信息（**≠ `0.0`**）；越界/非数值报错，缺失不报错。`action` 向量长度不变（夹爪是独立可选字段，非把 action 扩成 7 维）。物理行程由 embodiment registry 描述，不进逐帧数据。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.validate` 同步。消费方（Iris/Eidolon/Daedalus/Ambrosia）按 additive 各自接入，缺失即按无夹爪处理。
+- **2026-07-22 · `observation.gripper[.left|.right]`（Parthenon#20 拍板 A，Muso）**：帧新增可选**观测侧**夹爪字段，类型 `float`，**闭合程度归一化 `[0.0, 1.0]`**（`0.0`=完全张开，`1.0`=完全闭合）——**方向与 `action.gripper` 一字不差一致**。`observation.gripper`=单/主夹爪（任意 profile）；`.left` / `.right`=双臂 `robot_v2`。缺失 = 无夹爪观测（**≠ `0.0`**）；越界/非有限报错。语义与 C3 `arms[].gripper` 对齐。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate}` / `contracts/canonical_frame_schema_REFERENCE.md` 同步。**背景**：原 PR#39 曾误把观测侧定义为 `0`=闭合（与 `action.gripper` 相反），本次统一改向。
+
+### C3 说明记录（端点补明确；wire 版本不变）
+- **2026-07-22 · `arms[].gripper` 端点定义补明确（Parthenon#20 拍板 A，Muso）**：C3 wire 的 `arms[].gripper` 原仅写「夹爪开度 [0.0, 1.0]」**未定义端点**（本次分歧根源）。补明确为「夹爪**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合」，方向与 canonical `action.gripper` / `observation.gripper` 一致。**这是把既有模糊补明确，wire 版本不变（仍 v1.5）**，`XR_ROBOT_CONTRACT.md` / `xr_bridge_SPEC.md` 同步并附消费方核对提示。既有实现（Daedalus xr_bridge / Eidolon / airbot webapp）在此定义明确前可能按相反方向理解，接入前须各自核对——各仓核对属后续独立卡。
 
 ## C2 幂等语义（重复上传去重）
 

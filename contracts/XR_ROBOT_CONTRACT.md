@@ -172,9 +172,11 @@ VR ─── WS Close ──── Robot           [正常断开]
 | `arms` | array | **双臂数组信封**。单臂端发送 1 元素数组，向后兼容 v1.2 |
 | `arms[].arm_id` | string | 臂标识（对应 `C3_Info.arms[].name`） |
 | `arms[].target_pose_SE3` | float[7] | 末端目标位姿（米 + 四元数 {x,y,z,w}） |
-| `arms[].gripper` | float | 夹爪开度 [0.0, 1.0] |
+| `arms[].gripper` | float | 夹爪**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合（方向与 canonical `action.gripper` / `observation.gripper` 一致） |
 | `arms[].clutch` | bool | clutch 脱开状态：true = 脱开（不跟随指令，末端保持当前位姿） |
 | `arms[].mode` | string | 可选，`"position"`（默认）或 `"joint"`（预留）；对应 ≤v1.4 的顶层 `mode` 字段 |
+
+> **`gripper` 端点定义（消费方核对提示）**：`arms[].gripper` 采**闭合程度**语义，`0.0` = 完全张开、`1.0` = 完全闭合，方向与 canonical `action.gripper` / `observation.gripper` 一致。此定义明确前既有实现（Daedalus xr_bridge / Eidolon / airbot webapp）可能按相反方向理解，接入前须各自核对对齐（各仓核对属后续独立卡）。此为把既有模糊补明确，**wire 版本不变（仍 v1.5）**。
 
 ### 3.5 `C3_Status` — 机器 -> VR（状态回传，循环发送）
 
@@ -204,7 +206,7 @@ VR ─── WS Close ──── Robot           [正常断开]
 | `arms[].joint_positions` | float[N] | 各关节当前角度（rad） |
 | `arms[].joint_velocities` | float[N] | 各关节当前速度（rad/s） |
 | `arms[].eef_pose` | float[7] | 末端当前位姿（米 + 四元数） |
-| `arms[].gripper` | float | 夹爪当前开度 |
+| `arms[].gripper` | float | 夹爪当前**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合（同 `C3_Frame.arms[].gripper` 方向） |
 | `arms[].health` | string | 臂级健康状态：`ok` / `warning` / `error` |
 | `executing` | bool | 全局执行状态（任一臂执行中即为 true） |
 | `error` | string\|null | 全局错误信息 |

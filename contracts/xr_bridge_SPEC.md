@@ -95,8 +95,10 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 | `arms` | array | **双臂数组信封**。单臂端发送 1 元素数组，向后兼容 v1.2 |
 | `arms[].arm_id` | string | 臂标识（如 `"left"` / `"right"` / `"main"`） |
 | `arms[].target_pose_SE3` | float[7] | 末端目标位姿（米 + 四元数 {x,y,z,w}） |
-| `arms[].gripper` | float | 夹爪开度 [0.0, 1.0] |
+| `arms[].gripper` | float | 夹爪**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合（方向与 canonical `action.gripper` / `observation.gripper` 一致） |
 | `arms[].clutch` | bool | clutch 脱开状态：true = 脱开（不跟随指令） |
+
+> **消费方核对提示**：`arms[].gripper` 的端点在此定义明确前是模糊的，既有实现（Daedalus xr_bridge / Eidolon / airbot webapp）可能按相反方向（`0` = 闭合）理解，接入前须各自核对本端点定义并对齐——各仓的核对属后续独立卡，不在本卡处理。wire 版本不变（仍 v1.5，仅把既有模糊补明确）。
 
 ### C3_Status (机器 → VR)
 
@@ -124,7 +126,7 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 | `arms[].joint_positions` | float[N] | 各关节当前角度（rad） |
 | `arms[].joint_velocities` | float[N] | 各关节当前速度（rad/s） |
 | `arms[].eef_pose` | float[7] | 末端当前位姿（米 + 四元数） |
-| `arms[].gripper` | float | 夹爪当前开度 |
+| `arms[].gripper` | float | 夹爪当前**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合（同 `C3_Frame.arms[].gripper` 方向） |
 | `arms[].health` | string | 臂级健康状态：`ok` / `warning` / `error` |
 | `executing` | bool | 全局执行状态 |
 | `error` | string\|null | 全局错误信息 |

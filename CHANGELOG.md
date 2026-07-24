@@ -12,6 +12,35 @@ are decoupled:
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
 
+## [Unreleased]
+
+### Added
+
+- **Optional `observation.gripper` channel** (additive-only; Parthenon#20 拍板 A).
+  Observation-side gripper **closedness** as a first-class `float` in `[0.0, 1.0]`,
+  **`0.0` = 完全张开 (fully open), `1.0` = 完全闭合 (fully closed)** — direction
+  **identical to `action.gripper`** and to the C3 xr_bridge wire field
+  `arms[].gripper`. `observation.gripper` (single/main, any profile) and
+  `observation.gripper.{left,right}` (bimanual `robot_v2`). Absence = no gripper
+  observation (NOT `0.0`). Frames without a gripper key validate unchanged.
+  - `GRIPPER_KEYS`, `GRIPPER_MIN`, `GRIPPER_MAX` constants; `CanonicalFrame`
+    extended with `gripper` / `gripper_left` / `gripper_right`.
+  - JSON Schema `observation.gripper[.left|.right]` (`number`, `[0,1]`);
+    validator range/finite check.
+  - `examples/episode_gripper` — robot_v2 teleop example carrying a gripper.
+  - `tests/test_gripper_observation.py` conformance + an `action`/`observation`
+    same-frame co-existence (same direction) case.
+
+### Changed
+
+- **C3 xr_bridge — `arms[].gripper` endpoint definition made explicit** (contract
+  clarification; wire version unchanged at v1.5). The wire field was documented
+  only as 「夹爪开度 [0.0, 1.0]」 with **undefined endpoints**; it is now
+  「夹爪**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合」, aligned
+  with canonical `action.gripper` / `observation.gripper`. A consumer note flags
+  that existing implementations may have read the opposite direction before this
+  clarification and must re-check on integration. `contracts.lock` regenerated.
+
 ## [0.4.0] — 2026-07-21
 
 ### Added
