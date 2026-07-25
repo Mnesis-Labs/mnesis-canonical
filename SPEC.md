@@ -57,6 +57,21 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
   `observation.gripper` on the **same** `[0,1]` closedness scale. All gripper
   keys are **optional and additive** — frames without them validate unchanged.
 
+### Gripper channel (C8, additive)
+The gripper is a **continuous scalar in `[0, 1]`** (0 = fully closed, 1 = fully
+open) carried as an optional first-class field — not folded into
+`observation.state`/`action` — so consumers can read it without knowing a
+registry's vector layout:
+
+- `observation.gripper` — single / main gripper (any profile).
+- `observation.gripper.left` / `observation.gripper.right` — per-side grippers
+  for bimanual `robot_v2` embodiments (mirrors `observation.eef_pose.{left,right}`).
+
+Semantics align 1:1 with the C3 xr_bridge wire field `arms[].gripper` (`夹爪开度
+[0,1]`, see `contracts/XR_ROBOT_CONTRACT.md`): a teleop frame records the
+commanded/executed gripper opening on the same `[0,1]` scale. All gripper keys
+are **optional and additive** — frames without them validate unchanged.
+
 ## Fields (all required unless noted)
 | Key | Type | Profile | Meaning |
 |---|---|---|---|
@@ -78,6 +93,9 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
 | `observation.gripper` | float | *all* optional | Gripper **closedness** observation, **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed (direction identical to `action.gripper`). Single / main gripper |
 | `observation.gripper.left` | float | `robot_v2` optional | Left gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual |
 | `observation.gripper.right` | float | `robot_v2` optional | Right gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual |
+| `observation.gripper` | float | *all* optional | **C8** gripper opening `[0,1]` (0=closed, 1=open); single/main gripper |
+| `observation.gripper.left` | float | `robot_v2` optional | **C8** left gripper opening `[0,1]` (bimanual) |
+| `observation.gripper.right` | float | `robot_v2` optional | **C8** right gripper opening `[0,1]` (bimanual) |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) |
 | `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) |
@@ -135,6 +153,52 @@ open items to align with the platform authority before freezing. ✅ = settled,
 4. **Embodiment tagging.** Exact `source.device`/`source.modality` → GR00T embodiment-tag mapping (not yet implemented in the adapter).
 
 Until these are resolved, conversion stays a **documented adapter concern**, not a wire-format change — the Canonical fields above are stable.
+
+## Embodiment registry — `capture` section (additive, v0.5+)
+
+The embodiment registry (`embodiments/<id>.json`, schema
+`embodiments/embodiment.schema.json`) is the **single source of truth** for a
+robot's identity, kinematics, and — as of v0.5 — its **capture-side defaults**.
+Both additions are **optional and additive**: registry entries without them keep
+validating, and consumers that don't read them are unaffected. The point is
+"switch machine → already configured": a device swaps embodiment id and picks up
+frame rate, camera rig, gripper semantics, teaching mode, and calibration needs
+without each consumer hard-coding them.
+
+### `capture` (optional object)
+| Key | Type | Meaning |
+|---|---|---|
+| `default_fps` | number > 0 | Default recording frame rate (fps). |
+| `max_duration_s` | number > 0 | Recommended per-episode duration cap (seconds). |
+| `cameras` | array | Default camera rig: each `{ name, resolution:[w,h], fps? }`. `name` matches `observation.images.<cam>`. |
+| `gripper_capture` | object | `{ mode: "continuous"\|"binary"\|"none", normalized_range?:[0,1] }`. Physical stroke stays in `gripper_range`, not here. |
+| `demonstration_modes` | array | Supported teaching modes — subset of `kinesthetic`, `leader_follower`, `teleop_only`. Consumers switch capture UI on this. |
+| `calibration` | object | `{ hand_eye_required: bool }` — whether camera↔arm extrinsic calibration is required before a valid session. |
+
+### `capture_profiles` (optional array)
+Named presets a registry entry may carry several of; a consumer selects one by
+`name` to configure a session: `{ name, task?, fps?, cameras?, annotation_template? }`.
+`cameras` is a subset of `capture.cameras` names; `annotation_template` references
+a taxonomy id (e.g. `manipulation_v1` → `taxonomies/manipulation_v1.json`).
+
+### Two-machine truth (v0.5)
+| Machine | fps | cameras | gripper | demo mode | hand-eye |
+|---|---|---|---|---|---|
+| `so_arm101` (SO-ARM101) | 30 | front + wrist @640×480 | continuous | `leader_follower` | not required |
+| `airbot_play` (AIRBOT Play) | 30 | wrist @640×480 + front @1280×720 | continuous | `kinesthetic` (gravity-comp drag) | not required |
+
+### Consumer upgrade path (ambrosia / airbot capture ends)
+Additive, so no forced migration; adopt lazily:
+1. **Read on change:** on embodiment select, read `capture` (fall back to your
+   current defaults when absent) to set fps / camera rig / duration cap.
+2. **Gripper UI:** branch on `gripper_capture.mode` (`continuous` slider vs
+   `binary` toggle vs hidden).
+3. **Teaching UI:** show the capture flow implied by `demonstration_modes`
+   (leader-follower pairing for SO-ARM101, gravity-comp drag for AIRBOT Play).
+4. **Calibration gate:** if `calibration.hand_eye_required` is true, block record
+   until calibration is present.
+5. **Presets:** offer `capture_profiles` by `name`; a missing/empty list means
+   "no presets — use `capture` defaults".
 
 ## Versioning
 - Spec is versioned (`v0.2`). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
