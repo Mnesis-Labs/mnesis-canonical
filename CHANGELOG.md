@@ -23,6 +23,12 @@ are decoupled:
   `arms[].gripper`. `observation.gripper` (single/main, any profile) and
   `observation.gripper.{left,right}` (bimanual `robot_v2`). Absence = no gripper
   observation (NOT `0.0`). Frames without a gripper key validate unchanged.
+- **D-18 — C8 gripper channel** (v0.2 schema, additive-only). Optional
+  first-class gripper opening as a continuous scalar in `[0, 1]` (0=closed,
+  1=open): `observation.gripper` (single/main, any profile) and
+  `observation.gripper.{left,right}` (bimanual robot_v2). Semantics align 1:1
+  with the C3 xr_bridge wire field `arms[].gripper`. Frames without a gripper
+  key validate unchanged.
   - `GRIPPER_KEYS`, `GRIPPER_MIN`, `GRIPPER_MAX` constants; `CanonicalFrame`
     extended with `gripper` / `gripper_left` / `gripper_right`.
   - JSON Schema `observation.gripper[.left|.right]` (`number`, `[0,1]`);
@@ -76,6 +82,16 @@ are decoupled:
     `action.gripper` property (`0.0 ≤ x ≤ 1.0`).
   - SPEC.md field row + compatibility note; CONTRACTS.md C1 change record.
 - Existing data without `action.gripper` validates unchanged (regression covered).
+  - `tests/test_gripper.py` conformance cases.
+- **D-18 — C3 xr_bridge v1.6** (contract, additive). Camera-control negotiation
+  (`C3_CameraControl` headset→robot `{camera_id,width,height,fps,bitrate,codec}`,
+  OPEN_CAMERA-style over our ws envelope + `C3_CameraStatus` reply) and video
+  transport capability declaration (`C3_Info.video_capabilities`,
+  `transports: webrtc|mjpeg`, reserved for the DQ-1 WebRTC line). `≤v1.5`
+  clients ignore the new messages/field — wire format unchanged. Specified in
+  `contracts/XR_ROBOT_CONTRACT.md` + `contracts/xr_bridge_SPEC.md`; consumer
+  `contracts.lock` upgrade path documented in `CONTRACTS.md`.
+  - `contracts.lock` regenerated; `tests/test_contracts.py` pins the spec.
 
 ## [0.3.0] — 2026-07-21
 
