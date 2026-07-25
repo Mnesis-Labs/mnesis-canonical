@@ -57,5 +57,30 @@
         0.6
       ]
     ]
-  }
+  },
+  "capture": {
+    "default_fps": 30,
+    "max_duration_s": 120,
+    "cameras": [
+      { "name": "wrist", "resolution": [640, 480], "fps": 30 },
+      { "name": "front", "resolution": [1280, 720], "fps": 30 }
+    ],
+    "gripper_capture": {
+      "mode": "continuous",
+      "normalized_range": [0.0, 1.0]
+    },
+    "demonstration_modes": ["kinesthetic"],
+    "calibration": {
+      "hand_eye_required": false
+    }
+  },
+  "capture_profiles": [
+    {
+      "name": "tabletop_pick_place_v1",
+      "task": "tabletop pick-and-place",
+      "fps": 30,
+      "cameras": ["wrist", "front"],
+      "annotation_template": "manipulation_v1"
+    }
+  ]
 }

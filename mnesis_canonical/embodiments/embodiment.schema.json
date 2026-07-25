@@ -93,6 +93,119 @@
       },
       "required": ["default_pos_scale", "workspace_box"],
       "description": "Teleoperation default parameters."
+    },
+    "capture": {
+      "type": "object",
+      "description": "Optional (additive, v0.5+) capture-side defaults so a device can be reconfigured by embodiment id instead of hard-coding capture parameters per consumer. Absence = consumer keeps its own defaults.",
+      "properties": {
+        "default_fps": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Default recording frame rate in frames per second."
+        },
+        "max_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Recommended per-episode duration cap in seconds."
+        },
+        "cameras": {
+          "type": "array",
+          "description": "Camera set and resolution for this embodiment's default rig.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Camera key (matches observation.images.<cam>, e.g. 'front', 'wrist')."
+              },
+              "resolution": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 1 },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "Capture resolution [width, height] in pixels."
+              },
+              "fps": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Per-camera frame rate if it differs from default_fps (optional)."
+              }
+            },
+            "required": ["name", "resolution"]
+          }
+        },
+        "gripper_capture": {
+          "type": "object",
+          "description": "How the gripper channel is sampled during capture.",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["continuous", "binary", "none"],
+              "description": "'continuous' = analog stroke, 'binary' = open/close switch, 'none' = no gripper."
+            },
+            "normalized_range": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "Normalized capture range, conventionally [0.0, 1.0] (0 = open, 1 = closed). Physical stroke lives in gripper_range."
+            }
+          },
+          "required": ["mode"]
+        },
+        "demonstration_modes": {
+          "type": "array",
+          "description": "Teaching modes this embodiment supports; consumers switch capture UI accordingly.",
+          "items": {
+            "type": "string",
+            "enum": ["kinesthetic", "leader_follower", "teleop_only"]
+          },
+          "minItems": 1
+        },
+        "calibration": {
+          "type": "object",
+          "description": "Calibration requirements for a valid capture session.",
+          "properties": {
+            "hand_eye_required": {
+              "type": "boolean",
+              "description": "Whether hand-eye (camera↔arm extrinsic) calibration is required before capture."
+            }
+          },
+          "required": ["hand_eye_required"]
+        }
+      }
+    },
+    "capture_profiles": {
+      "type": "array",
+      "description": "Optional (additive, v0.5+) named capture presets. A registry entry may carry several; a consumer selects one by name to configure a recording session (task, frame rate, camera subset, annotation template).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Preset identifier, unique within this embodiment (e.g. 'tabletop_pick_place_v1')."
+          },
+          "task": {
+            "type": "string",
+            "description": "Human-readable task this preset targets (e.g. 'tabletop pick-and-place')."
+          },
+          "fps": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Recording frame rate for this preset."
+          },
+          "cameras": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Camera keys used by this preset (subset of capture.cameras names)."
+          },
+          "annotation_template": {
+            "type": "string",
+            "description": "Annotation taxonomy/template id (e.g. 'manipulation_v1', referencing taxonomies/manipulation_v1.json)."
+          }
+        },
+        "required": ["name"]
+      }
     }
   },
   "required": ["id", "display_name", "arms", "dof_per_arm", "joint_names", "joint_limits", "gripper_range", "base_frame", "assets", "teleop"]
