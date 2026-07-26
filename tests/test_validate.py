@@ -161,7 +161,7 @@ def test_positive_frame_index_increasing_accepted(good_frame):
 
 
 def test_duplicate_spatial_anchor_rejected(good_frame):
-    """Same anchor_id in two frames → duplicate definition error."""
+    """Same anchor_id in two frames with different positions → conflict error."""
     f0 = good_frame()
     f0["spatial_anchor_id"] = "anchor-A"
     f1 = good_frame()
@@ -169,9 +169,10 @@ def test_duplicate_spatial_anchor_rejected(good_frame):
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-A"
+    f1["head_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # different position
     report = validate_frames([f0, f1])
     assert not report.ok
-    assert any("duplicate" in m and "anchor-A" in m for _, m in report.errors)
+    assert any("conflicting" in m and "anchor-A" in m for _, m in report.errors)
 
 
 def test_undefined_spatial_anchor_rejected(good_frame):
@@ -195,6 +196,20 @@ def test_unique_spatial_anchors_accepted(good_frame):
     assert report.ok
 
 
+def test_same_anchor_same_position_accepted(good_frame):
+    """Same anchor_id in two frames with same position → valid reuse."""
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-A"
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    f1["spatial_anchor_id"] = "anchor-A"
+    # Same head_pose_SE3 as good_frame default → consistent anchor definition
+    report = validate_frames([f0, f1])
+    assert report.ok, report.errors
+
+
 def test_null_spatial_anchor_accepted(good_frame):
     """None spatial_anchor_id → skip (no anchor)."""
     f = good_frame()
@@ -202,8 +217,8 @@ def test_null_spatial_anchor_accepted(good_frame):
     assert validate_frame(f) == []
 
 
-def test_multiple_duplicate_anchor_errors(good_frame):
-    """Three frames with the same anchor_id → error on each duplicate."""
+def test_multiple_conflicting_anchor_errors(good_frame):
+    """Three frames with the same anchor_id → error on each conflicting position."""
     f0 = good_frame()
     f0["spatial_anchor_id"] = "anchor-X"
     f1 = good_frame()
@@ -211,15 +226,51 @@ def test_multiple_duplicate_anchor_errors(good_frame):
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-X"
+    f1["head_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # different position
     f2 = good_frame()
     f2["frame_index"] = 2
     f2["t_ns"] = 3_000_000
     f2["t_hw_ns"] = 3_000_000_000
     f2["spatial_anchor_id"] = "anchor-X"
+    f2["head_pose_SE3"] = [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # another different position
     report = validate_frames([f0, f1, f2])
     assert not report.ok
-    assert len(report.errors) == 2  # two duplicates of anchor-X
-    assert all("duplicate" in m and "anchor-X" in m for _, m in report.errors)
+    assert len(report.errors) == 2  # two conflicting frames of anchor-X
+    assert all("conflicting" in m and "anchor-X" in m for _, m in report.errors)
+
+
+def test_dangling_anchor_reference_rejected(good_frame):
+    """Anchor_id referenced but head_pose_SE3 missing → dangling reference error.
+
+    A frame that references a non-null anchor_id must have a valid head_pose_SE3
+    so the anchor's physical position can be established.  Without it, the
+    anchor definition is incomplete.
+    """
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-A"
+    del f0["head_pose_SE3"]
+    errs = validate_frame(f0)
+    # Per-frame validation catches the missing head_pose_SE3 before the
+    # anchor-specific check runs, so the anchor check is additive.
+    assert any("head_pose_SE3" in e for e in errs)
+
+
+def test_anchor_conflict_messages_are_descriptive(good_frame):
+    """Conflict error message includes the anchor_id and both positions."""
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-A"
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    f1["spatial_anchor_id"] = "anchor-A"
+    f1["head_pose_SE3"] = [5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    report = validate_frames([f0, f1])
+    assert not report.ok
+    msg = report.errors[0][1]
+    assert "anchor-A" in msg
+    assert "0.000" in msg  # first frame position (default: [0.0, 0.0, 0.0, ...])
+    assert "5.000" in msg  # second frame position
 
 
 def test_anchor_errors_include_cli_in_output(capsys, tmp_path, good_frame):
@@ -234,6 +285,7 @@ def test_anchor_errors_include_cli_in_output(capsys, tmp_path, good_frame):
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-A"
+    f1["head_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # conflicting position
     import json
     bad.write_text(
         json.dumps(f0) + "\n" + json.dumps(f1) + "\n", encoding="utf-8"
@@ -241,7 +293,7 @@ def test_anchor_errors_include_cli_in_output(capsys, tmp_path, good_frame):
     rc = main(["validate", str(bad)])
     assert rc == 1
     err = capsys.readouterr().err
-    assert "duplicate" in err and "anchor-A" in err
+    assert "conflicting" in err and "anchor-A" in err
 
 
 # ── events.jsonl validation (v0.2+) ────────────────────────────────────────────
