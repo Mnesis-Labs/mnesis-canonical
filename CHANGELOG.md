@@ -16,6 +16,19 @@ are decoupled:
 
 ### Added
 
+- **D-19a — Importer framework scaffolding** (skeleton, no concrete format
+  implementations yet). New `mnesis_canonical/importers/` package with:
+  - `__init__.py` — public API re-exporting `ImporterBase`, `ImporterMetadata`,
+    `ImporterRegistry`.
+  - `__main__.py` — CLI with `list`, `describe`, `import` subcommands
+    (`python -m mnesis_canonical.importers`).
+  - `_common.py` — abstract base class (`ImporterBase`), `ImporterMetadata`
+    dataclass, and `ImporterRegistry` with auto-discovery of concrete subclasses
+    by scanning the `importers` namespace.
+  - `pyproject.toml` — `mnesis-canonical-importers` console_scripts entry.
+  - `.gitattributes` — `*.yml` added to the LF-only list.
+  - `docs/RELEASE_CHECKLIST_v1.0.md` — pre-release walkthrough checklist.
+
 - **Optional `observation.gripper` channel** (additive-only; Parthenon#20 拍板 A).
   Observation-side gripper **closedness** as a first-class `float` in `[0.0, 1.0]`,
   **`0.0` = 完全张开 (fully open), `1.0` = 完全闭合 (fully closed)** — direction
