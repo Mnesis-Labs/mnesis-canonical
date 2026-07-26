@@ -259,13 +259,34 @@ class ValidationReport:
         return self.total > 0 and not self.errors
 
 
+def _head_pose_key(frame: dict) -> str | None:
+    """Extract a reproducible key for the head_pose_SE3 (position part only).
+
+    Returns a short string like ``"0.0_1.2_0.0"`` from the translation vector
+    (first 3 elements of head_pose_SE3), or ``None`` if the field is missing or
+    not a valid list.  This is used to detect conflicting anchor definitions
+    (same anchor_id, different physical position).
+    """
+    hp = frame.get("head_pose_SE3")
+    if not isinstance(hp, list) or len(hp) < 3:
+        return None
+    # Round to 1 mm precision to tolerate minor capture noise.
+    tx, ty, tz = hp[0], hp[1], hp[2]
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (tx, ty, tz)):
+        return None
+    return f"{tx:.3f}_{ty:.3f}_{tz:.3f}"
+
+
 def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> ValidationReport:
     report = ValidationReport()
     prev_frame_index: int | None = None
 
     # --- Episode-level: spatial_anchor_id validation ---
-    # Track anchor_ids that have been defined (non-None, non-empty, first occurrence).
-    defined_anchors: dict[str, int] = {}  # anchor_id -> first-definition line index
+    # Track anchor_ids that have been defined (non-None, non-empty, first occurrence)
+    # together with their head_pose_SE3 position key (the "coordinate system/origin").
+    # An anchor_id reused across frames with the same position is valid (same anchor,
+    # multiple observations).  Conflicting positions → error.
+    defined_anchors: dict[str, tuple[int, str | None]] = {}  # anchor_id -> (line, pose_key)
 
     for i, frame in enumerate(frames):
         report.total += 1
@@ -291,13 +312,24 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
         aid = frame.get("spatial_anchor_id")
         if aid is not None and isinstance(aid, str) and aid:
             if aid in defined_anchors:
-                first_line = defined_anchors[aid]
-                errs.append(
-                    f"duplicate spatial_anchor_id '{aid}' at line {i} "
-                    f"(first defined at line {first_line})"
+                first_line, first_pose = defined_anchors[aid]
+                current_pose = _head_pose_key(frame)
+                # Conflicting anchor definition: same anchor_id, different position.
+                conflict = (
+                    first_pose is not None
+                    and current_pose is not None
+                    and first_pose != current_pose
                 )
+                if conflict:
+                    errs.append(
+                        f"conflicting spatial_anchor_id '{aid}' at line {i}: "
+                        f"position {current_pose} differs from first definition "
+                        f"at line {first_line} (position {first_pose})"
+                    )
+                # If the pose is the same (or one/both are unreadable), it's a
+                # valid reuse of the same anchor — no error.
             else:
-                defined_anchors[aid] = i
+                defined_anchors[aid] = (i, _head_pose_key(frame))
 
         if not errs:
             report.valid += 1
