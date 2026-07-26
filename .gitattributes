@@ -5,3 +5,7 @@
 *.py    text eol=lf
 *.md    text eol=lf
 *.toml  text eol=lf
+
+# Importer test fixtures are binary containers — never normalize line endings.
+*.pkl   binary
+*.mcap  binary

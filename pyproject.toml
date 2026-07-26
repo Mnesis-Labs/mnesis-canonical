@@ -19,6 +19,7 @@ dev = ["pytest>=8.0", "ruff>=0.6", "jsonschema>=4.18", "pyright>=1.1"]
 [project.scripts]
 mnesis-canonical = "mnesis_canonical.__main__:main"
 mnesis-canonical-contracts-check = "mnesis_canonical.contracts_check:main"
+mnesis-import = "mnesis_canonical.importers.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["mnesis_canonical*"]
