@@ -13,6 +13,7 @@
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
 
 ### C1 变更记录（additive-only；老数据零破坏）
+- **2026-07-28 · 保留扩展命名空间 `x-<vendor>.*` + 未知键警告 + 扩展登记表（本仓 #69；治 #68 的病因）**：#68 治的是「这一次的病」，本条治**病因**。Iris 四个手部字段能在库里躺半个月没人发现，根因不是 schema 漏了 `additionalProperties: false`，而是**扩展的成本高于隐瞒的成本** —— 采集面要新字段时，选项是「开跨仓契约卡 + 等 canonical 实现 + 等发版」或「直接写，反正 ingest 放行」，后者今天零成本。只要这个梯度在，下一批隐形字段就还会出现，而 canonical 永远最后一个知道。三件事把「扩展」做成一等公民：① **保留命名空间** `x-<vendor>.<field>`（如 `x-iris.hand_left_kpts3d`），`canonical_frame.schema.json` 用 `patternProperties` 显式承认，该前缀下的键**完全静默**；② **扩展登记表** `extensions/registry.json`（+ `registry.schema.json`，root+package 双份），字段 `{name, owner_repo, since, description, promotion_status∈active|proposed|promoted|withdrawn, replaced_by?, reference?, notes?}` —— **登记只需一个本仓 PR，不需要任何跨仓协调、不等发版**，这一条是机制的命门：登记成本必须低于隐瞒成本；③ **警告通道**：`ValidationReport` 新增 `warnings`，`mnesis_canonical.frame_warnings(frame)` 对「非标准键 + 非开放键族（`observation.images.<cam>`）+ 非保留前缀」的键产出 **warning（不是 error）**，CLI 打印且**退出码不变**。**明确不设 `additionalProperties: false`**：会打破 additive 承诺（钉老 schema 版本的消费方因上游加字段变红），且与开放相机键集直接冲突 —— 解法是让越界**可见**，不是让它变成错误。**晋升路径**：登记 → `proposed` → canonical 标准化（走 `type:contract-change`，此时字段形状与在产历史已在桌面上）→ `promoted` + `replaced_by` + 迁移函数 + 弃用窗口。Iris 四个旧名已按 `promoted` 登记为样板（`hand_pose` 的 `replaced_by` 为 `null` —— 它是被**丢弃**式晋升的派生投影）。`SPEC.md` §Extensions + §Conventions / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate,extension_registry}` / `extensions/` / `tests/test_extensions.py` 同步。**消费方**：无需任何动作（纯 additive，老数据零变红）；新增非标字段时改用 `x-<vendor>.` 前缀并发一个登记 PR。
 - **2026-07-27 · 手部关键点 `observation.hand.*`（C11 结案；Parthenon#47 / 本仓 #68；Muso 拍板）**：帧新增 7 个**可选 / additive** 字段，把骨架级手部数据收进单一标准，取代 Iris 私产的 `hand_left_kpts3d` / `hand_right_kpts3d` / `hand_kpts_source` / `hand_pose`。① `observation.hand.left` / `.right`：关节**位置**，展平 `[x,y,z,…]`（米），**变长** —— 长度 = `3 × K`，`K` 由 `observation.hand.layout` 经**骨架登记表**（新增 `skeletons/<id>.json`）解析，与 `embodiment_id` 的 `joint_names` 定义 `observation.state` 长度是同一机制。**不定长 63**：定长会把 MediaPipe 的 21 点拓扑冻进开放标准，而 Eidolon C2（WebXR 25 关节 / OpenXR 26，且带逐关节朝向）与 xMimic 类骨架 retargeting 吃的正是朝向。② `.rot`：关节**朝向**，展平四元数 `{x,y,z,w}`，长度 `4 × K`，仅原生提供朝向的来源填。③ `observation.hand.layout` + `observation.hand.frame`（`world` / `head_anchored` / `hand_local`）—— **有关键点时两者必填**：`frame` 是「2.5D 近似而非真 3D」这条警告的**机器可读形式**，消费方按 `frame == "world"` 过滤，而不是去认某个 source 字符串。④ `observation.hand.source` 只当溯源标签（开放集），不承载几何语义。**手不在场时整键省略**（不发零向量、不许 null）。**`hand_pose`（128 floats）不进 wire**：它是前两者的派生投影，且用标志位 + 补零编码缺席，与本次同时升为铁律的「缺失 = 未知，禁带内哨兵」冲突 —— 归 LeRobot 导出期投影。字段标 **`experimental`**（`SPEC.md` §Versioning 新增字段级 status）：已在产的数据当天进标准，同时保留 stable 前改名的权利。已注册布局：`mediapipe_hand_21`（stable）、`webxr_hand_25` / `openxr_hand_26`（experimental，**待 Eidolon 按真机实现核对**）。`SPEC.md` §Hand keypoints / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate,skeleton_registry,migrate}` / `skeletons/`（root+package 双份）/ `contracts/canonical_frame_schema_REFERENCE.md` 同步。**消费方对齐**：Iris 按新名改 `CanonicalFrame.toJsonLine`、补 `layout=mediapipe_hand_21` + `frame=head_anchored`、摘掉 `hand_pose`、重新 vendor schema 并从 `contracts.lock` 的 `local_extensions` 摘掉这四个字段；存量数据跑 `python -m mnesis_canonical migrate <data.jsonl> --out <data.jsonl>`。**校验器只认新名，不认双名** —— 标准里的别名从来不会死。
 - **2026-07-24 · embodiment registry 增 `capture` 段 + `capture_profiles` 预设（issue #41，Muso 站会直派 2026-07-22）**：embodiment registry（`embodiments/<id>.json` + `embodiment.schema.json`）新增两个**可选/additive**结构，把"换型即配好采集参数"收进契约单一真值——设备端换 embodiment id 即拿到帧率/相机组合/夹爪语义/示教模式/标定要求，无需各消费端硬编码。① `capture`：`default_fps`、`max_duration_s`、`cameras[{name,resolution,fps?}]`、`gripper_capture{mode∈continuous|binary|none, normalized_range?}`（物理行程仍在 `gripper_range`，不在此）、`demonstration_modes⊆{kinesthetic,leader_follower,teleop_only}`（消费端据此切采集 UI）、`calibration{hand_eye_required}`。② `capture_profiles`：命名预设数组 `{name,task?,fps?,cameras?,annotation_template?}`，一机可挂多套。两机型真值：`so_arm101`=leader_follower / front+wrist@640×480 / 30fps / 免手眼标定；`airbot_play`=kinesthetic（重力补偿拖动示教）/ wrist@640×480+front@1280×720 / 30fps / 免手眼标定。**老 registry 条目无这两段仍校验通过**（既有测试零改动）。SPEC.md（§Embodiment registry — capture section，含消费端升版路径）/ `embodiment.schema.json`（root+package 双份同步）/ conformance `tests/test_capture.py` 同步。消费方（Ambrosia 采集/控制台、AIRBOT 采集端）按 additive 惰性接入：换型时读 `capture` 配帧率/相机/时长，按 `gripper_capture.mode` 与 `demonstration_modes` 切 UI，`hand_eye_required` 为真则标定前禁录，`capture_profiles` 按 `name` 供选。
 - **2026-07-21 · `action.gripper`（Parthenon#16 问题二 = A，Muso 拍板）**：帧新增可选字段 `action.gripper`，类型 `float`，**归一化 `[0.0, 1.0]`**（`0.0`=完全张开，`1.0`=完全闭合）。字段缺失 = 该数据源不提供夹爪信息（**≠ `0.0`**）；越界/非数值报错，缺失不报错。`action` 向量长度不变（夹爪是独立可选字段，非把 action 扩成 7 维）。物理行程由 embodiment registry 描述，不进逐帧数据。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.validate` 同步。消费方（Iris/Eidolon/Daedalus/Ambrosia）按 additive 各自接入，缺失即按无夹爪处理。
@@ -21,6 +22,48 @@
 ### C3 说明记录（端点补明确 → v1.6 additive 字段新增）
 - **2026-07-22 · `arms[].gripper` 端点定义补明确（Parthenon#20 拍板 A，Muso）**：C3 wire 的 `arms[].gripper` 原仅写「夹爪开度 [0.0, 1.0]」**未定义端点**（本次分歧根源）。补明确为「夹爪**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合」，方向与 canonical `action.gripper` / `observation.gripper` 一致。**这是把既有模糊补明确，wire 版本不变（仍 v1.5）**，`XR_ROBOT_CONTRACT.md` / `xr_bridge_SPEC.md` 同步并附消费方核对提示。既有实现（Daedalus xr_bridge / Eidolon / airbot webapp）在此定义明确前可能按相反方向理解，接入前须各自核对——各仓核对属后续独立卡。
 - **2026-07-25 · `HandGoal` 新增 confidence/axes/buttons（Daedalus PR#157，Muso 拍板）**：C3 `HandGoal` 新增三个可选字段——`confidence`（float，缺省 1.0，<0.3 视同 `tracking:false` 做安全降级）、`axes`（float 数组，缺省空）、`buttons`（bool 数组，缺省空）。三字段全部可选且向后兼容：不带这些字段的老帧行为完全不变。**动机**：`confidence` 支持渐进降级（追踪中逐步丢失而非二值丢失），`axes`/`buttons` 给 PICO 适配器（#152）映射 XRoboToolkit 全量手柄输入用。本次为 additive 变更，并入 **v1.6**（与同期 PR#39「相机控制协商/视频能力声明」additive 变更同属该 v1.5→v1.6 版本窗口，两者共享同一次 minor 升版，互不冲突）。**两侧测试**：Daedalus 侧 `tests/xr_bridge/test_frame_schema.py` + `test_safety.py`（已随 #157 合并）；Eidolon 侧 webapp `protocol.js` 补发仍在做（#155 T3，标注 pending）。
+
+## 扩展登记（`extensions/registry.json`）—— 非标准字段怎么合法存在
+
+> 来源：本仓 **#69**（Parthenon#47 评审的根因分析）。定义见 `SPEC.md` §Extensions。
+> 一句话：**登记的成本必须低于隐瞒的成本**，否则采集面继续偷偷发字段，canonical 永远最后一个知道。
+
+### 什么时候用
+你（任一采集面/消费面）需要一个 canonical 还没有的字段时——**不要**先开跨仓契约卡等着，
+按下面两步直接上，数据当天就能合法带着这个字段跑。
+
+### 怎么做（两步，只动本仓，不需要跨仓协调）
+1. **改名**：把字段写成 `x-<vendor>.<field>`，如 `x-iris.hand_left_kpts3d`。
+   该前缀由 `canonical_frame.schema.json` 的 `patternProperties` 显式承认，校验器**完全静默**。
+2. **登记**：往 `extensions/registry.json` 加一条，发 PR 到本仓即可——
+   **不走 `type:contract-change`、不等 canonical 实现、不等发版**。
+
+```json
+{
+  "name": "x-iris.hand_left_kpts3d",
+  "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+  "since": "2026-07-28",
+  "description": "左手 3D 关键点，展平 [x,y,z,...]，MediaPipe 21 landmarks。",
+  "promotion_status": "active",
+  "reference": "Mnesis-Labs/Mnesis-Iris#82"
+}
+```
+
+`promotion_status`：`active`（在产，暂不申请标准化）· `proposed`（申请升为标准字段）·
+`promoted`（已升为标准字段，`replaced_by` 指向新名，进入弃用窗口）· `withdrawn`（已停产）。
+
+### 不登记会怎样
+不会红。校验器对「非标准 + 非开放键族 + 非保留前缀」的键产出 **warning**，
+`python -m mnesis_canonical validate` 会打印，但**退出码不变**、ingest 不拒。
+**这是刻意的**：设 `additionalProperties: false` 会打破 additive 承诺（钉老 schema
+版本的消费方，会因为上游加了新字段而变红），且与开放的 `observation.images.<cam>`
+键集直接冲突。要的是**越界可见**，不是越界变红。
+
+### 晋升为标准字段
+`proposed` → canonical 走 `type:contract-change` 标准化 → `promoted` + `replaced_by`
++ 迁移函数（`mnesis_canonical.migrate`）+ 弃用窗口（期间旧名只 warning）。
+canonical 由此拿到一份「**什么即将变成标准**」的早期预警名单
+（`list_extensions(promotion_status="proposed")`），而不是半个月后靠一次全仓评估发现。
 
 ## C2 幂等语义（重复上传去重）
 

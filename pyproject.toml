@@ -25,7 +25,7 @@ mnesis-import = "mnesis_canonical.importers.__main__:main"
 include = ["mnesis_canonical*"]
 
 [tool.setuptools.package-data]
-mnesis_canonical = ["canonical_frame.schema.json", "manifest.schema.json", "py.typed", "embodiments/*.json", "skeletons/*.json"]
+mnesis_canonical = ["canonical_frame.schema.json", "manifest.schema.json", "py.typed", "embodiments/*.json", "skeletons/*.json", "extensions/*.json"]
 
 [tool.ruff]
 line-length = 100

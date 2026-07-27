@@ -16,6 +16,33 @@ are decoupled:
 
 ### Added
 
+- **保留扩展命名空间 `x-<vendor>.*` + 未知键警告 + 扩展登记表（#69）**。
+  #68 治「这一次的病」，本条治**病因**：Iris 四个手部字段能在库里躺半个月没人发现，
+  根因不是 schema 漏了 `additionalProperties: false`，而是**扩展的成本高于隐瞒的成本**。
+  采集面要新字段时的选项是「开跨仓契约卡 → 等 canonical 实现 → 等发版」或「直接写，
+  反正 ingest 放行」—— 后者今天零成本。只要这个梯度在，就还会有下一批隐形字段。
+
+  - **保留命名空间** `x-<vendor>.<field>`（如 `x-iris.hand_left_kpts3d`），
+    `canonical_frame.schema.json` 用 `patternProperties` 显式承认；该前缀下的键
+    **完全静默**（既不报错也不警告）。
+  - **扩展登记表** `extensions/registry.json` + `registry.schema.json`（root+package
+    双份），字段 `{name, owner_repo, since, description, promotion_status,
+    replaced_by?, reference?, notes?}`；读取 API `list_extensions()` /
+    `list_extension_names()` / `load_extension()` / `find_extension()`。
+    **登记只需一个本仓 PR** —— 不走 `type:contract-change`、不等实现、不等发版。
+    这一条是机制的命门：登记成本必须低于隐瞒成本。
+  - **警告通道**：`ValidationReport.warnings` + `frame_warnings(frame)`。
+    非标准、非开放键族（`observation.images.<cam>`）、非保留前缀的键 → **warning**；
+    CLI 打印 `warnings=N` 并逐条输出到 stderr，**退出码不变**。
+  - **不设 `additionalProperties: false`**：会打破 additive 承诺（钉在老 schema 版本
+    上的消费方，因上游加字段而变红），且与开放相机键集直接冲突。让越界**可见**，
+    而不是让它变成错误。
+  - **晋升路径**：`active`/`proposed` → 标准字段（`promoted` + `replaced_by` +
+    迁移函数 + 弃用窗口）。Iris 四个旧名已按 `promoted` 登记为样板；`hand_pose`
+    的 `replaced_by` 为 `null` —— 它是被**丢弃**式晋升的派生投影。
+
+  老数据零破坏：不带未知键的帧行为完全不变；带未知键的帧仍然**有效**，只是从此可见。
+
 - **手部关键点 `observation.hand.*`（C11 结案 · Parthenon#47 / #68 · Muso 拍板）**。
   七个**可选 / additive** 字段，把骨架级手部数据收进单一标准，取代 Iris 从 D-13 起
   私产的四个非标字段。老数据零破坏：不带这些键的帧校验行为完全不变。

@@ -115,6 +115,35 @@ HAND_KEYS = (
     HAND_SOURCE_KEY,
 )
 
+# --- Reserved extension namespace (v0.6+) ------------------------------------
+# A producer that needs a field the standard does not have yet writes it as
+# ``x-<vendor>.<field>`` (e.g. ``x-iris.hand_left_kpts3d``) and adds one line to
+# ``extensions/registry.json``.  That is the whole procedure: no cross-repo
+# contract card, no waiting on canonical, no release.
+#
+# Why this exists (issue #69, the root-cause half of Parthenon#47): four Iris
+# hand fields sat in production for two weeks without canonical knowing, not
+# because the schema forgot ``additionalProperties: false`` but because
+# extending cost more than hiding.  Declaring an extension has to be cheaper
+# than smuggling one, or the next batch of invisible fields is already being
+# written.  Keys outside this namespace are not rejected — that would break the
+# additive promise and collide with the open ``observation.images.<cam>`` key
+# set — they produce a *warning*, so trespass becomes visible instead of fatal.
+EXTENSION_PREFIX = "x-"
+EXTENSION_KEY_PATTERN = r"^x-[a-z0-9][a-z0-9-]*\.[A-Za-z0-9_][A-Za-z0-9_.-]*$"
+_EXTENSION_KEY_RE = re.compile(EXTENSION_KEY_PATTERN)
+
+
+def is_extension_key(key: str) -> bool:
+    """True if ``key`` is a well-formed ``x-<vendor>.<field>`` extension key."""
+    return bool(_EXTENSION_KEY_RE.match(key))
+
+
+# Key families with an OPEN member set: any key with this prefix is standard.
+# ``observation.images.<cam>`` is the reason ``additionalProperties: false``
+# can never be turned on — the camera name set belongs to the rig, not the spec.
+OPEN_KEY_PREFIXES = ("observation.images.",)
+
 # Required JSON keys for the default ego_v1 profile (dotted keys — LeRobot-style flat columns).
 _REQUIRED_KEYS_EGO_V1 = (
     "index",
@@ -160,6 +189,32 @@ def required_keys_for_profile(profile: str | None) -> tuple[str, ...]:
     if p == "robot_v2":
         return _REQUIRED_KEYS_ROBOT_V2
     return _REQUIRED_KEYS_EGO_V1
+
+
+# Every key the standard defines by name — required and optional, all profiles.
+# Pinned against ``canonical_frame.schema.json``'s ``properties`` by
+# ``tests/test_extensions.py`` so the two cannot drift.  Used only to decide
+# what is *unknown* (→ warning); it is never used to reject a frame.
+KNOWN_FRAME_KEYS = (
+    *_REQUIRED_KEYS_EGO_V1,
+    "spatial_anchor_id",
+    "spatial_anchor_pose_SE3",
+    "profile",
+    "embodiment_id",
+    "observation.eef_pose.left",
+    "observation.eef_pose.right",
+    "action.gripper",
+    *GRIPPER_KEYS,
+    *HAND_KEYS,
+)
+
+
+_KNOWN_FRAME_KEYS = frozenset(KNOWN_FRAME_KEYS)  # membership test, per frame key
+
+
+def is_known_frame_key(key: str) -> bool:
+    """True if ``key`` is a standard canonical field (incl. open key families)."""
+    return key in _KNOWN_FRAME_KEYS or key.startswith(OPEN_KEY_PREFIXES)
 
 
 # Fixed-length vector fields → expected length (applies to ego_v1 profile).

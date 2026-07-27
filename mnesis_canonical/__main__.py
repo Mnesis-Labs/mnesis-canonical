@@ -2,9 +2,12 @@
 
     python -m mnesis_canonical validate <path/to/data.jsonl>
 
-Prints a ``total=.. valid=.. errors=..`` summary and exits non-zero when the
-episode is not conformant, so it can gate CI and be reused by Mnesis Ambrosia
-ingest. Exit codes: 0 = all frames valid, 1 = validation errors, 2 = I/O error.
+Prints a ``total=.. valid=.. errors=.. warnings=..`` summary and exits non-zero
+when the episode is not conformant, so it can gate CI and be reused by Mnesis
+Ambrosia ingest. Exit codes: 0 = all frames valid, 1 = validation errors,
+2 = I/O error.  **Warnings never change the exit code** — they report keys the
+standard does not define (see SPEC.md §Extensions), and additive-only means old
+data may not turn red just because the standard grew.
 """
 from __future__ import annotations
 
@@ -32,15 +35,32 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         return 2
 
     report = validate_frames(frames, strict_vocab=args.strict_vocab)
-    print(f"total={report.total} valid={report.valid} errors={len(report.errors)}")
+    print(
+        f"total={report.total} valid={report.valid} "
+        f"errors={len(report.errors)} warnings={len(report.warnings)}"
+    )
 
+    limit = args.max_errors or None
     if report.errors:
-        limit = args.max_errors or None
         for line_no, msg in report.errors[:limit]:
             print(f"  line {line_no}: {msg}", file=sys.stderr)
         if args.max_errors and len(report.errors) > args.max_errors:
             print(f"  ... and {len(report.errors) - args.max_errors} more", file=sys.stderr)
-    elif report.total == 0:
+
+    # Warnings are printed but do NOT affect the exit code: undeclared keys are
+    # made visible, not fatal (issue #69 / SPEC.md §Extensions).
+    if report.warnings:
+        seen: set[str] = set()
+        deduped = [(n, m) for n, m in report.warnings if not (m in seen or seen.add(m))]
+        for line_no, msg in deduped[:limit]:
+            print(f"  warning: line {line_no}: {msg}", file=sys.stderr)
+        if args.max_errors and len(deduped) > args.max_errors:
+            print(
+                f"  ... and {len(deduped) - args.max_errors} more distinct warnings",
+                file=sys.stderr,
+            )
+
+    if report.total == 0 and not report.errors:
         print("error: episode is empty (no frames)", file=sys.stderr)
 
     return 0 if report.ok else 1
@@ -169,7 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-errors",
         type=int,
         default=20,
-        help="Max error lines to print (0 = print all).",
+        help="Max error (and distinct warning) lines to print (0 = print all).",
     )
     v.set_defaults(func=_cmd_validate)
 

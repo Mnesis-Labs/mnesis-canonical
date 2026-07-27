@@ -29,7 +29,13 @@ print(report.ok, report.total, report.errors)
 Validate an episode from the shell (exits non-zero on error — CI/ingest gate):
 ```bash
 python -m mnesis_canonical validate episodes/ep_0/data.jsonl   # or: mnesis-canonical validate ...
+# total=2 valid=2 errors=0 warnings=0
 ```
+Need a field the standard does not have yet? Write it as `x-<vendor>.<field>` and
+add one line to [`extensions/registry.json`](extensions/registry.json) — a PR to
+this repo alone. Anything undeclared outside that namespace shows up in
+`report.warnings` (and the CLI's `warnings=` count) **without** failing the
+episode. See [SPEC.md §Extensions](SPEC.md#extensions--the-reserved-x-vendor-namespace-additive-v06).
 Move episodes to/from LeRobot's columnar layout (exact round-trip):
 ```python
 from mnesis_canonical import to_lerobot, from_lerobot
