@@ -85,6 +85,13 @@ check-jsonschema --schemafile mnesis_canonical/canonical_frame.schema.json episo
 | `observation.gripper` | float | — | *all* opt | **C8** 夹爪开度 [0,1]（0=闭合，1=张开）；单/主夹爪 |
 | `observation.gripper.left` | float | — | robot_v2 opt | **C8** 左夹爪开度 [0,1]（双臂） |
 | `observation.gripper.right` | float | — | robot_v2 opt | **C8** 右夹爪开度 [0,1]（双臂） |
+| `observation.hand.left` | float[3K] | 3×K | *all* opt | **[experimental]** 左手关节**位置**，展平 `[x0,y0,z0,…]`，米；`K` = `observation.hand.layout` 的 `joint_count`。**手不在场时整键省略**（不发零向量、不发 null） |
+| `observation.hand.right` | float[3K] | 3×K | *all* opt | **[experimental]** 右手关节位置，同上 |
+| `observation.hand.left.rot` | float[4K] | 4×K | *all* opt | **[experimental]** 左手关节**朝向**，展平四元数 **{x,y,z,w}**；仅原生提供朝向的来源填（MediaPipe 类不填） |
+| `observation.hand.right.rot` | float[4K] | 4×K | *all* opt | **[experimental]** 右手关节朝向，同上 |
+| `observation.hand.layout` | str | — | *all* opt | **[experimental]** 骨架布局 id（`skeletons/<id>.json`），如 `mediapipe_hand_21` / `webxr_hand_25` / `openxr_hand_26`。**有关键点时必填** |
+| `observation.hand.frame` | str | — | *all* opt | **[experimental]** `world` / `head_anchored` / `hand_local` —— 关键点所在参考系，**有关键点时必填**。`head_anchored` = 手内自洽、手相对世界的绝对位置**不可信** |
+| `observation.hand.source` | str | — | *all* opt | **[experimental]** 溯源标签（开放集），如 `mediapipe_world+arcore_pose`。**只管溯源**，几何语义在 `observation.hand.frame` |
 | `spatial_anchor_id` | str\|null | — | *all* | 空间锚点 ID |
 | `profile` | str | — | *all* opt | 可选; `ego_v1` (默认) / `robot_v2` |
 | `embodiment_id` | str\|null | — | *all* opt | 引用 embodiment registry |

@@ -96,6 +96,13 @@ are **optional and additive** — frames without them validate unchanged.
 | `observation.gripper` | float | *all* optional | **C8** gripper opening `[0,1]` (0=closed, 1=open); single/main gripper |
 | `observation.gripper.left` | float | `robot_v2` optional | **C8** left gripper opening `[0,1]` (bimanual) |
 | `observation.gripper.right` | float | `robot_v2` optional | **C8** right gripper opening `[0,1]` (bimanual) |
+| `observation.hand.left` | float[3K] | *all* optional | **[experimental]** Left-hand joint **positions**, flattened `[x0,y0,z0, x1,y1,z1, …]` in metres. `K` = `joint_count` of `observation.hand.layout`. Absent hand = key **omitted entirely** |
+| `observation.hand.right` | float[3K] | *all* optional | **[experimental]** Right-hand joint positions; same rules |
+| `observation.hand.left.rot` | float[4K] | *all* optional | **[experimental]** Left-hand joint **orientations**, flattened quaternions **{x,y,z,w}**. Only from sources that natively provide it |
+| `observation.hand.right.rot` | float[4K] | *all* optional | **[experimental]** Right-hand joint orientations; same rules |
+| `observation.hand.layout` | str | *all* optional | **[experimental]** Skeleton layout id (`skeletons/<id>.json`), e.g. `mediapipe_hand_21`. **Required when any hand keypoint vector is present** |
+| `observation.hand.frame` | str | *all* optional | **[experimental]** One of `world`, `head_anchored`, `hand_local` — the reference frame of the keypoints. **Required when any hand keypoint vector is present** |
+| `observation.hand.source` | str | *all* optional | **[experimental]** Provenance label (open set), e.g. `mediapipe_world+arcore_pose`. Provenance **only** — geometry lives in `observation.hand.frame` |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) |
 | `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. |
 | `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` |
@@ -111,6 +118,86 @@ are **optional and additive** — frames without them validate unchanged.
 - Dotted keys (`observation.state`, `source.device`) are intentional flat columns (LeRobot style).
 - **Additive-only**: new fields do not break existing data. Profiles extend the
   schema without changing the wire format of previous profiles.
+- **Absent means unknown.** Never encode "unknown / not applicable" as an in-band
+  sentinel (`0`, a zero vector, `-1`, `NaN`, `""`) — omit the key. Consumers MUST
+  NOT substitute a default for a missing optional field. This is the rule behind
+  `action.gripper` absent ≠ `0.0`, `spatial_anchor_pose_SE3` absent = skip the
+  consistency check, and an untracked hand omitting `observation.hand.<side>`
+  rather than sending zeros.
+
+## Hand keypoints (C11, additive, `experimental`)
+
+Skeleton-level hand data as a first-class observation — the field that Eidolon's
+WebXR hand channel, Iris's on-device estimator, and Argus's offline refinement
+all write, instead of each capture surface inventing its own.
+
+### Variable length + a declared layout
+The keypoint vectors are **variable-length**. Their length is declared by
+`observation.hand.layout`, resolved against the **skeleton registry**
+(`skeletons/<id>.json`) — exactly the mechanism by which `embodiment_id`'s
+`joint_names` declares the length of `observation.state`:
+
+```
+len(observation.hand.<side>)      == 3 * layout.joint_count
+len(observation.hand.<side>.rot)  == 4 * layout.joint_count
+```
+
+A fixed `float[63]` would have frozen MediaPipe's 21-landmark topology into the
+open standard. WebXR Hand Input carries 25 joints and OpenXR 26, both with
+per-joint orientation, and skeleton retargeting consumes exactly that
+orientation — so a fixed length would have forced every XR producer to either
+down-project (losing orientation) or fork the field.
+
+Registered layouts:
+
+| id | joints | orientation | status |
+|---|---|---|---|
+| `mediapipe_hand_21` | 21 | no | `stable` |
+| `webxr_hand_25` | 25 | yes | `experimental` |
+| `openxr_hand_26` | 26 | yes | `experimental` |
+
+Adding a layout is a registry PR, not a schema change.
+
+### Reference frame — the 2.5D caveat, made machine-readable
+`observation.hand.frame` is **required whenever keypoints are present**:
+
+| value | meaning |
+|---|---|
+| `world` | Points are in the same world frame as `head_pose_SE3`. |
+| `head_anchored` | Metric and self-consistent **within the hand**, placed at the head/camera and rotated by the head pose — but the hand's **absolute position relative to the world is not recovered**. Monocular world-landmark estimators land here. |
+| `hand_local` | Origin is the hand itself; no world placement is claimed. |
+
+A consumer that needs world-localised hands filters on `frame == "world"`.
+It must **not** infer this from `observation.hand.source`: that is an open string
+set, and putting geometric semantics in a provenance label would force every
+consumer to maintain a hard-coded allow-list of source strings.
+
+### Presence
+An untracked hand **omits its key entirely** — never a zero vector, never `null`
+(see the iron rule above). `observation.hand.<side>.rot` may only appear
+alongside its own side's position vector.
+
+### Not on the wire: the concatenated LeRobot vector
+A single per-frame `[leftPresent, rightPresent, left…, right…]` observation
+vector is a **derived projection**: it is recomputable from the fields above, and
+its zero-padding for an absent hand contradicts the presence rule. Derived
+shapes belong to the exporter, not the wire format — otherwise every downstream
+trainer's convenience layout ends up as a redundant column with its own
+"which one wins" consistency check.
+
+### Migrating pre-standard data
+Data produced before this section (Mnesis-Iris, from D-13) used
+`hand_left_kpts3d` / `hand_right_kpts3d` / `hand_kpts_source` / `hand_pose`.
+The validator does **not** accept those names — aliases in an open standard never
+die. Rewrite once instead:
+
+```bash
+python -m mnesis_canonical migrate episodes/ep_0/data.jsonl --out episodes/ep_0/data.jsonl
+```
+
+or `mnesis_canonical.migrate_hand_v0_frames(frames)` in-process. The migration
+renames the three carried fields, drops the derived `hand_pose`, and declares
+`layout = mediapipe_hand_21` + `frame = head_anchored`.
 
 ## Episode layout (on disk / upload)
 ```
@@ -125,6 +212,7 @@ episodes/ep_<n>/
 - **Isaac / GR00T**: keep field names + units (SI metres, rad) compatible so episodes can feed NVIDIA physical-AI pipelines without re-labeling. Diff/decisions tracked here before any field is frozen.
 - **Profile backward compatibility**: v0.1 frames (no `profile` field) are treated as `ego_v1` and pass all validation unchanged.
 - **`action.gripper` (v0.4+, additive-only)**: old data without this field is **valid** — consumers MUST treat a missing `action.gripper` as "no gripper info" and MUST NOT default it to `0.0` (open) or any other value. When present it is a normalized `float` in `[0.0, 1.0]`; out-of-range or non-numeric values are rejected. The `action` vector length is unchanged (`ego_v1` = 6, `robot_v2` = N); the gripper is an **independent optional field**, not a widened `action`.
+- **`observation.hand.*` (C11, additive-only, `experimental`)**: old data without these keys is **valid**. Consumers MUST treat a missing hand key as "no hand data" and MUST NOT substitute zeros. The vector length is not fixed by the schema — resolve `observation.hand.layout` through the skeleton registry before reading. See §Hand keypoints.
 - **`observation.gripper[.left|.right]` (additive-only)**: the observation-side gripper closedness. **Same direction as `action.gripper`** — `0.0` = fully open, `1.0` = fully closed — so within one frame `action.gripper` and `observation.gripper` share a single, unambiguous scale (both `0.3` = the same "mostly open" state). Absence means no gripper observation (NOT `0.0`). Optional across all profiles; `.left` / `.right` are for bimanual `robot_v2`.
 
 ### Isaac Lab / GR00T field mapping (v0.2, working)
@@ -143,6 +231,7 @@ open items to align with the platform authority before freezing. ✅ = settled,
 | `head_pose_SE3` `float[7]` | (extra column) | root / sensor pose | ✅ SI m + quat — shares ⚠️ frame + quaternion items |
 | `t_ns` / `t_hw_ns` `int` | (extra column) | — (GR00T keys on `timestamp`) | ℹ️ Canonical-only; `t_hw_ns` is the pose↔video join key — drop on GR00T export |
 | `spatial_anchor_id` | (extra column) | — | ℹ️ Canonical-only spatial grounding |
+| `observation.hand.*` | (extra columns) | human-hand keypoints (retargeting input) | ℹ️ Canonical-only for now; SI m + quat `{x,y,z,w}`. Shares the ⚠️ frame + quaternion items below |
 | `profile` / `embodiment_id` | (metadata) | — | ℹ️ Canonical-only profile mechanism |
 | `source.device` / `source.modality` | (metadata) | embodiment tag / dataset metadata | ⚠️ map to GR00T embodiment tag — mapping table 待对齐 |
 | `tracking_state` | (extra column) | — | ℹ️ Canonical-only QA flag |
@@ -203,6 +292,13 @@ Additive, so no forced migration; adopt lazily:
 
 ## Versioning
 - Spec is versioned (`v0.2`). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
+- **Field-level status.** A field marked **`[experimental]`** in the table above is
+  standardised and validated, but **may still be renamed or reshaped before it goes
+  `stable`**, and such a change is not counted as breaking. Unmarked fields are
+  `stable`: frozen, extendable only additively, renameable only with a major bump.
+  This exists so a field that is *already in production somewhere* can be brought
+  inside the standard immediately — rather than staying non-standard for weeks
+  while its final shape is settled — without that speed implying a freeze.
 
 ## Conformance
 A producer is conformant if every line passes `mnesis_canonical.validate_frame` and

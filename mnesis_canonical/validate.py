@@ -25,6 +25,14 @@ from .schema import (
     GRIPPER_KEYS,
     GRIPPER_MAX,
     GRIPPER_MIN,
+    HAND_FRAME_KEY,
+    HAND_FRAMES,
+    HAND_KEYS,
+    HAND_LAYOUT_KEY,
+    HAND_POSITION_DIMS,
+    HAND_ROTATION_DIMS,
+    HAND_SIDES,
+    HAND_SOURCE_KEY,
     INT_KEYS,
     MANIPULATION_ACTIONS,
     MODALITIES,
@@ -33,6 +41,7 @@ from .schema import (
     VECTOR_LENGTHS,
     required_keys_for_profile,
 )
+from .skeleton_registry import load_skeleton
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "canonical_frame.schema.json"
 
@@ -97,6 +106,116 @@ def _validate_vector_field(
         if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
             errors.append(f"{key}[{i}] must be a finite number, got {x!r}")
             break  # one error per vector is enough
+
+
+def _numeric_vector_errors(key: str, val: object) -> list[str]:
+    """Shape/type errors for a flat numeric vector (no length expectation)."""
+    import math
+
+    if not isinstance(val, list):
+        return [f"{key} must be a list"]
+    if not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in val):
+        return [f"{key} must contain only numbers"]
+    for i, x in enumerate(val):
+        if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
+            return [f"{key}[{i}] must be a finite number, got {x!r}"]
+    return []
+
+
+def _validate_hand_block(frame: dict, errors: list[str]) -> None:
+    """Validate the optional hand keypoint block (C11, additive).
+
+    Absent = unknown: a frame carrying no hand key validates unchanged, and a
+    hand that is not tracked is omitted entirely rather than sent as zeros.
+
+    When keypoints ARE present, the block must be self-describing: the vector
+    length is checked against ``observation.hand.layout``'s ``joint_count`` in
+    the skeleton registry (3 numbers per joint for positions, 4 for
+    orientations), and ``observation.hand.frame`` must say which reference frame
+    the points live in.  Those two keys are what keep the vector meaningful to a
+    consumer that did not write it — hence required-when-present rather than
+    merely recommended.
+    """
+    if not any(key in frame for key in HAND_KEYS):
+        return
+
+    pos_keys = {side: f"observation.hand.{side}" for side in HAND_SIDES}
+    rot_keys = {side: f"observation.hand.{side}.rot" for side in HAND_SIDES}
+    present_sides = [s for s in HAND_SIDES if pos_keys[s] in frame]
+
+    # --- provenance label: optional, but must be a real label when present ---
+    if HAND_SOURCE_KEY in frame:
+        src = frame[HAND_SOURCE_KEY]
+        if not isinstance(src, str) or not src:
+            errors.append(f"{HAND_SOURCE_KEY} must be a non-empty string")
+
+    # --- reference frame: required whenever keypoints are present ---
+    if HAND_FRAME_KEY in frame:
+        hframe = frame[HAND_FRAME_KEY]
+        if hframe not in HAND_FRAMES:
+            errors.append(
+                f"{HAND_FRAME_KEY} must be one of {HAND_FRAMES}, got {hframe!r}"
+            )
+    elif present_sides:
+        errors.append(
+            f"{HAND_FRAME_KEY} is required when hand keypoints are present "
+            f"(one of {HAND_FRAMES})"
+        )
+
+    # --- orientation without positions is meaningless ---
+    for side in HAND_SIDES:
+        if rot_keys[side] in frame and pos_keys[side] not in frame:
+            errors.append(
+                f"{rot_keys[side]} requires {pos_keys[side]} in the same frame"
+            )
+
+    # --- layout: required when keypoints are present, and must resolve ---
+    joints: int | None = None
+    if HAND_LAYOUT_KEY in frame:
+        layout = frame[HAND_LAYOUT_KEY]
+        if not isinstance(layout, str) or not layout:
+            errors.append(f"{HAND_LAYOUT_KEY} must be a non-empty string")
+        else:
+            try:
+                entry = load_skeleton(layout)
+            except LookupError:
+                errors.append(
+                    f"{HAND_LAYOUT_KEY} '{layout}' is not a registered skeleton "
+                    f"layout (see skeletons/)"
+                )
+            else:
+                if entry.get("kind") != "hand":
+                    errors.append(
+                        f"{HAND_LAYOUT_KEY} '{layout}' is a "
+                        f"{entry.get('kind')!r} layout, not a hand layout"
+                    )
+                else:
+                    joints = int(entry["joint_count"])
+    elif present_sides or any(rot_keys[s] in frame for s in HAND_SIDES):
+        errors.append(
+            f"{HAND_LAYOUT_KEY} is required when hand keypoints are present"
+        )
+
+    # --- the vectors themselves ---
+    for side in HAND_SIDES:
+        for key, dims in ((pos_keys[side], HAND_POSITION_DIMS),
+                          (rot_keys[side], HAND_ROTATION_DIMS)):
+            if key not in frame:
+                continue
+            shape_errs = _numeric_vector_errors(key, frame[key])
+            if shape_errs:
+                errors.extend(shape_errs)
+                continue
+            if joints is None:
+                continue  # unresolvable layout — length is unknowable, already reported
+            expected = dims * joints
+            actual = len(frame[key])
+            if actual != expected:
+                errors.append(
+                    f"{key} must have length {expected} "
+                    f"({dims} per joint x {joints} joints for layout "
+                    f"'{frame[HAND_LAYOUT_KEY]}'), got {actual}"
+                )
 
 
 def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
@@ -235,6 +354,9 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
             errors.append(
                 f"{gkey} must be in [{GRIPPER_MIN}, {GRIPPER_MAX}], got {gval}"
             )
+
+    # --- optional hand keypoint block (C11, additive, all profiles) ---
+    _validate_hand_block(frame, errors)
 
     dev, mod = frame["source.device"], frame["source.modality"]
     if not isinstance(dev, str) or not isinstance(mod, str):

@@ -16,7 +16,8 @@ from .io import read_jsonl, write_jsonl
 from .isaac import to_isaac
 from .lerobot import to_lerobot
 from .manifest import manifest_for_episode, validate_manifest, write_manifest
-from .schema import get_schema_version
+from .migrate import HAND_V0_FRAME, HAND_V0_LAYOUT, migrate_hand_v0_frames
+from .schema import HAND_FRAMES, get_schema_version
 from .validate import validate_frames
 
 
@@ -102,6 +103,49 @@ def _cmd_convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_migrate(args: argparse.Namespace) -> int:
+    try:
+        frames = read_jsonl(args.path)
+    except FileNotFoundError:
+        print(f"error: file not found: {args.path}", file=sys.stderr)
+        return 2
+    except (OSError, ValueError) as e:
+        print(f"error: could not read {args.path}: {e}", file=sys.stderr)
+        return 2
+
+    if args.migration != "hand_v0":
+        print(
+            f"error: unknown migration '{args.migration}' (expected hand_v0)",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        migrated = migrate_hand_v0_frames(
+            frames, layout=args.layout, reference_frame=args.frame,
+        )
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    changed = sum(
+        1 for before, after in zip(frames, migrated, strict=True) if before != after
+    )
+    try:
+        write_jsonl(args.out, migrated)
+    except OSError as e:
+        print(f"error: could not write {args.out}: {e}", file=sys.stderr)
+        return 2
+
+    print(f"migrated={changed} unchanged={len(frames) - changed} out={args.out}")
+    report = validate_frames(migrated)
+    if not report.ok:
+        for line_no, msg in report.errors[:20]:
+            print(f"  line {line_no}: {msg}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mnesis-canonical",
@@ -155,6 +199,35 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Target format (lerobot → columnar JSON; isaac → JSONL)")
     c.add_argument("--out", required=True, help="Output file path")
     c.set_defaults(func=_cmd_convert)
+
+    mig = sub.add_parser(
+        "migrate",
+        help="Rewrite an episode produced before a field was standardised.",
+    )
+    mig.add_argument("path", help="Path to the source data.jsonl")
+    mig.add_argument(
+        "--migration",
+        default="hand_v0",
+        help=(
+            "Which migration to apply. 'hand_v0' rewrites the pre-C11 Iris hand "
+            "fields (hand_left_kpts3d / hand_right_kpts3d / hand_kpts_source) to "
+            "observation.hand.*, drops the derived hand_pose, and declares the "
+            "layout + reference frame."
+        ),
+    )
+    mig.add_argument(
+        "--layout",
+        default=HAND_V0_LAYOUT,
+        help=f"Skeleton layout id to declare (default: {HAND_V0_LAYOUT}).",
+    )
+    mig.add_argument(
+        "--frame",
+        default=HAND_V0_FRAME,
+        choices=list(HAND_FRAMES),
+        help=f"Value for observation.hand.frame (default: {HAND_V0_FRAME}).",
+    )
+    mig.add_argument("--out", required=True, help="Output data.jsonl path")
+    mig.set_defaults(func=_cmd_migrate)
     return parser
 
 
