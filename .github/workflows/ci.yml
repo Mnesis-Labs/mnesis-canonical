@@ -19,8 +19,7 @@ jobs:
       # 不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，
       # 在自托管 Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。
       - name: Show Python
-        shell: bash
-        run: python --version && pip --version
+        run: python --version
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: pytest -q
@@ -34,8 +33,7 @@ jobs:
       # 不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，
       # 在自托管 Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。
       - name: Show Python
-        shell: bash
-        run: python --version && pip --version
+        run: python --version
       - run: pip install -e ".[dev]"
       - run: python -m mnesis_canonical.contracts_check
 
@@ -48,7 +46,6 @@ jobs:
       # 不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，
       # 在自托管 Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。
       - name: Show Python
-        shell: bash
-        run: python --version && pip --version
+        run: python --version
       - run: pip install -e ".[dev]"
       - run: python -m mnesis_canonical.embodiment_check
