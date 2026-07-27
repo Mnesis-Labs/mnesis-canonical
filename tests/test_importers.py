@@ -130,6 +130,34 @@ def test_cli_no_command_returns_two(capsys):
     assert main([]) == 2
 
 
+def test_cli_list_returns_zero(capsys):
+    rc = main(["list"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "xrobotoolkit" in out
+    assert "pickle" in out
+    assert "airbot-mcap" in out
+
+
+def test_cli_list_json_returns_zero(capsys):
+    rc = main(["list", "--json"])
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert isinstance(data, list)
+    assert len(data) == 2  # xrobotoolkit has 2 formats
+    assert data[0]["importer"] == "xrobotoolkit"
+    assert data[0]["format"] == "pickle"
+    assert data[1]["format"] == "airbot-mcap"
+
+
+def test_cli_list_in_help(capsys):
+    import pytest
+
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    assert "list" in capsys.readouterr().out
+
+
 def test_cli_missing_file_returns_two(tmp_path, capsys):
     rc = main(["xrobotoolkit", "does/not/exist.pkl", "--out", str(tmp_path / "ep")])
     assert rc == 2
