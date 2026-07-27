@@ -2,6 +2,7 @@
 
     mnesis-import xrobotoolkit teleop_log_*.pkl --out out/ep0
     mnesis-import xrobotoolkit log.mcap --format airbot-mcap --out out/ep0
+    mnesis-import list
 
 Exit codes: 0 = ok, 1 = conversion error, 2 = I/O error.
 """
@@ -11,6 +12,7 @@ import argparse
 import json
 import sys
 
+from . import _registry
 from .airbot_mcap import import_mcap
 from .xrobotoolkit import import_pickle
 
@@ -35,12 +37,45 @@ def _cmd_xrobotoolkit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_list(args: argparse.Namespace) -> int:
+    """List registered importers with their supported input formats."""
+    rows: list[dict] = []
+    for entry in _registry.REGISTRY:
+        for fmt in entry["formats"]:
+            rows.append(
+                {
+                    "importer": entry["name"],
+                    "format": fmt["name"],
+                    "description": fmt["description"],
+                }
+            )
+
+    if args.json:
+        json.dump(rows, sys.stdout, indent=2)
+        print()
+    else:
+        # Tabular output: stable, grep-able, aligned columns.
+        name_w = max(len(r["importer"]) for r in rows) if rows else 9
+        fmt_w = max(len(r["format"]) for r in rows) if rows else 6
+        for r in rows:
+            print(f"{r['importer']:<{name_w}}  {r['format']:<{fmt_w}}  {r['description']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mnesis-import",
         description="Import third-party teleop logs into canonical episodes.",
     )
     sub = parser.add_subparsers(dest="command")
+
+    list_p = sub.add_parser("list", help="List registered importers and their input formats.")
+    list_p.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON array (one object per importer+format row).",
+    )
+    list_p.set_defaults(func=_cmd_list)
 
     x = sub.add_parser(
         "xrobotoolkit",
