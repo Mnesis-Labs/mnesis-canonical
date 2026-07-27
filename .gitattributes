@@ -2,6 +2,7 @@
 # (and diffs) stay deterministic. Episode data is LF-only.
 *.jsonl text eol=lf
 *.json  text eol=lf
+*.lock  text eol=lf
 *.py    text eol=lf
 *.md    text eol=lf
 *.toml  text eol=lf
