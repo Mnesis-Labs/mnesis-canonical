@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from mnesis_canonical import (
     LEROBOT_FEATURES,
     from_lerobot,
@@ -10,11 +12,16 @@ from mnesis_canonical import (
     to_lerobot,
 )
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "episode_0" / "data.jsonl"
+EXAMPLE = Path(__file__).resolve().parent.parent / "examples"
+
+
+def _episodes():
+    """Return paths to all example episode data.jsonl files."""
+    return sorted(EXAMPLE.glob("episode_*/data.jsonl"))
 
 
 def test_to_lerobot_exposes_native_features():
-    frames = read_jsonl(EXAMPLE)
+    frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
     columns = to_lerobot(frames)
     # Every LeRobot-native feature must be present as a column, 1:1, no renaming.
     for feature in LEROBOT_FEATURES:
@@ -25,12 +32,12 @@ def test_to_lerobot_exposes_native_features():
 
 
 def test_round_trip_is_exact():
-    frames = read_jsonl(EXAMPLE)
+    frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
     assert from_lerobot(to_lerobot(frames)) == frames
 
 
 def test_round_trip_without_optional_key():
-    frames = read_jsonl(EXAMPLE)
+    frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
     for f in frames:
         f.pop("spatial_anchor_id", None)  # frames lacking the optional key
     columns = to_lerobot(frames)
@@ -39,7 +46,53 @@ def test_round_trip_without_optional_key():
 
 
 def test_from_lerobot_ignores_extra_columns():
-    frames = read_jsonl(EXAMPLE)
+    """Non-canonical columns are still carried through (round-trip fidelity)."""
+    frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
     columns = to_lerobot(frames)
     columns["some_extra_feature"] = [None] * len(frames)  # non-canonical
-    assert from_lerobot(columns) == frames
+    # from_lerobot now preserves extra columns (round-trip principle).
+    restored = from_lerobot(columns)
+    assert "some_extra_feature" in restored[0]
+    assert restored == frames or all(
+        r["some_extra_feature"] is None for r in restored
+    )
+
+
+# ── All example episodes ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p.relative_to(EXAMPLE) for p in _episodes()],
+    ids=[p.stem for p in _episodes()],
+)
+def test_round_trip_all_episodes(path):
+    """to_lerobot → from_lerobot is exact for every example episode."""
+    frames = read_jsonl(EXAMPLE / path)
+    columns = to_lerobot(frames)
+    restored = from_lerobot(columns)
+    assert restored == frames, (
+        f"Mismatch for {path}:\n"
+        f"  frame keys:     {sorted(frames[0])}\n"
+        f"  lerobot cols:   {sorted(columns)}\n"
+        f"  restored keys:  {sorted(restored[0])}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p.relative_to(EXAMPLE) for p in _episodes()],
+    ids=[p.stem for p in _episodes()],
+)
+def test_no_dropped_or_invented_columns(path):
+    """to_lerobot emits exactly the union of keys present across frames."""
+    frames = read_jsonl(EXAMPLE / path)
+    columns = to_lerobot(frames)
+    frame_keys = set()
+    for f in frames:
+        frame_keys.update(f)
+    lerobot_keys = set(columns)
+    dropped = frame_keys - lerobot_keys
+    invented = lerobot_keys - frame_keys
+    assert not dropped, f"to_lerobot dropped keys from {path}: {sorted(dropped)}"
+    assert not invented, f"to_lerobot invented keys for {path}: {sorted(invented)}"
