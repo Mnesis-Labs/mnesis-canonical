@@ -22,7 +22,7 @@ def test_incomplete_subclass_cannot_be_instantiated():
         pass
 
     with pytest.raises(TypeError):
-        Incomplete()  # can't instantiate without override
+        Incomplete()  # type: ignore[reportAbstractUsage]  # can't instantiate without override
 
 
 def test_incomplete_subclass_partial_cannot_be_instantiated():
@@ -36,7 +36,7 @@ def test_incomplete_subclass_partial_cannot_be_instantiated():
             pass
 
     with pytest.raises(TypeError):
-        Partial()
+        Partial()  # type: ignore[reportAbstractUsage]
 
 
 # ── QuestAdapter ───────────────────────────────────────────────────────────────
