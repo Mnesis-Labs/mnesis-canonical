@@ -1,7 +1,9 @@
 """Integration test: wheel-installed package must serve the loader API.
 
 Builds a wheel, installs it into a temporary venv, and verifies that
-``list_embodiments()`` returns 5 entries from a non-source-tree directory.
+``list_embodiments()`` returns 5 entries from a non-source-tree directory — and
+that the *installed distribution* version matches ``__version__`` (#76: the two
+disagreed, so ``pip install`` gave 0.2.0 while the package reported 0.5.0).
 """
 from __future__ import annotations
 
@@ -10,6 +12,8 @@ import sys
 from pathlib import Path
 
 import pytest
+
+import mnesis_canonical
 
 WHEEL_DIR = Path(__file__).resolve().parent.parent
 
@@ -27,6 +31,10 @@ def test_wheel_install_loader(tmp_path: Path) -> None:
     whl_files = list(tmp_path.glob("mnesis_canonical-*.whl"))
     assert len(whl_files) == 1, f"Expected one wheel, found {whl_files}"
     whl = whl_files[0]
+    expected = mnesis_canonical.__version__
+    assert whl.name.startswith(f"mnesis_canonical-{expected}-"), (
+        f"wheel built as {whl.name}, but the package reports {expected}"
+    )
 
     # Create a temp venv and install the wheel
     venv = tmp_path / "venv"
@@ -46,14 +54,24 @@ def test_wheel_install_loader(tmp_path: Path) -> None:
     python = venv / "bin" / "python"
     if not python.exists():
         python = venv / "Scripts" / "python.exe"
-    code = "import mnesis_canonical as m; print(len(m.list_embodiments()))"
+    code = (
+        "import mnesis_canonical as m; "
+        "from importlib.metadata import version; "
+        "print(len(m.list_embodiments())); print(m.__version__); "
+        "print(version('mnesis-canonical'))"
+    )
     result = subprocess.run(
         [str(python), "-c", code],
         capture_output=True, text=True, cwd=tmp_path,
     )
     assert result.returncode == 0, f"Loader failed:\n{result.stderr}"
-    count = int(result.stdout.strip())
-    assert count == 5, f"Expected 5 embodiments, got {count}"
+    count, reported, installed = result.stdout.split()
+    assert int(count) == 5, f"Expected 5 embodiments, got {count}"
+    # What pip installed it as vs. what the package says about itself: #76's bug
+    # was exactly these two disagreeing, and the old assertion never looked.
+    assert installed == reported == expected, (
+        f"dist version {installed!r} != __version__ {reported!r} (source: {expected!r})"
+    )
 
     # The C12 class_id value domain is read from bundled taxonomy data at
     # validation time — if it does not ship in the wheel, every label a consumer

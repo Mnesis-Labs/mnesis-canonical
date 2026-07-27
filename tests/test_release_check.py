@@ -43,9 +43,9 @@ def _stub_run(monkeypatch, failing_labels=()):
     monkeypatch.setattr(rc, "_run", fake)
 
 
-def test_sections_cover_checklist_2_to_6():
+def test_sections_cover_checklist_1_to_6():
     keys = [s.key for s in rc.build_sections()]
-    assert keys == ["contracts", "embodiments", "lint", "tests", "smoke"]
+    assert keys == ["version", "contracts", "embodiments", "lint", "tests", "smoke"]
 
 
 def test_all_green_exits_zero_with_summary_last_line(all_tools, monkeypatch, capsys):
@@ -55,13 +55,16 @@ def test_all_green_exits_zero_with_summary_last_line(all_tools, monkeypatch, cap
     lines = out.strip().splitlines()
     assert SUMMARY_RE.match(lines[-1]), lines[-1]
     assert "failed=0" in lines[-1]
-    # §1/§7/§8 stay manual — reminded, never executed.
-    assert "§1 version bump" in out and "§7 git tag" in out and "§8 GitHub Release" in out
+    # §1's version strings are a gate now (#76); only its CHANGELOG rollover and
+    # §7/§8 stay manual — reminded, never executed.
+    assert "§1 version bump" not in out
+    assert "§1 CHANGELOG" in out and "§7 git tag" in out and "§8 GitHub Release" in out
 
 
 @pytest.mark.parametrize(
     ("label", "section"),
     [
+        ("python scripts/version_check.py", "version"),
         ("python -m mnesis_canonical.contracts_check", "contracts"),
         ("python -m mnesis_canonical.embodiment_check", "embodiments"),
         ("ruff check .", "lint"),

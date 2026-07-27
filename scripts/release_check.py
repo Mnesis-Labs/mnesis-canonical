@@ -1,9 +1,11 @@
 #!/usr/bin/env python
-"""Automate §2–§6 of ``docs/RELEASE_CHECKLIST_v1.0.md``.
+"""Automate §1–§6 of ``docs/RELEASE_CHECKLIST_v1.0.md``.
 
 Runs every machine-executable checklist item and exits non-zero if any fails, so
-"forgot to run one of the steps" stops being possible.  §1/§7/§8 stay manual —
-the script only prints a reminder for them.
+"forgot to run one of the steps" stops being possible.  §1's version-string half
+is a comparison of three strings, so it runs here too (#76 — it used to be a
+reminder and the strings drifted).  Only §1's CHANGELOG rollover and §7/§8 stay
+manual; the script prints a reminder for those.
 
     python scripts/release_check.py [--only SECTION] [--strict]
 """
@@ -20,7 +22,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
-MANUAL_REMINDER = "not automated: §1 version bump · §7 git tag & push · §8 GitHub Release"
+MANUAL_REMINDER = ("not automated: §1 CHANGELOG [Unreleased] rollover · "
+                   "§7 git tag & push · §8 GitHub Release")
+
+VERSION_CHECK = REPO_ROOT / "scripts" / "version_check.py"
 
 
 @dataclass(frozen=True)
@@ -52,6 +57,9 @@ _PY = [sys.executable]
 
 def build_sections() -> list[Section]:
     return [
+        Section("version", "§1 Version consistency", [
+            Step("python scripts/version_check.py", [*_PY, str(VERSION_CHECK)]),
+        ]),
         Section("contracts", "§2 Contracts integrity", [
             Step("python -m mnesis_canonical.contracts_check",
                  [*_PY, "-m", "mnesis_canonical.contracts_check"]),
@@ -139,7 +147,7 @@ def run(sections: list[Section], strict: bool = False) -> int:
 def build_parser(keys: list[str]) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python scripts/release_check.py",
-        description="Run §2–§6 of docs/RELEASE_CHECKLIST_v1.0.md.",
+        description="Run §1–§6 of docs/RELEASE_CHECKLIST_v1.0.md.",
     )
     parser.add_argument("--only", choices=keys, action="append", metavar="SECTION",
                         help=f"Run only this section (repeatable). One of: {', '.join(keys)}.")

@@ -7,8 +7,12 @@ and this project adheres to [SemVer-of-the-schema](README.md#compatibility-commi
 — the **package version** (this changelog) and the **schema version** (SPEC.md §Versioning)
 are decoupled:
 
-> **Package 0.3.0** introduces the **profile mechanism** (v0.2 schema) for additive
-> schema evolution. `ego_v1` = v0.1 backward-compatible default; `robot_v2` adds
+> **Package 0.5.0** is the current version — the same string as
+> `mnesis_canonical.__version__` and `pyproject.toml` `[project] version`, kept in
+> lockstep by `scripts/version_check.py`.
+>
+> The **profile mechanism** (v0.2 schema) for additive schema evolution landed in
+> **0.3.0**: `ego_v1` = v0.1 backward-compatible default; `robot_v2` adds
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
 
