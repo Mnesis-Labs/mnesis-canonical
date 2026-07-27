@@ -8,6 +8,7 @@ regardless of whether the package is installed from source or via pip.
 from __future__ import annotations
 
 import importlib.resources as _resources
+import importlib.resources.abc as _resources_abc
 import json
 from pathlib import Path
 
@@ -15,34 +16,36 @@ _PACKAGE = "mnesis_canonical.embodiments"
 _SCHEMA_FILE = "embodiment.schema.json"
 
 
-def _embodiment_paths() -> list[Path]:
-    """Return sorted list of paths to embodiment JSON files in the package data."""
+def _read_traversable(ref: _resources_abc.Traversable) -> dict:
+    """Read a JSON file from a Traversable (works for both file-system and zip/egg)."""
+    return json.loads(ref.read_text(encoding="utf-8"))
+
+
+def _embodiment_paths() -> list[_resources_abc.Traversable]:
+    """Return sorted list of Traversables for embodiment JSON files.
+
+    Uses ``importlib.resources`` native API (``Traversable.iterdir``, ``.name``)
+    rather than ``Path``, so the code works correctly even when the package is
+    distributed as a zip/egg (where ``Traversable`` is **not** a ``Path``).
+    """
     try:
-        # Python 3.9+ importlib.resources.files returns a Traversable
         ref = _resources.files(_PACKAGE)
     except (TypeError, AttributeError, ModuleNotFoundError):
-        # Fallback for older Python or edge cases: use the file system
         ref = Path(__file__).resolve().parent / "embodiments"
     return sorted(
-        p
-        for p in ref.iterdir()
-        if p.suffix == ".json" and p.name != _SCHEMA_FILE
+        (p for p in ref.iterdir() if p.name.endswith(".json") and p.name != _SCHEMA_FILE),
+        key=lambda t: t.name,
     )
-
-
-def _read_json(path: Path) -> dict:
-    """Read a JSON file from a path (string or Traversable)."""
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _load_schema() -> dict:
     """Load the bundled embodiment JSON Schema."""
     try:
         ref = _resources.files(_PACKAGE) / _SCHEMA_FILE
-        return _read_json(ref)
+        return _read_traversable(ref)
     except (TypeError, AttributeError, ModuleNotFoundError):
         ref = Path(__file__).resolve().parent / "embodiments" / _SCHEMA_FILE
-        return _read_json(ref)
+        return json.loads(ref.read_text(encoding="utf-8"))
 
 
 def _validate_via_schema(embodiment: dict, schema: dict) -> list[str]:
@@ -71,7 +74,7 @@ def list_embodiments() -> list[dict]:
         (excluding the schema file itself).  Each dict is the full JSON object
         from the file.
     """
-    return [_read_json(p) for p in _embodiment_paths()]
+    return [_read_traversable(p) for p in _embodiment_paths()]
 
 
 def load_embodiment(embodiment_id: str, *, validate: bool = False) -> dict:
@@ -92,7 +95,7 @@ def load_embodiment(embodiment_id: str, *, validate: bool = False) -> dict:
             or the embodiment fails schema validation.
     """
     for p in _embodiment_paths():
-        data = _read_json(p)
+        data = _read_traversable(p)
         if data.get("id") == embodiment_id:
             if validate:
                 schema = _load_schema()
