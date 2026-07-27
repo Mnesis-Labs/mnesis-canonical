@@ -259,19 +259,32 @@ class ValidationReport:
         return self.total > 0 and not self.errors
 
 
-def _head_pose_key(frame: dict) -> str | None:
-    """Extract a reproducible key for the head_pose_SE3 (position part only).
+def _anchor_pose_key(frame: dict) -> str | None:
+    """Reproducible key for an anchor's OWN world-frame position.
 
-    Returns a short string like ``"0.0_1.2_0.0"`` from the translation vector
-    (first 3 elements of head_pose_SE3), or ``None`` if the field is missing or
-    not a valid list.  This is used to detect conflicting anchor definitions
-    (same anchor_id, different physical position).
+    Reads ``spatial_anchor_pose_SE3`` (translation part) and returns a short
+    string like ``"0.000_1.200_0.000"``, or ``None`` when the field is absent
+    or unreadable — in which case the caller must skip the consistency check
+    rather than fall back to another field.
+
+    Why not ``head_pose_SE3`` (the pre-0.5.0 behaviour, Parthenon #26)
+    ---------------------------------------------------------------
+    Until 0.5.0 this keyed off the *head* pose, i.e. where the observer stood.
+    But a ``spatial_anchor_id`` names a fixed point in the world, while the head
+    moves — that is the definition of an ego capture. Binding the two meant
+    "an anchor may only be referenced while the operator holds perfectly still",
+    at 1 mm tolerance. Every real walking capture that referenced one anchor was
+    rejected at ingest (mnesis-ambrosia ``POST /api/episodes`` → 422).
+
+    An anchor's identity now comes from the anchor itself. Producers that cannot
+    localise the anchor simply omit the field: the id still travels, only the
+    cross-frame consistency check is skipped.
     """
-    hp = frame.get("head_pose_SE3")
-    if not isinstance(hp, list) or len(hp) < 3:
+    ap = frame.get("spatial_anchor_pose_SE3")
+    if not isinstance(ap, list) or len(ap) < 3:
         return None
     # Round to 1 mm precision to tolerate minor capture noise.
-    tx, ty, tz = hp[0], hp[1], hp[2]
+    tx, ty, tz = ap[0], ap[1], ap[2]
     if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (tx, ty, tz)):
         return None
     return f"{tx:.3f}_{ty:.3f}_{tz:.3f}"
@@ -313,8 +326,10 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
         if aid is not None and isinstance(aid, str) and aid:
             if aid in defined_anchors:
                 first_line, first_pose = defined_anchors[aid]
-                current_pose = _head_pose_key(frame)
-                # Conflicting anchor definition: same anchor_id, different position.
+                current_pose = _anchor_pose_key(frame)
+                # Conflicting anchor definition: same anchor_id, but the ANCHOR
+                # itself is claimed to be in two different places. The observer
+                # (head_pose_SE3) is free to move — see _anchor_pose_key.
                 conflict = (
                     first_pose is not None
                     and current_pose is not None
@@ -323,13 +338,13 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
                 if conflict:
                     errs.append(
                         f"conflicting spatial_anchor_id '{aid}' at line {i}: "
-                        f"position {current_pose} differs from first definition "
-                        f"at line {first_line} (position {first_pose})"
+                        f"spatial_anchor_pose_SE3 position {current_pose} differs from "
+                        f"first definition at line {first_line} (position {first_pose})"
                     )
-                # If the pose is the same (or one/both are unreadable), it's a
-                # valid reuse of the same anchor — no error.
+                # Same pose — or the producer didn't supply spatial_anchor_pose_SE3
+                # on one/both frames — is a valid reuse of the anchor. Not an error.
             else:
-                defined_anchors[aid] = (i, _head_pose_key(frame))
+                defined_anchors[aid] = (i, _anchor_pose_key(frame))
 
         if not errs:
             report.valid += 1
