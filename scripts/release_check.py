@@ -75,11 +75,9 @@ def build_sections() -> list[Section]:
                  [*_PY, "-m", "mnesis_canonical", "validate", "examples/episode_0/data.jsonl"]),
             Step("python -m mnesis_canonical.importers --help",
                  [*_PY, "-m", "mnesis_canonical.importers", "--help"]),
-            # The checklist lists an `importers list` subcommand that the CLI
-            # does not implement yet; advisory so it flips to PASS once it lands.
+            # `list` landed in #63 — no longer advisory, a broken registry is a gate.
             Step("python -m mnesis_canonical.importers list",
-                 [*_PY, "-m", "mnesis_canonical.importers", "list"],
-                 advisory=True, note="advisory — `list` subcommand not implemented yet"),
+                 [*_PY, "-m", "mnesis_canonical.importers", "list"]),
         ]),
     ]
 
