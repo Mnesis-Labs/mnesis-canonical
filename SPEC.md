@@ -58,8 +58,8 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
   keys are **optional and additive** — frames without them validate unchanged.
 
 ### Gripper channel (C8, additive)
-The gripper is a **continuous scalar in `[0, 1]`** (0 = fully closed, 1 = fully
-open) carried as an optional first-class field — not folded into
+The gripper is a **continuous scalar in `[0.0, 1.0]`** (`0.0` = fully open, `1.0` = fully
+closed) carried as an optional first-class field — not folded into
 `observation.state`/`action` — so consumers can read it without knowing a
 registry's vector layout:
 
@@ -67,9 +67,9 @@ registry's vector layout:
 - `observation.gripper.left` / `observation.gripper.right` — per-side grippers
   for bimanual `robot_v2` embodiments (mirrors `observation.eef_pose.{left,right}`).
 
-Semantics align 1:1 with the C3 xr_bridge wire field `arms[].gripper` (`夹爪开度
-[0,1]`, see `contracts/XR_ROBOT_CONTRACT.md`): a teleop frame records the
-commanded/executed gripper opening on the same `[0,1]` scale. All gripper keys
+Semantics align 1:1 with the C3 xr_bridge wire field `arms[].gripper` (`夹爪闭合
+程度 [0,1]`, see `contracts/XR_ROBOT_CONTRACT.md`): a teleop frame records the
+commanded/executed gripper closedness on the same `[0,1]` closedness scale. All gripper keys
 are **optional and additive** — frames without them validate unchanged.
 
 ## Fields (all required unless noted)
