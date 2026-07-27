@@ -4,22 +4,28 @@ on:
     types: [opened, ready_for_review, reopened]
 jobs:
   review:
-    # ── 2026-07-27 Muso 拍板「方案 C」：自动评审放开到所有同仓分支 ──────────────
-    # 起因：canonical PR#58（分支 fix/anchor-identity-issue-26）四项 CI 全绿、
-    # mergeStateStatus CLEAN，却因原来的 startsWith(head_ref,'agent/'|'claude/')
-    # 判定 SKIPPED —— 评审不跑、自动合并自然不接手，PR 无限期挂着且没有任何提示。
+    # ── 2026-07-27 方案 C：自动评审覆盖所有同仓分支 ────────────────────────────
+    # 合并权仍收紧：run-review.{ps1,sh} 只对 agent/* 与 claude/* 自动 squash merge，
+    # 其余分支评审通过后只留一条「等你点合并」的评论。两机脚本已同步该策略。
     #
-    # 现在：所有**同仓**分支的 PR 都会被评审（人写的也能拿到反馈）。
-    # 合并权仍收紧：run-review.ps1 只对 agent/* 与 claude/* 分支自动 squash merge，
-    # 其余分支评审通过后只留一条「等你点合并」的评论。策略单点在 run-review.ps1。
+    # ── 2026-07-28 双机评审：runs-on 从单机标签放开到 self-hosted ──────────────
+    # 起因：取消按仓分区后派活是双机了，评审却仍钉死在 Windows 一台
+    # （ambrosia 实测 mnesis-local busy=true 时，闲着的 mac runner 接不了，
+    # 评审排队 20 分钟）——派活的瓶颈被搬到了评审。
+    # 每仓恰好两台 runner（Windows + macOS），只共享 self-hosted 标签，故用它。
     #
-    # SECURITY（放开 if: 的同时必须补上，否则严格变差）：本 job 跑在自托管 runner
-    # 并直接执行 Muso 本机的 run-review.ps1。若不限定 head repo，任何人开一个 fork
-    # PR 就能触发本机执行（自托管 runner 经典事故形态）。此前是靠分支名前缀间接挡住的
-    # —— 放开前缀条件后，「PR 来自本仓自身分支」成为唯一防线，必须显式保留。
+    # SECURITY：本 job 在自托管 runner 上直接执行本机脚本。fork PR 必须挡住，
+    # 否则任何人开个 fork PR 就能触发本机执行（自托管 runner 经典事故形态）。
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, mnesis-mnesis-canonical]
+    runs-on: [self-hosted]
     steps:
-      - name: reviewer
+      # 两台机器的评审脚本路径与解释器不同，按 runner.os 分派。
+      # 参数签名一致（-Pr / -Repo），行为由各自脚本保证一致。
+      - name: reviewer (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: pwsh -File D:\Github\_ops\orchestration\run-review.ps1 -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
+      - name: reviewer (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: bash "$HOME/Documents/GitHub/Parthenon/cockpit/worker/run-review.sh" -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
