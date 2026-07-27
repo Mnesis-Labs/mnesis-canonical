@@ -6,6 +6,21 @@
 *.md    text eol=lf
 *.toml  text eol=lf
 
+# ── 整目录钉死 LF：门禁按 sha256 比字节，换行符必须与扩展名无关 ────────────────
+# 上面那组规则是按扩展名的白名单。contracts/ 与 skeletons/ 眼下恰好只有 .md/.json，
+# 所以「碰巧」被覆盖到；但 contracts_check 哈希的是 contracts/ 下**除 contracts.lock
+# 与 README.md 外的所有文件**，与扩展名无关。往 contracts/ 放一个 .yaml/.txt/无扩展名
+# 的文件，它立刻进入哈希集合却没有 eol 属性——Windows 上 core.autocrlf 把它转成 CRLF、
+# mac 上保持 LF，两机 checkout 出来的字节不同，contracts_check 就会因为与契约内容
+# 无关的原因变红。CI 放开到双机（#78/#79）之后这个坑才真正够得着：以前只有一台
+# Windows 跑 CI，机器间不一致压根没机会暴露。
+#
+# 实测现状：contracts.lock 自己就是这个形态（index=LF，Windows 工作区=CRLF）。它不在
+# 哈希集合里所以今天没出事，但安全边际是 0。改成按路径覆盖整个目录。
+contracts/**  text eol=lf
+skeletons/**  text eol=lf
+
 # Importer test fixtures are binary containers — never normalize line endings.
+# 放在最后：真正的二进制即便落进上面的目录也不该被 eol 规则改写（后写的规则优先）。
 *.pkl   binary
 *.mcap  binary
