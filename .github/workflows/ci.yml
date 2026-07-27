@@ -9,43 +9,55 @@ on:
 permissions:
   contents: read
 
+# ── 2026-07-28 双机化（CI_POLICY R1）──────────────────────────────────────────
+# 此前三个 job 全钉 [self-hosted, Windows, X64]，mac runner 接不了。实测代价：
+# 本仓一度 6 个 run 同时排队、最老的等 50 分钟，而同仓 mac runner 全程 busy=false。
+#
+# 原来钉 Windows 的真实原因是 mac 侧 homebrew Python 的 PEP 668 让 pip install 被拒
+# （CI_POLICY §290 记为「mac 腿未闭环」）。现在两台机器都装了 uv，uv 建的 venv 完全
+# 绕开 PEP 668，且 uv 的命令在 Windows / macOS 上完全一致 —— 不需要按 shell 分支。
+#
+# 放开前已在两台机器上实跑同一组步骤：
+#   mac(nextscene-mac01, python3.14 + uv 0.11.32)  : ruff 通过 / 320 passed / contracts OK / embodiment OK
+#   win(nextscene-core,  python3.13 + uv 0.11.28)  : ruff 通过 / 320 passed / contracts OK / embodiment OK
+#
+# `uv venv --seed` 的 --seed 不能去掉：不带它建出来的 venv 没有 pip，
+# tests/test_wheel_install.py 里的 `python -m pip wheel` 会 "No module named pip" 而失败
+# （实测 mac 上 319 passed / 1 failed，加 --seed 后 320 passed）。
+#
+# 仍然不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，在自托管
+# Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。uv 用机器上已有的
+# Python 建 venv，没有这个问题，且顺带把依赖装进项目级 venv 而不是污染全局环境。
 jobs:
   test:
     name: Ruff · Pytest
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted]
     steps:
       - uses: actions/checkout@v4
-      # 自托管 runner 用机器上预装的 Python（CI_POLICY R1）。
-      # 不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，
-      # 在自托管 Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。
-      - name: Show Python
-        run: python --version
-      - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: pytest -q
+      - name: Toolchain
+        run: uv --version
+      - name: Venv + deps
+        run: uv venv --seed
+      - run: uv pip install -e ".[dev]"
+      - run: uv run ruff check .
+      - run: uv run pytest -q
 
   contracts-check:
     name: Contracts integrity
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted]
     steps:
       - uses: actions/checkout@v4
-      # 自托管 runner 用机器上预装的 Python（CI_POLICY R1）。
-      # 不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，
-      # 在自托管 Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。
-      - name: Show Python
-        run: python --version
-      - run: pip install -e ".[dev]"
-      - run: python -m mnesis_canonical.contracts_check
+      - name: Venv + deps
+        run: uv venv --seed
+      - run: uv pip install -e ".[dev]"
+      - run: uv run python -m mnesis_canonical.contracts_check
 
   embodiment-check:
     name: Embodiment registry
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: [self-hosted]
     steps:
       - uses: actions/checkout@v4
-      # 自托管 runner 用机器上预装的 Python（CI_POLICY R1）。
-      # 不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，
-      # 在自托管 Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。
-      - name: Show Python
-        run: python --version
-      - run: pip install -e ".[dev]"
-      - run: python -m mnesis_canonical.embodiment_check
+      - name: Venv + deps
+        run: uv venv --seed
+      - run: uv pip install -e ".[dev]"
+      - run: uv run python -m mnesis_canonical.embodiment_check
