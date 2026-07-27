@@ -161,18 +161,59 @@ def test_positive_frame_index_increasing_accepted(good_frame):
 
 
 def test_duplicate_spatial_anchor_rejected(good_frame):
-    """Same anchor_id in two frames with different positions → conflict error."""
+    """Same anchor_id claiming two different ANCHOR positions → conflict error."""
     f0 = good_frame()
     f0["spatial_anchor_id"] = "anchor-A"
+    f0["spatial_anchor_pose_SE3"] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     f1 = good_frame()
     f1["frame_index"] = 1
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-A"
-    f1["head_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # different position
+    f1["spatial_anchor_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # anchor moved
     report = validate_frames([f0, f1])
     assert not report.ok
     assert any("conflicting" in m and "anchor-A" in m for _, m in report.errors)
+
+
+def test_moving_head_with_stable_anchor_accepted(good_frame):
+    """0.5.0 regression guard (Parthenon #26): the observer may move.
+
+    Pre-0.5.0 the conflict check keyed off head_pose_SE3, so an ego capture where
+    the operator walked while referencing one anchor was rejected at ingest —
+    which is every real ego capture. The anchor's identity now comes from
+    spatial_anchor_pose_SE3; the head is free to move.
+    """
+    frames = []
+    for i in range(5):
+        f = good_frame()
+        f["frame_index"] = i
+        f["t_ns"] = (i + 1) * 1_000_000
+        f["t_hw_ns"] = (i + 1) * 1_000_000_000
+        f["spatial_anchor_id"] = "anchor-room"
+        f["spatial_anchor_pose_SE3"] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # anchor fixed
+        f["head_pose_SE3"] = [0.1 * i, 0.0, 0.2, 0.0, 0.0, 0.0, 1.0]  # operator walks
+        frames.append(f)
+    report = validate_frames(frames)
+    assert report.ok, report.errors
+
+
+def test_anchor_without_pose_skips_consistency_check(good_frame):
+    """Producers that cannot localise the anchor omit spatial_anchor_pose_SE3.
+
+    The id still travels; only the cross-frame consistency check is skipped —
+    it must NOT silently fall back to head_pose_SE3.
+    """
+    f0 = good_frame()
+    f0["spatial_anchor_id"] = "anchor-B"
+    f1 = good_frame()
+    f1["frame_index"] = 1
+    f1["t_ns"] = 2_000_000
+    f1["t_hw_ns"] = 2_000_000_000
+    f1["spatial_anchor_id"] = "anchor-B"
+    f1["head_pose_SE3"] = [9.0, 9.0, 9.0, 0.0, 0.0, 0.0, 1.0]  # wildly different head
+    report = validate_frames([f0, f1])
+    assert report.ok, report.errors
 
 
 def test_undefined_spatial_anchor_rejected(good_frame):
@@ -197,15 +238,16 @@ def test_unique_spatial_anchors_accepted(good_frame):
 
 
 def test_same_anchor_same_position_accepted(good_frame):
-    """Same anchor_id in two frames with same position → valid reuse."""
+    """Same anchor_id, same anchor pose → valid reuse."""
     f0 = good_frame()
     f0["spatial_anchor_id"] = "anchor-A"
+    f0["spatial_anchor_pose_SE3"] = [0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
     f1 = good_frame()
     f1["frame_index"] = 1
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-A"
-    # Same head_pose_SE3 as good_frame default → consistent anchor definition
+    f1["spatial_anchor_pose_SE3"] = [0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
     report = validate_frames([f0, f1])
     assert report.ok, report.errors
 
@@ -221,18 +263,19 @@ def test_multiple_conflicting_anchor_errors(good_frame):
     """Three frames with the same anchor_id → error on each conflicting position."""
     f0 = good_frame()
     f0["spatial_anchor_id"] = "anchor-X"
+    f0["spatial_anchor_pose_SE3"] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     f1 = good_frame()
     f1["frame_index"] = 1
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-X"
-    f1["head_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # different position
+    f1["spatial_anchor_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # different anchor pos
     f2 = good_frame()
     f2["frame_index"] = 2
     f2["t_ns"] = 3_000_000
     f2["t_hw_ns"] = 3_000_000_000
     f2["spatial_anchor_id"] = "anchor-X"
-    f2["head_pose_SE3"] = [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # another different position
+    f2["spatial_anchor_pose_SE3"] = [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # another one
     report = validate_frames([f0, f1, f2])
     assert not report.ok
     assert len(report.errors) == 2  # two conflicting frames of anchor-X
@@ -259,18 +302,20 @@ def test_anchor_conflict_messages_are_descriptive(good_frame):
     """Conflict error message includes the anchor_id and both positions."""
     f0 = good_frame()
     f0["spatial_anchor_id"] = "anchor-A"
+    f0["spatial_anchor_pose_SE3"] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     f1 = good_frame()
     f1["frame_index"] = 1
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-A"
-    f1["head_pose_SE3"] = [5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    f1["spatial_anchor_pose_SE3"] = [5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     report = validate_frames([f0, f1])
     assert not report.ok
     msg = report.errors[0][1]
     assert "anchor-A" in msg
-    assert "0.000" in msg  # first frame position (default: [0.0, 0.0, 0.0, ...])
-    assert "5.000" in msg  # second frame position
+    assert "0.000" in msg  # first anchor position
+    assert "5.000" in msg  # conflicting anchor position
+    assert "spatial_anchor_pose_SE3" in msg  # names the field that actually decides
 
 
 def test_anchor_errors_include_cli_in_output(capsys, tmp_path, good_frame):
@@ -280,12 +325,13 @@ def test_anchor_errors_include_cli_in_output(capsys, tmp_path, good_frame):
     bad = tmp_path / "data.jsonl"
     f0 = good_frame()
     f0["spatial_anchor_id"] = "anchor-A"
+    f0["spatial_anchor_pose_SE3"] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
     f1 = good_frame()
     f1["frame_index"] = 1
     f1["t_ns"] = 2_000_000
     f1["t_hw_ns"] = 2_000_000_000
     f1["spatial_anchor_id"] = "anchor-A"
-    f1["head_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # conflicting position
+    f1["spatial_anchor_pose_SE3"] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]  # conflicting anchor
     import json
     bad.write_text(
         json.dumps(f0) + "\n" + json.dumps(f1) + "\n", encoding="utf-8"

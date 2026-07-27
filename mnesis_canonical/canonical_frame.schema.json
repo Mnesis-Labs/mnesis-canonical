@@ -75,6 +75,11 @@
       "type": ["string", "null"],
       "description": "ARCore Anchor id (optional, recommended)."
     },
+    "spatial_anchor_pose_SE3": {
+      "type": ["array", "null"],
+      "items": { "type": "number" },
+      "description": "The ANCHOR's own pose in the world frame [tx,ty,tz, qx,qy,qz,qw] (optional). This — not head_pose_SE3 — is what identifies an anchor. Supply it when the capture surface can localise the anchor; conflicting definitions of the same spatial_anchor_id are then detected against it. Omit when unavailable: the anchor id is still carried, only the consistency check is skipped."
+    },
     "source.device": {
       "type": "string",
       "description": "Capture surface, e.g. phone, glasses, quest, pico, robot, sim (open set)."

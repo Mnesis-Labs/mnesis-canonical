@@ -97,6 +97,7 @@ are **optional and additive** — frames without them validate unchanged.
 | `observation.gripper.left` | float | `robot_v2` optional | **C8** left gripper opening `[0,1]` (bimanual) |
 | `observation.gripper.right` | float | `robot_v2` optional | **C8** right gripper opening `[0,1]` (bimanual) |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) |
+| `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. |
 | `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) |
 | `source.device` | str | *all* | one of `phone, glasses, quest, pico, robot, sim` (open set) |

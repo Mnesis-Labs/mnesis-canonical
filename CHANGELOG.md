@@ -14,6 +14,27 @@ are decoupled:
 
 ## [Unreleased]
 
+### Fixed
+
+- **`spatial_anchor_id` 的身份来源改为 anchor 自己**（Parthenon#26 拍板 B；破坏性放宽）。
+  0.4.0 引入的冲突校验（#47/PR#55）用 `head_pose_SE3` 的平移分量当 anchor 的身份，
+  1mm 容差内不同即判 `conflicting spatial_anchor_id`。但 `spatial_anchor_id` 命名的是
+  **世界系里的固定点**，`head_pose_SE3` 是**观察者的位姿** —— 后者在 ego 采集里必然移动，
+  这正是 ego 采集的定义。两者绑定等于「只有操作者一动不动时才能引用某个 anchor」，
+  **任何戴着头显走动并引用同一 anchor 的真实 episode 都会在 ingest 被拒**
+  （mnesis-ambrosia `POST /api/episodes` → 422，实测）。
+
+  现在：冲突只对新增的可选字段 `spatial_anchor_pose_SE3`（anchor 自身的世界系位姿）比较。
+  该字段缺失时**跳过一致性检查**，不再回落到 `head_pose_SE3`。悬空/空串引用检测不变。
+
+  迁移：采集端若能定位 anchor，请填 `spatial_anchor_pose_SE3`；填不了就不填 —— 只是失去
+  这一项交叉校验，不影响其他任何校验。已入库数据无需改动。
+
+### Added
+
+- **`spatial_anchor_pose_SE3`（可选）** —— anchor 在世界系的位姿 `[tx,ty,tz, qx,qy,qz,qw]`。
+  见上条。
+
 ### Added
 
 - **Optional `observation.gripper` channel** (additive-only; Parthenon#20 拍板 A).
