@@ -1,0 +1,41 @@
+{
+  "id": "mediapipe_hand_21",
+  "display_name": "MediaPipe Hand (21 landmarks)",
+  "kind": "hand",
+  "status": "stable",
+  "joint_count": 21,
+  "joint_names": [
+    "wrist",
+    "thumb_cmc",
+    "thumb_mcp",
+    "thumb_ip",
+    "thumb_tip",
+    "index_finger_mcp",
+    "index_finger_pip",
+    "index_finger_dip",
+    "index_finger_tip",
+    "middle_finger_mcp",
+    "middle_finger_pip",
+    "middle_finger_dip",
+    "middle_finger_tip",
+    "ring_finger_mcp",
+    "ring_finger_pip",
+    "ring_finger_dip",
+    "ring_finger_tip",
+    "pinky_mcp",
+    "pinky_pip",
+    "pinky_dip",
+    "pinky_tip"
+  ],
+  "parents": [
+    -1, 0, 1, 2, 3,
+    0, 5, 6, 7,
+    5, 9, 10, 11,
+    9, 13, 14, 15,
+    13, 17, 18, 19
+  ],
+  "has_orientation": false,
+  "length_unit": "m",
+  "source_spec": "https://developers.google.com/mediapipe/solutions/vision/hand_landmarker",
+  "notes": "Positions only — MediaPipe hand landmarks carry no per-joint orientation, so observation.hand.<side>.rot is never filled for this layout. The palm chain (wrist→index_mcp→middle_mcp→ring_mcp→pinky_mcp) follows MediaPipe HAND_CONNECTIONS; the extra closing edge (wrist, pinky_mcp) is dropped so parents forms a tree. Producers using MediaPipe *world* landmarks with a head-anchored placement MUST declare observation.hand.frame = head_anchored: the pose is metric and self-consistent within the hand, but absolute depth is not recovered."
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mnesis-Labs/mnesis-canonical/blob/main/skeletons/skeleton.schema.json",
+  "title": "Mnesis Skeleton Layout Registry",
+  "description": "Schema for skeleton layout entries: one JSON file per keypoint topology. Authority: SPEC.md §Hand keypoints / C11 (Parthenon#47). A layout declares how many joints a keypoint vector carries and what each index means, so a canonical frame can carry a VARIABLE-length keypoint vector plus a layout id instead of hard-coding one vendor's joint count. Same mechanism as the embodiment registry's joint_names for observation.state.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Layout identifier, used as filename stem and as the value of observation.hand.layout (e.g. 'mediapipe_hand_21')."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name (e.g. 'MediaPipe Hand (21 landmarks)')."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["hand", "body"],
+      "description": "What the layout describes. 'hand' layouts are referenced by observation.hand.layout; 'body' is reserved for the body-pose half of C11."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["experimental", "stable", "deprecated"],
+      "description": "Field-level status (see SPEC §Versioning). 'experimental' layouts MAY be renamed or reshaped before they go stable; 'stable' layouts are frozen."
+    },
+    "joint_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of joints K. A position vector for this layout has exactly 3*K numbers; an orientation vector has exactly 4*K."
+    },
+    "joint_names": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Joint names in wire order — index i of this array names elements [3i, 3i+1, 3i+2] of the position vector. Length MUST equal joint_count."
+    },
+    "parents": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": -1 },
+      "description": "Parent index per joint (-1 = root). Length MUST equal joint_count. This is the skeleton tree used for retargeting and visualisation; it is derived from the source spec's connection list."
+    },
+    "has_orientation": {
+      "type": "boolean",
+      "description": "Whether the upstream source natively provides per-joint orientation. Informational: producers that have it fill observation.hand.<side>.rot, which is optional regardless."
+    },
+    "length_unit": {
+      "type": "string",
+      "enum": ["m"],
+      "description": "Length unit of the position vector. SI metres — canonical does not accept other units."
+    },
+    "source_spec": {
+      "type": "string",
+      "description": "URL of the upstream specification this layout mirrors."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-form caveats (e.g. what a down-projection from another layout loses)."
+    }
+  },
+  "required": [
+    "id",
+    "display_name",
+    "kind",
+    "status",
+    "joint_count",
+    "joint_names",
+    "parents",
+    "length_unit"
+  ]
+}

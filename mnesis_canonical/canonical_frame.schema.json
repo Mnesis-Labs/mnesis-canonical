@@ -138,7 +138,51 @@
       "minimum": 0.0,
       "maximum": 1.0,
       "description": "Optional right gripper observation closedness [0,1] (0.0=fully open, 1.0=fully closed). robot_v2 bimanual, additive."
+    },
+    "observation.hand.left": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "description": "[experimental] Left-hand joint POSITIONS, flattened [x0,y0,z0, x1,y1,z1, ...] in metres, length 3*K where K is the joint_count of the layout named by observation.hand.layout (skeletons/<id>.json). Variable-length by design: a fixed length would freeze one vendor's hand topology into the standard. A hand that is not tracked is OMITTED ENTIRELY — never a zero vector, never null — so 'no hand' stays distinguishable from 'hand at the origin'. Requires observation.hand.layout and observation.hand.frame."
+    },
+    "observation.hand.right": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "description": "[experimental] Right-hand joint POSITIONS. Same rules as observation.hand.left."
+    },
+    "observation.hand.left.rot": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "description": "[experimental] Optional left-hand joint ORIENTATIONS, flattened quaternions {x,y,z,w} (scalar last, right-handed — same order as head_pose_SE3), length 4*K for the same layout. Filled only by sources that natively provide per-joint orientation (OpenXR / WebXR hand tracking); MediaPipe-class sources omit it. Skeleton retargeting consumes this. Requires observation.hand.left."
+    },
+    "observation.hand.right.rot": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 4,
+      "description": "[experimental] Optional right-hand joint ORIENTATIONS. Same rules as observation.hand.left.rot."
+    },
+    "observation.hand.layout": {
+      "type": "string",
+      "description": "[experimental] Skeleton layout id declaring the joint count and per-index meaning of the hand keypoint vectors, e.g. 'mediapipe_hand_21' | 'webxr_hand_25' | 'openxr_hand_26'. Resolved against the skeleton registry (skeletons/<id>.json), the same mechanism by which embodiment_id declares the layout of observation.state. Required whenever a hand keypoint vector is present."
+    },
+    "observation.hand.frame": {
+      "type": "string",
+      "enum": ["world", "head_anchored", "hand_local"],
+      "description": "[experimental] Reference frame of the hand keypoints — the machine-readable form of the '2.5D, not true 3D' caveat. 'world' = same world frame as head_pose_SE3. 'head_anchored' = metric and self-consistent WITHIN the hand, placed at the head/camera and rotated by the head pose, but the hand's absolute position relative to the world is NOT recovered (monocular world-landmark estimators land here). 'hand_local' = origin is the hand itself; no world placement claimed. Consumers needing world-localised hands MUST filter on frame == 'world' rather than on a source string. Required whenever a hand keypoint vector is present."
+    },
+    "observation.hand.source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "[experimental] Provenance label for the hand keypoints (open set), e.g. 'mediapipe_world+arcore_pose' for an on-device estimate or an offline-refinement tag. Optional, and provenance ONLY — geometric semantics live in observation.hand.frame, not here."
     }
+  },
+  "dependentRequired": {
+    "observation.hand.left": ["observation.hand.layout", "observation.hand.frame"],
+    "observation.hand.right": ["observation.hand.layout", "observation.hand.frame"],
+    "observation.hand.left.rot": ["observation.hand.left"],
+    "observation.hand.right.rot": ["observation.hand.right"]
   },
   "allOf": [
     {

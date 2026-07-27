@@ -13,6 +13,7 @@ from .isaac import (
 )
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
 from .manifest import build_manifest, manifest_for_episode, validate_manifest, write_manifest
+from .migrate import migrate_hand_v0, migrate_hand_v0_frames
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -23,6 +24,14 @@ from .schema import (
     GRIPPER_KEYS,
     GRIPPER_MAX,
     GRIPPER_MIN,
+    HAND_FRAME_KEY,
+    HAND_FRAMES,
+    HAND_KEYS,
+    HAND_KPTS_KEYS,
+    HAND_LAYOUT_KEY,
+    HAND_ROT_KEYS,
+    HAND_SIDES,
+    HAND_SOURCE_KEY,
     MANIPULATION_ACTIONS,
     MODALITIES,
     PROFILES,
@@ -32,6 +41,12 @@ from .schema import (
     CanonicalFrame,
     get_schema_version,
     required_keys_for_profile,
+)
+from .skeleton_registry import (
+    joint_count,
+    list_skeleton_ids,
+    list_skeletons,
+    load_skeleton,
 )
 from .validate import (
     ValidationReport,
@@ -60,6 +75,14 @@ __all__ = [
     "GRIPPER_KEYS",
     "GRIPPER_MIN",
     "GRIPPER_MAX",
+    "HAND_SIDES",
+    "HAND_KEYS",
+    "HAND_KPTS_KEYS",
+    "HAND_ROT_KEYS",
+    "HAND_LAYOUT_KEY",
+    "HAND_FRAME_KEY",
+    "HAND_SOURCE_KEY",
+    "HAND_FRAMES",
     "DEVICES",
     "MODALITIES",
     "required_keys_for_profile",
@@ -87,5 +110,11 @@ __all__ = [
     "list_embodiments",
     "list_embodiment_ids",
     "load_embodiment",
+    "list_skeletons",
+    "list_skeleton_ids",
+    "load_skeleton",
+    "joint_count",
+    "migrate_hand_v0",
+    "migrate_hand_v0_frames",
     "__version__",
 ]

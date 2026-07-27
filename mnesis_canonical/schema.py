@@ -68,6 +68,53 @@ GRIPPER_KEYS = (
 GRIPPER_MIN = 0.0
 GRIPPER_MAX = 1.0
 
+# --- Hand keypoints (C11, additive, optional, status: experimental) ----------
+# Skeleton-level hand data as a first-class observation.  The keypoint vectors
+# are **variable-length**: their length is declared by ``observation.hand.layout``
+# via the skeleton registry (``skeletons/<id>.json``), exactly the way
+# ``observation.state``'s length is declared by the embodiment registry's
+# ``joint_names``.  A fixed ``float[63]`` would freeze MediaPipe's 21-landmark
+# topology into the open standard, which WebXR (25 joints) / OpenXR (26, with
+# per-joint orientation) producers cannot emit without down-projecting away the
+# orientation that skeleton retargeting exists to consume.
+HAND_SIDES = ("left", "right")
+
+# Joint POSITIONS, flattened xyz — length 3*K where K = layout joint_count.
+HAND_KPTS_KEYS = ("observation.hand.left", "observation.hand.right")
+
+# Joint ORIENTATIONS, flattened quaternions {x,y,z,w} — length 4*K.  Optional
+# even when positions are present: MediaPipe-class sources have no orientation.
+HAND_ROT_KEYS = ("observation.hand.left.rot", "observation.hand.right.rot")
+
+HAND_LAYOUT_KEY = "observation.hand.layout"   # skeleton registry id
+HAND_FRAME_KEY = "observation.hand.frame"     # reference frame, see HAND_FRAMES
+HAND_SOURCE_KEY = "observation.hand.source"   # provenance label (open set)
+
+# Reference frame of the keypoints.  This is the MACHINE-READABLE form of the
+# "these are 2.5D, not true 3D" caveat: a consumer that needs world-localised
+# hands filters on ``frame == "world"`` instead of maintaining a hard-coded
+# allow-list of source strings.
+#   world         — points are in the same world frame as head_pose_SE3.
+#   head_anchored — metric and self-consistent WITHIN the hand, placed at the
+#                   head/camera and rotated by the head pose; the hand's
+#                   absolute position relative to the world is NOT recovered.
+#                   (MediaPipe world landmarks + an AR head pose land here.)
+#   hand_local    — origin is the hand itself (e.g. the wrist); no world
+#                   placement claimed at all.
+HAND_FRAMES = ("world", "head_anchored", "hand_local")
+
+HAND_POSITION_DIMS = 3  # x, y, z per joint
+HAND_ROTATION_DIMS = 4  # qx, qy, qz, qw per joint
+
+# All hand keys, for consumers that want to strip or detect the whole block.
+HAND_KEYS = (
+    *HAND_KPTS_KEYS,
+    *HAND_ROT_KEYS,
+    HAND_LAYOUT_KEY,
+    HAND_FRAME_KEY,
+    HAND_SOURCE_KEY,
+)
+
 # Required JSON keys for the default ego_v1 profile (dotted keys — LeRobot-style flat columns).
 _REQUIRED_KEYS_EGO_V1 = (
     "index",
@@ -205,6 +252,18 @@ class CanonicalFrame:
     gripper: float | None = None
     gripper_left: float | None = None
     gripper_right: float | None = None
+    # Optional hand keypoint block (C11, additive, experimental). Positions are
+    # flattened xyz of length 3*K, orientations flattened {x,y,z,w} of length
+    # 4*K, with K declared by ``hand_layout`` through the skeleton registry.
+    # A hand that is not present is OMITTED ENTIRELY — never a zero vector, so
+    # "no hand" and "hand at the origin" stay distinguishable.
+    hand_left: list[float] | None = None
+    hand_right: list[float] | None = None
+    hand_left_rot: list[float] | None = None
+    hand_right_rot: list[float] | None = None
+    hand_layout: str | None = None
+    hand_frame: str | None = None
+    hand_source: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -243,6 +302,20 @@ class CanonicalFrame:
             d["observation.gripper.left"] = self.gripper_left
         if self.gripper_right is not None:
             d["observation.gripper.right"] = self.gripper_right
+        if self.hand_left is not None:
+            d["observation.hand.left"] = list(self.hand_left)
+        if self.hand_right is not None:
+            d["observation.hand.right"] = list(self.hand_right)
+        if self.hand_left_rot is not None:
+            d["observation.hand.left.rot"] = list(self.hand_left_rot)
+        if self.hand_right_rot is not None:
+            d["observation.hand.right.rot"] = list(self.hand_right_rot)
+        if self.hand_layout is not None:
+            d[HAND_LAYOUT_KEY] = self.hand_layout
+        if self.hand_frame is not None:
+            d[HAND_FRAME_KEY] = self.hand_frame
+        if self.hand_source is not None:
+            d[HAND_SOURCE_KEY] = self.hand_source
         return d
 
     @classmethod
@@ -288,4 +361,23 @@ class CanonicalFrame:
             gripper=d.get("observation.gripper"),
             gripper_left=d.get("observation.gripper.left"),
             gripper_right=d.get("observation.gripper.right"),
+            hand_left=(
+                list(d["observation.hand.left"])
+                if "observation.hand.left" in d else None
+            ),
+            hand_right=(
+                list(d["observation.hand.right"])
+                if "observation.hand.right" in d else None
+            ),
+            hand_left_rot=(
+                list(d["observation.hand.left.rot"])
+                if "observation.hand.left.rot" in d else None
+            ),
+            hand_right_rot=(
+                list(d["observation.hand.right.rot"])
+                if "observation.hand.right.rot" in d else None
+            ),
+            hand_layout=d.get(HAND_LAYOUT_KEY),
+            hand_frame=d.get(HAND_FRAME_KEY),
+            hand_source=d.get(HAND_SOURCE_KEY),
         )

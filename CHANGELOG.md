@@ -14,6 +14,58 @@ are decoupled:
 
 ## [Unreleased]
 
+### Added
+
+- **手部关键点 `observation.hand.*`（C11 结案 · Parthenon#47 / #68 · Muso 拍板）**。
+  七个**可选 / additive** 字段，把骨架级手部数据收进单一标准，取代 Iris 从 D-13 起
+  私产的四个非标字段。老数据零破坏：不带这些键的帧校验行为完全不变。
+
+  - `observation.hand.left` / `.right` —— 关节**位置**，展平 `[x,y,z,…]`（米）。
+    **变长**：长度 = `3 × K`，`K` 由 `observation.hand.layout` 经新增的**骨架登记表**
+    （`skeletons/<id>.json`）解析。这与 `embodiment_id` 的 `joint_names` 定义
+    `observation.state` 长度是同一机制 —— 标准里只保留一种「长度在别处声明」的做法。
+  - `observation.hand.left.rot` / `.right.rot` —— 关节**朝向**，展平四元数 `{x,y,z,w}`，
+    长度 `4 × K`；仅原生提供朝向的来源填。
+  - `observation.hand.layout` + `observation.hand.frame` —— **有关键点时必填**。
+    `frame ∈ {world, head_anchored, hand_local}` 是「这是 2.5D 近似而非真 3D」
+    这条警告的**机器可读形式**：消费方按 `frame == "world"` 过滤，而不是去认某个
+    source 字符串。
+  - `observation.hand.source` —— 溯源标签（开放集），**不承载几何语义**。
+
+  **为什么不用定长 63**：`63 = 21 × 3` 只在所有人都是 MediaPipe 时成立。
+  Eidolon C2 走 WebXR Hand Input（25 关节，OpenXR 侧 26）且带逐关节朝向，而
+  C11 的立卡动机 —— xMimic 类骨架 retargeting —— 吃的正是朝向。定长会逼 XR 产出方
+  要么降采样丢朝向、要么另造字段。
+
+  **`hand_pose`（128 floats）不进 wire**：它是前两者的派生投影，且用
+  `leftPresent` 标志位 + 补零编码「手不在」，与下面的铁律冲突。派生形状归导出器。
+
+- **骨架登记表 `skeletons/`**（root + package 双份，与 `embodiments/` 同构）
+  + 加载 API `list_skeletons` / `load_skeleton` / `joint_count`。
+  已注册：`mediapipe_hand_21`（21 关节，无朝向，`stable`）、
+  `webxr_hand_25` / `openxr_hand_26`（带朝向，`experimental` —— 待 Eidolon 按真机实现核对）。
+  加一个布局是一次登记表 PR，不是 schema 变更。`kind` 已预留 `"body"` 给 C11 的另一半。
+
+- **迁移 `mnesis_canonical.migrate_hand_v0[_frames]` + CLI `migrate` 子命令**。
+  重写 Iris 存量数据：三个字段改名、丢弃派生的 `hand_pose`、补上
+  `layout=mediapipe_hand_21` + `frame=head_anchored`（把原本只存在于
+  `HandWorldTransform.kt` 类注释里的 2.5D 说明变成数据）。
+  **校验器只认新名，不认双名** —— 标准里的别名从来不会死。
+
+  ```bash
+  python -m mnesis_canonical migrate episodes/ep_0/data.jsonl --out episodes/ep_0/data.jsonl
+  ```
+
+- **`SPEC.md` §Conventions 新增铁律：缺失 = 未知，禁带内哨兵**。
+  不得用 `0` / 零向量 / `-1` / `NaN` / `""` 编码「未知 / 不适用」，不知道就省略该键；
+  消费方不得给缺失的可选字段填默认值。这条本来就是 `action.gripper` 缺失 ≠ `0.0`
+  和 `spatial_anchor_pose_SE3` 缺失即跳过校验背后的同一条原则，现在升成通则，
+  以后加字段不必重新论证一遍。
+
+- **`SPEC.md` §Versioning 新增字段级 status**（`experimental` / `stable`）。
+  `experimental` 字段已标准化、已校验，但 **stable 前可改名/改形，且不算破坏性变更**。
+  这让「已经在产的字段当天进标准」和「不仓促冻结形状」同时成立 —— 手部字段是第一个用例。
+
 ### Fixed
 
 - **`spatial_anchor_id` 的身份来源改为 anchor 自己**（Parthenon#26 拍板 B；破坏性放宽）。
