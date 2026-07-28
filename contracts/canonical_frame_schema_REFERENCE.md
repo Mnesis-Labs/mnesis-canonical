@@ -3,7 +3,6 @@
 > **所属契约**: C1 — Canonical Frame Schema
 > **版本**: v0.2（additive-only; v0.1 帧仍通过校验）
 > **additive 增补**: 夹爪观测通道 `observation.gripper[.left|.right]`（闭合程度 [0.0,1.0]，`0.0`=完全张开 / `1.0`=完全闭合，可选；方向与 `action.gripper`、C3 `arms[].gripper` 一致）
-> **additive 增补**: C8 夹爪通道 `observation.gripper[.left|.right]`（[0,1] 连续量，可选；对齐 C3 `arms[].gripper`）
 > **定义方**: canonical（本仓）
 > **消费方**: Iris · Eidolon · Daedalus · Ambrosia
 
@@ -82,9 +81,6 @@ check-jsonschema --schemafile mnesis_canonical/canonical_frame.schema.json episo
 | `observation.gripper` | float | — | *all* opt | 夹爪闭合程度 [0.0,1.0]（`0.0`=完全张开，`1.0`=完全闭合）；单/主夹爪，方向与 `action.gripper` 一致 |
 | `observation.gripper.left` | float | — | robot_v2 opt | 左夹爪闭合程度 [0.0,1.0]（`0.0`=完全张开，`1.0`=完全闭合）；双臂 |
 | `observation.gripper.right` | float | — | robot_v2 opt | 右夹爪闭合程度 [0.0,1.0]（`0.0`=完全张开，`1.0`=完全闭合）；双臂 |
-| `observation.gripper` | float | — | *all* opt | **C8** 夹爪开度 [0,1]（0=闭合，1=张开）；单/主夹爪 |
-| `observation.gripper.left` | float | — | robot_v2 opt | **C8** 左夹爪开度 [0,1]（双臂） |
-| `observation.gripper.right` | float | — | robot_v2 opt | **C8** 右夹爪开度 [0,1]（双臂） |
 | `observation.hand.left` | float[3K] | 3×K | *all* opt | **[experimental]** 左手关节**位置**，展平 `[x0,y0,z0,…]`，米；`K` = `observation.hand.layout` 的 `joint_count`。**手不在场时整键省略**（不发零向量、不发 null） |
 | `observation.hand.right` | float[3K] | 3×K | *all* opt | **[experimental]** 右手关节位置，同上 |
 | `observation.hand.left.rot` | float[4K] | 4×K | *all* opt | **[experimental]** 左手关节**朝向**，展平四元数 **{x,y,z,w}**；仅原生提供朝向的来源填（MediaPipe 类不填） |
