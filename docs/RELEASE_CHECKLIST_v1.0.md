@@ -7,8 +7,15 @@ order** before tagging a release.
 
 ## 1. Version bump
 
+Bump all three strings to the same value — `python scripts/version_check.py`
+(also run as `release_check.py --only version`) fails the release if they differ:
+
 - [ ] `mnesis_canonical/__init__.py` — `__version__` string.
 - [ ] `pyproject.toml` — `[project] version` field.
+- [ ] `CHANGELOG.md` preamble — the `**Package x.y.z**` line.
+
+Manual (not machine-checkable):
+
 - [ ] `CHANGELOG.md` — move [Unreleased] entries under the new version heading,
       add the `[x.y.z]:` comparison link at the bottom.
 
