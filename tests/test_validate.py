@@ -11,6 +11,7 @@ from mnesis_canonical import (
     ANNOTATION_SOURCES,
     ANNOTATION_VISIBILITIES,
     EVENT_TYPES,
+    EXPERIMENTAL_KEYS,
     MANIPULATION_ACTIONS,
     CanonicalFrame,
     load_json_schema,
@@ -54,6 +55,60 @@ def test_strict_vocab_rejects_unknown_device(good_frame):
     f["source.device"] = "hololens"
     assert validate_frame(f) == []  # lenient by default
     assert any("source.device" in e for e in validate_frame(f, strict_vocab=True))
+
+
+def test_strict_stable_accepts_stable_only(good_frame):
+    """A frame carrying only stable fields passes --strict-stable."""
+    assert validate_frame(good_frame(), strict_stable=True) == []
+
+
+def test_strict_stable_rejects_experimental_hand(good_frame):
+    """--strict-stable rejects frames carrying an [experimental] field."""
+    f = good_frame()
+    f["observation.hand.left"] = [0.1] * 63
+    f["observation.hand.right"] = [0.1] * 63
+    f["observation.hand.layout"] = "mediapipe_hand_21"
+    f["observation.hand.frame"] = "head_anchored"
+    # lenient: the hand block validates fine
+    assert validate_frame(f) == []
+    # strict-stable: experimental fields are refused
+    errs = validate_frame(f, strict_stable=True)
+    assert any("strict-stable" in e for e in errs)
+
+    def _key(e: str) -> str:
+        # "strict-stable: experimental field 'KEY' is not allowed (...)"
+        return e.split("'")[1]
+
+    # Each experimental key actually present in the frame is reported once
+    present_experimental = {k for k in f if k in EXPERIMENTAL_KEYS}
+    assert set(EXPERIMENTAL_KEYS) >= present_experimental
+    assert present_experimental == {_key(e) for e in errs}
+
+
+def test_strict_stable_works_at_episode_level(good_frame):
+    """--strict-stable propagates through validate_frames."""
+    frames = [good_frame()]
+    assert validate_frames(frames, strict_stable=True).ok
+    f = good_frame()
+    f["observation.hand.left"] = [0.0] * 63
+    f["observation.hand.layout"] = "mediapipe_hand_21"
+    f["observation.hand.frame"] = "head_anchored"
+    frames.append(f)
+    report = validate_frames(frames, strict_stable=True)
+    assert not report.ok
+    assert any("strict-stable" in m for _, m in report.errors)
+
+
+def test_field_status_tuple():
+    """FIELD_STATUS enumerates the three canonical values."""
+    from mnesis_canonical.schema import FIELD_STATUS
+    assert FIELD_STATUS == ("experimental", "stable", "deprecated")
+
+
+def test_experimental_keys_are_hand_fields():
+    """EXPERIMENTAL_KEYS currently lists exactly the hand fields."""
+    from mnesis_canonical.schema import EXPERIMENTAL_KEYS, HAND_KEYS
+    assert EXPERIMENTAL_KEYS == HAND_KEYS
 
 
 def test_example_episode_is_valid():

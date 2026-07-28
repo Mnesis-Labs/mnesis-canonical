@@ -73,43 +73,48 @@ commanded/executed gripper opening on the same `[0,1]` scale. All gripper keys
 are **optional and additive** — frames without them validate unchanged.
 
 ## Fields (all required unless noted)
-| Key | Type | Profile | Meaning |
-|---|---|---|---|
-| `index` | int | *all* | Global monotonic frame index across episodes |
-| `episode_index` | int | *all* | Episode id |
-| `task_index` | int | *all* | Task within episode (0 = single-task) |
-| `frame_index` | int | *all* | Frame index within episode (0-based, strictly increasing) |
-| `t_ns` | int | *all* | Wall-clock nanoseconds (`System.nanoTime` base) |
-| `t_hw_ns` | int | *all* | **Hardware** ns (ARCore `frame.timestamp`) — **join key** pose↔video |
-| `timestamp` | str | *all* | ISO-8601 wall clock (e.g. `2026-06-26T00:00:00.000Z`) |
-| `head_pose_SE3` | float[7] | *all* | `[tx,ty,tz, qx,qy,qz,qw]` metres + quaternion **{x,y,z,w}**, right-handed |
-| `observation.state` | float[7] or float[N] | *all* | 7-DoF state (`ego_v1`) or variable-length N (`robot_v2`, per registry `joint_names`) |
-| `observation.images.ego` | str | `ego_v1` only | File reference to the ego video frame (`""` allowed) |
-| `observation.images.<cam>` | str | `robot_v2` | Open camera key set — at least one required (`wrist_left`, `wrist_right`, `head`, etc.) |
-| `action` | float[6] or float[N] | *all* | Relative delta `[tx,ty,tz, rx,ry,rz]` (`ego_v1`, 6) or variable-length N (`robot_v2`) |
-| `observation.eef_pose.left` | float[7] | `robot_v2` optional | Left end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` |
-| `observation.eef_pose.right` | float[7] | `robot_v2` optional | Right end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` |
-| `action.gripper` | float | *all* optional | Gripper channel (v0.4+), **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed. **Absence ≠ `0.0`** (absent = source provides no gripper info). Per-machine physical stroke lives in the embodiment registry, not per-frame |
-| `observation.gripper` | float | *all* optional | Gripper **closedness** observation, **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed (direction identical to `action.gripper`). Single / main gripper |
-| `observation.gripper.left` | float | `robot_v2` optional | Left gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual |
-| `observation.gripper.right` | float | `robot_v2` optional | Right gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual |
-| `observation.gripper` | float | *all* optional | **C8** gripper opening `[0,1]` (0=closed, 1=open); single/main gripper |
-| `observation.gripper.left` | float | `robot_v2` optional | **C8** left gripper opening `[0,1]` (bimanual) |
-| `observation.gripper.right` | float | `robot_v2` optional | **C8** right gripper opening `[0,1]` (bimanual) |
-| `observation.hand.left` | float[3K] | *all* optional | **[experimental]** Left-hand joint **positions**, flattened `[x0,y0,z0, x1,y1,z1, …]` in metres. `K` = `joint_count` of `observation.hand.layout`. Absent hand = key **omitted entirely** |
-| `observation.hand.right` | float[3K] | *all* optional | **[experimental]** Right-hand joint positions; same rules |
-| `observation.hand.left.rot` | float[4K] | *all* optional | **[experimental]** Left-hand joint **orientations**, flattened quaternions **{x,y,z,w}**. Only from sources that natively provide it |
-| `observation.hand.right.rot` | float[4K] | *all* optional | **[experimental]** Right-hand joint orientations; same rules |
-| `observation.hand.layout` | str | *all* optional | **[experimental]** Skeleton layout id (`skeletons/<id>.json`), e.g. `mediapipe_hand_21`. **Required when any hand keypoint vector is present** |
-| `observation.hand.frame` | str | *all* optional | **[experimental]** One of `world`, `head_anchored`, `hand_local` — the reference frame of the keypoints. **Required when any hand keypoint vector is present** |
-| `observation.hand.source` | str | *all* optional | **[experimental]** Provenance label (open set), e.g. `mediapipe_world+arcore_pose`. Provenance **only** — geometry lives in `observation.hand.frame` |
-| `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) |
-| `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. |
-| `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` |
-| `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) |
-| `source.device` | str | *all* | one of `phone, glasses, quest, pico, robot, sim` (open set) |
-| `source.modality` | str | *all* | one of `ego_human, teleop, robot_replay, sim` (open set) |
-| `tracking_state` | str | *all* | e.g. `TRACKING, PAUSED, STOPPED` |
+
+The **Status** column records each field's [field-level status](#versioning)
+(`stable` unless marked `[experimental]` / `[deprecated]`); the authoritative
+value lives in `canonical_frame.schema.json`'s per-property `x-status`.
+
+| Key | Type | Profile | Meaning | Status |
+|---|---|---|---|---|
+| `index` | int | *all* | Global monotonic frame index across episodes | `stable` |
+| `episode_index` | int | *all* | Episode id | `stable` |
+| `task_index` | int | *all* | Task within episode (0 = single-task) | `stable` |
+| `frame_index` | int | *all* | Frame index within episode (0-based, strictly increasing) | `stable` |
+| `t_ns` | int | *all* | Wall-clock nanoseconds (`System.nanoTime` base) | `stable` |
+| `t_hw_ns` | int | *all* | **Hardware** ns (ARCore `frame.timestamp`) — **join key** pose↔video | `stable` |
+| `timestamp` | str | *all* | ISO-8601 wall clock (e.g. `2026-06-26T00:00:00.000Z`) | `stable` |
+| `head_pose_SE3` | float[7] | *all* | `[tx,ty,tz, qx,qy,qz,qw]` metres + quaternion **{x,y,z,w}**, right-handed | `stable` |
+| `observation.state` | float[7] or float[N] | *all* | 7-DoF state (`ego_v1`) or variable-length N (`robot_v2`, per registry `joint_names`) | `stable` |
+| `observation.images.ego` | str | `ego_v1` only | File reference to the ego video frame (`""` allowed) | `stable` |
+| `observation.images.<cam>` | str | `robot_v2` | Open camera key set — at least one required (`wrist_left`, `wrist_right`, `head`, etc.) | `stable` |
+| `action` | float[6] or float[N] | *all* | Relative delta `[tx,ty,tz, rx,ry,rz]` (`ego_v1`, 6) or variable-length N (`robot_v2`) | `stable` |
+| `observation.eef_pose.left` | float[7] | `robot_v2` optional | Left end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` | `stable` |
+| `observation.eef_pose.right` | float[7] | `robot_v2` optional | Right end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` | `stable` |
+| `action.gripper` | float | *all* optional | Gripper channel (v0.4+), **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed. **Absence ≠ `0.0`** (absent = source provides no gripper info). Per-machine physical stroke lives in the embodiment registry, not per-frame | `stable` |
+| `observation.gripper` | float | *all* optional | Gripper **closedness** observation, **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed (direction identical to `action.gripper`). Single / main gripper | `stable` |
+| `observation.gripper.left` | float | `robot_v2` optional | Left gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual | `stable` |
+| `observation.gripper.right` | float | `robot_v2` optional | Right gripper closedness `[0.0, 1.0]` (`0.0` = fully open, `1.0` = fully closed); bimanual | `stable` |
+| `observation.hand.left` | float[3K] | *all* optional | **[experimental]** Left-hand joint **positions**, flattened `[x0,y0,z0, x1,y1,z1, …]` in metres. `K` = `joint_count` of `observation.hand.layout`. Absent hand = key **omitted entirely** | `experimental` |
+| `observation.hand.right` | float[3K] | *all* optional | **[experimental]** Right-hand joint positions; same rules | `experimental` |
+| `observation.hand.left.rot` | float[4K] | *all* optional | **[experimental]** Left-hand joint **orientations**, flattened quaternions **{x,y,z,w}**. Only from sources that natively provide it | `experimental` |
+| `observation.hand.right.rot` | float[4K] | *all* optional | **[experimental]** Right-hand joint orientations; same rules | `experimental` |
+| `observation.hand.layout` | str | *all* optional | **[experimental]** Skeleton layout id (`skeletons/<id>.json`), e.g. `mediapipe_hand_21`. **Required when any hand keypoint vector is present** | `experimental` |
+| `observation.hand.frame` | str | *all* optional | **[experimental]** One of `world`, `head_anchored`, `hand_local` — the reference frame of the keypoints. **Required when any hand keypoint vector is present** | `experimental` |
+| `observation.hand.source` | str | *all* optional | **[experimental]** Provenance label (open set), e.g. `mediapipe_world+arcore_pose`. Provenance **only** — geometry lives in `observation.hand.frame` | `experimental` |
+| `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) | `stable` |
+| `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. | `stable` |
+| `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` | `stable` |
+| `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) | `stable` |
+| `source.device` | str | *all* | one of `phone, glasses, quest, pico, robot, sim` (open set) | `stable` |
+| `source.modality` | str | *all* | one of `ego_human, teleop, robot_replay, sim` (open set) | `stable` |
+| `tracking_state` | str | *all* | e.g. `TRACKING, PAUSED, STOPPED` | `stable` |
+
+> **Note:** this table supersedes the duplicate `observation.gripper[.left|.right]`
+> "C8" rows that previously appeared immediately above it (stale copy, `[deprecated]`).
 
 ### Conventions (iron rules)
 - Quaternion order is **{x,y,z,w}** (scalar last). Right-handed.
@@ -118,12 +123,18 @@ are **optional and additive** — frames without them validate unchanged.
 - Dotted keys (`observation.state`, `source.device`) are intentional flat columns (LeRobot style).
 - **Additive-only**: new fields do not break existing data. Profiles extend the
   schema without changing the wire format of previous profiles.
-- **Absent means unknown.** Never encode "unknown / not applicable" as an in-band
-  sentinel (`0`, a zero vector, `-1`, `NaN`, `""`) — omit the key. Consumers MUST
-  NOT substitute a default for a missing optional field. This is the rule behind
-  `action.gripper` absent ≠ `0.0`, `spatial_anchor_pose_SE3` absent = skip the
-  consistency check, and an untracked hand omitting `observation.hand.<side>`
-  rather than sending zeros.
+- **Absent means unknown (iron rule).** Never encode "unknown / not applicable" as an
+  in-band sentinel — `0`, a zero vector, `-1`, `NaN`, `""`, a presence flag bit,
+  or any other out-of-domain value. If a value is unknown or the source does not
+  provide it, **omit the key entirely**. Consumers MUST NOT substitute a default for
+  a missing optional field. This rule is the common principle behind two prior
+  rulings (see `CONTRACTS.md` C1):
+  - 2026-07-21 · `action.gripper` absent ≠ `0.0` (source provides no gripper info);
+  - 2026-07-27 · `spatial_anchor_pose_SE3` absent ⇒ skip the anchor consistency
+    check, **do not fall back to `head_pose_SE3`**.
+  It also governs an untracked hand omitting `observation.hand.<side>` rather than
+  sending zeros, and rules out "hand-pose-as-sentinel" schemes
+  (presence-flag + zero-padding) that would encode absence inside the value space.
 
 ## Hand keypoints (C11, additive, `experimental`)
 
@@ -427,13 +438,25 @@ Additive, so no forced migration; adopt lazily:
 
 ## Versioning
 - Spec is versioned (`v0.2`). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
-- **Field-level status.** A field marked **`[experimental]`** in the table above is
-  standardised and validated, but **may still be renamed or reshaped before it goes
-  `stable`**, and such a change is not counted as breaking. Unmarked fields are
-  `stable`: frozen, extendable only additively, renameable only with a major bump.
-  This exists so a field that is *already in production somewhere* can be brought
-  inside the standard immediately — rather than staying non-standard for weeks
-  while its final shape is settled — without that speed implying a freeze.
+- **Field-level status.** Each field carries a status: one of
+  `experimental`, `stable`, or `deprecated`. The authoritative value is the
+  `x-status` key in `canonical_frame.schema.json` (mirrored as the `[experimental]`
+  / `stable` / `[deprecated]` prefix in `SPEC.md` §Fields and in `schema.py`).
+
+  | status | meaning | commitment |
+  |---|---|---|
+  | `experimental` | Adopted into the standard, can be produced and validated now | **May be renamed or reshaped before going `stable`**; such a change is not counted as breaking |
+  | `stable` | Frozen | Extendable only additively; rename requires a major bump |
+  | `deprecated` | Being retired | Must carry `deprecated_since` + migration guidance; removed only with a major bump |
+
+  A field marked **`[experimental]`** in §Fields is standardised and validated, but
+  may still be renamed or reshaped before it goes `stable`, and such a change is
+  not counted as breaking. All other fields are `stable`: frozen, extendable only
+  additively, renameable only with a major bump. This exists so a field that is
+  *already in production somewhere* can be brought inside the standard immediately —
+  rather than staying non-standard for weeks while its final shape is settled —
+  without that speed implying a freeze. A downstream consumer that wants to reject
+  non-frozen data can pass `--strict-stable` to the validator (see CLI).
 
 ## Conformance
 A producer is conformant if every line passes `mnesis_canonical.validate_frame` and

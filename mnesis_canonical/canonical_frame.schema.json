@@ -22,32 +22,39 @@
   "properties": {
     "index": {
       "type": "integer",
+      "x-status": "stable",
       "description": "Global monotonic frame index across episodes."
     },
     "episode_index": {
       "type": "integer",
+      "x-status": "stable",
       "description": "Episode id."
     },
     "task_index": {
       "type": "integer",
+      "x-status": "stable",
       "description": "Task within episode (0 = single-task)."
     },
     "frame_index": {
       "type": "integer",
       "minimum": 0,
+      "x-status": "stable",
       "description": "Frame index within episode (0-based, strictly increasing — cross-frame rule enforced by validate_frames)."
     },
     "t_ns": {
       "type": "integer",
+      "x-status": "stable",
       "description": "Wall-clock nanoseconds (System.nanoTime base)."
     },
     "t_hw_ns": {
       "type": "integer",
+      "x-status": "stable",
       "description": "Hardware ns (ARCore frame.timestamp) — join key pose<->video."
     },
     "timestamp": {
       "type": "string",
       "minLength": 1,
+      "x-status": "stable",
       "description": "ISO-8601 wall clock, e.g. 2026-06-26T00:00:00.000Z."
     },
     "head_pose_SE3": {
@@ -55,50 +62,61 @@
       "items": { "type": "number" },
       "minItems": 7,
       "maxItems": 7,
+      "x-status": "stable",
       "description": "[tx,ty,tz, qx,qy,qz,qw] metres + quaternion {x,y,z,w}, right-handed."
     },
     "observation.state": {
       "type": "array",
       "items": { "type": "number" },
+      "x-status": "stable",
       "description": "7-DoF state (ego_v1) or variable-length float[N] (robot_v2, N per registry joint_names)."
     },
     "observation.images.ego": {
       "type": "string",
+      "x-status": "stable",
       "description": "File reference to the ego video frame ('' allowed). Required for ego_v1 profile."
     },
     "action": {
       "type": "array",
       "items": { "type": "number" },
+      "x-status": "stable",
       "description": "Relative delta [tx,ty,tz, rx,ry,rz] (m, axis-angle rad) for ego_v1; variable-length for robot_v2."
     },
     "spatial_anchor_id": {
       "type": ["string", "null"],
+      "x-status": "stable",
       "description": "ARCore Anchor id (optional, recommended)."
     },
     "spatial_anchor_pose_SE3": {
       "type": ["array", "null"],
       "items": { "type": "number" },
+      "x-status": "stable",
       "description": "The ANCHOR's own pose in the world frame [tx,ty,tz, qx,qy,qz,qw] (optional). This — not head_pose_SE3 — is what identifies an anchor. Supply it when the capture surface can localise the anchor; conflicting definitions of the same spatial_anchor_id are then detected against it. Omit when unavailable: the anchor id is still carried, only the consistency check is skipped."
     },
     "source.device": {
       "type": "string",
+      "x-status": "stable",
       "description": "Capture surface, e.g. phone, glasses, quest, pico, robot, sim (open set)."
     },
     "source.modality": {
       "type": "string",
+      "x-status": "stable",
       "description": "Capture modality, e.g. ego_human, teleop, robot_replay, sim (open set)."
     },
     "tracking_state": {
       "type": "string",
+      "x-status": "stable",
       "description": "e.g. TRACKING, PAUSED, STOPPED."
     },
     "profile": {
       "type": "string",
       "enum": ["ego_v1", "robot_v2"],
+      "x-status": "stable",
       "description": "Frame profile (v0.2+). When absent, defaults to ego_v1 (backward-compatible)."
     },
     "embodiment_id": {
       "type": ["string", "null"],
+      "x-status": "stable",
       "description": "Reference to an embodiment registry entry (v0.2+). Optional."
     },
     "observation.eef_pose.left": {
@@ -106,6 +124,7 @@
       "items": { "type": "number" },
       "minItems": 7,
       "maxItems": 7,
+      "x-status": "stable",
       "description": "Left end-effector pose [tx,ty,tz, qx,qy,qz,qw] (robot_v2 profile, optional)."
     },
     "observation.eef_pose.right": {
@@ -113,68 +132,80 @@
       "items": { "type": "number" },
       "minItems": 7,
       "maxItems": 7,
+      "x-status": "stable",
       "description": "Right end-effector pose [tx,ty,tz, qx,qy,qz,qw] (robot_v2 profile, optional)."
     },
     "action.gripper": {
       "type": "number",
       "minimum": 0.0,
       "maximum": 1.0,
+      "x-status": "stable",
       "description": "Optional gripper channel (v0.4+, additive, all profiles). Normalized 0.0 (fully open) .. 1.0 (fully closed). Absent = source provides no gripper info (NOT 0.0). Physical stroke is described by the embodiment registry, not per-frame."
     },
     "observation.gripper": {
       "type": "number",
       "minimum": 0.0,
       "maximum": 1.0,
+      "x-status": "stable",
       "description": "Optional gripper observation closedness [0,1] (0.0=fully open, 1.0=fully closed). Additive, any profile; direction identical to action.gripper and C3 xr_bridge arms[].gripper. Single / main gripper."
     },
     "observation.gripper.left": {
       "type": "number",
       "minimum": 0.0,
       "maximum": 1.0,
+      "x-status": "stable",
       "description": "Optional left gripper observation closedness [0,1] (0.0=fully open, 1.0=fully closed). robot_v2 bimanual, additive."
     },
     "observation.gripper.right": {
       "type": "number",
       "minimum": 0.0,
       "maximum": 1.0,
+      "x-status": "stable",
       "description": "Optional right gripper observation closedness [0,1] (0.0=fully open, 1.0=fully closed). robot_v2 bimanual, additive."
     },
     "observation.hand.left": {
       "type": "array",
       "items": { "type": "number" },
       "minItems": 3,
+      "x-status": "experimental",
       "description": "[experimental] Left-hand joint POSITIONS, flattened [x0,y0,z0, x1,y1,z1, ...] in metres, length 3*K where K is the joint_count of the layout named by observation.hand.layout (skeletons/<id>.json). Variable-length by design: a fixed length would freeze one vendor's hand topology into the standard. A hand that is not tracked is OMITTED ENTIRELY — never a zero vector, never null — so 'no hand' stays distinguishable from 'hand at the origin'. Requires observation.hand.layout and observation.hand.frame."
     },
     "observation.hand.right": {
       "type": "array",
       "items": { "type": "number" },
       "minItems": 3,
+      "x-status": "experimental",
       "description": "[experimental] Right-hand joint POSITIONS. Same rules as observation.hand.left."
     },
     "observation.hand.left.rot": {
       "type": "array",
       "items": { "type": "number" },
       "minItems": 4,
+      "x-status": "experimental",
       "description": "[experimental] Optional left-hand joint ORIENTATIONS, flattened quaternions {x,y,z,w} (scalar last, right-handed — same order as head_pose_SE3), length 4*K for the same layout. Filled only by sources that natively provide per-joint orientation (OpenXR / WebXR hand tracking); MediaPipe-class sources omit it. Skeleton retargeting consumes this. Requires observation.hand.left."
     },
     "observation.hand.right.rot": {
       "type": "array",
       "items": { "type": "number" },
       "minItems": 4,
+      "x-status": "experimental",
       "description": "[experimental] Optional right-hand joint ORIENTATIONS. Same rules as observation.hand.left.rot."
     },
     "observation.hand.layout": {
       "type": "string",
+      "x-status": "experimental",
       "description": "[experimental] Skeleton layout id declaring the joint count and per-index meaning of the hand keypoint vectors, e.g. 'mediapipe_hand_21' | 'webxr_hand_25' | 'openxr_hand_26'. Resolved against the skeleton registry (skeletons/<id>.json), the same mechanism by which embodiment_id declares the layout of observation.state. Required whenever a hand keypoint vector is present."
     },
     "observation.hand.frame": {
       "type": "string",
       "enum": ["world", "head_anchored", "hand_local"],
+      "x-status": "experimental",
       "description": "[experimental] Reference frame of the hand keypoints — the machine-readable form of the '2.5D, not true 3D' caveat. 'world' = same world frame as head_pose_SE3. 'head_anchored' = metric and self-consistent WITHIN the hand, placed at the head/camera and rotated by the head pose, but the hand's absolute position relative to the world is NOT recovered (monocular world-landmark estimators land here). 'hand_local' = origin is the hand itself; no world placement claimed. Consumers needing world-localised hands MUST filter on frame == 'world' rather than on a source string. Required whenever a hand keypoint vector is present."
     },
     "observation.hand.source": {
       "type": "string",
       "minLength": 1,
+      "x-status": "experimental",
       "description": "[experimental] Provenance label for the hand keypoints (open set), e.g. 'mediapipe_world+arcore_pose' for an on-device estimate or an offline-refinement tag. Optional, and provenance ONLY — geometric semantics live in observation.hand.frame, not here."
     }
   },

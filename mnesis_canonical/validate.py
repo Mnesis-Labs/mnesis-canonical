@@ -20,8 +20,11 @@ from .schema import (
     ANNOTATION_SOURCES,
     ANNOTATION_VISIBILITIES,
     DEFAULT_PROFILE,
+    DEPRECATED_KEYS,
     DEVICES,
     EVENT_TYPES,
+    EXPERIMENTAL_KEYS,
+    FIELD_STATUS,
     GRIPPER_KEYS,
     GRIPPER_MAX,
     GRIPPER_MIN,
@@ -218,11 +221,18 @@ def _validate_hand_block(frame: dict, errors: list[str]) -> None:
                 )
 
 
-def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
+def validate_frame(
+    frame: dict,
+    *,
+    strict_vocab: bool = False,
+    strict_stable: bool = False,
+) -> list[str]:
     """Return a list of errors for one frame dict (empty list = valid).
 
     strict_vocab=True rejects unknown source.device / source.modality values
     (default lenient: unknown vocab is a soft pass so new capture surfaces work).
+    strict_stable=True rejects frames carrying any `experimental` (or `deprecated`)
+    field, so a downstream consumer can choose to ingest only frozen data.
     """
     errors: list[str] = []
     profile = _get_profile(frame)
@@ -367,6 +377,20 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
         if mod not in MODALITIES:
             errors.append(f"source.modality '{mod}' not in {MODALITIES}")
 
+    # --- strict-stable: refuse experimental / deprecated fields ----------
+    if strict_stable:
+        for key in frame:
+            if key in EXPERIMENTAL_KEYS:
+                errors.append(
+                    f"strict-stable: experimental field '{key}' is not allowed "
+                    f"(field-level status={FIELD_STATUS[0]}; see SPEC §Versioning)"
+                )
+            elif key in DEPRECATED_KEYS:
+                errors.append(
+                    f"strict-stable: deprecated field '{key}' is not allowed "
+                    f"(field-level status={FIELD_STATUS[2]}; see SPEC §Versioning)"
+                )
+
     return errors
 
 
@@ -412,7 +436,12 @@ def _anchor_pose_key(frame: dict) -> str | None:
     return f"{tx:.3f}_{ty:.3f}_{tz:.3f}"
 
 
-def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> ValidationReport:
+def validate_frames(
+    frames: list[dict],
+    *,
+    strict_vocab: bool = False,
+    strict_stable: bool = False,
+) -> ValidationReport:
     report = ValidationReport()
     prev_frame_index: int | None = None
 
@@ -425,7 +454,7 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
 
     for i, frame in enumerate(frames):
         report.total += 1
-        errs = validate_frame(frame, strict_vocab=strict_vocab)
+        errs = validate_frame(frame, strict_vocab=strict_vocab, strict_stable=strict_stable)
 
         # Check for negative frame_index
         if not errs and "frame_index" in frame:
