@@ -1,10 +1,27 @@
 name: CI
 
 on:
+  # push 收窄到 main：分支上的改动一律经 PR 事件跑 CI。
+  # 原先 push/pull_request 都是 "**"，同一个 PR 分支每推一次就并发两套内容
+  # 完全相同的 run（4 job × 2 = 8）。下面的双机化把这些 job 铺开跑得更快，
+  # 但重复本身仍在——同一个 commit 校验两遍不产生任何额外信息。
+  #
+  # 代价（务必知情）：PR 一旦与 base 冲突，GitHub 算不出 merge commit，
+  # pull_request 事件就不再触发；此前是靠 push:"**" 兜底才仍有 CI 信号。
+  # 收窄后冲突 PR 将完全没有 check（实测 #62 冲突期间 no checks reported）。
+  # 取舍理由：冲突 PR 的正确反馈是「先解决冲突」，GitHub 已用 CONFLICTING
+  # 明示，再跑一遍 CI 并不改变该结论。
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: ["**"]
+
+# 同一 PR 只保留最新一次 run，旧的排队/在跑的直接取消——连续推送时后推的
+# 提交才是待验对象，前一版的结果无人会看。
+# main 上不取消：每个已合并 commit 都要留下自己的 CI 记录。
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -61,3 +78,16 @@ jobs:
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
       - run: uv run python -m mnesis_canonical.embodiment_check
+
+  release-check:
+    name: Release checklist §2-§6
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Venv + deps
+        run: uv venv --seed
+      - run: uv pip install -e ".[dev]"
+      # 逐项跑 docs/RELEASE_CHECKLIST_v1.0.md §2–§6，任一失败整体 exit 1。
+      # 走 uv run：脚本内部用 sys.executable 拉起子进程，并按 PATH 找 ruff /
+      # pyright，两者都要落在 venv 里才算数。
+      - run: uv run python scripts/release_check.py

@@ -67,6 +67,7 @@ def test_all_green_exits_zero_with_summary_last_line(all_tools, monkeypatch, cap
         ("ruff check .", "lint"),
         ("pytest -q", "tests"),
         ("python -m mnesis_canonical --help", "smoke"),
+        ("python -m mnesis_canonical.importers list", "smoke"),
     ],
 )
 def test_broken_section_exits_one_and_names_the_section(
@@ -88,15 +89,23 @@ def test_only_runs_a_single_section(all_tools, monkeypatch, capsys):
     assert "§5 Tests" not in out
 
 
+def test_no_shipped_step_is_advisory():
+    """Every checklist step is a real gate; `advisory` is machinery for future ones."""
+    steps = [step for section in rc.build_sections() for step in section.steps]
+    assert [s.label for s in steps if s.advisory] == []
+
+
 def test_advisory_step_failure_is_skip_but_gates_under_strict(all_tools, monkeypatch, capsys):
-    advisory = "python -m mnesis_canonical.importers list"
+    """Synthetic section — exercises the advisory/--strict seam without a real step."""
+    advisory = "some-future-tool --check"
+    section = rc.Section("future", "§9 Future", [rc.Step(advisory, ["future"], advisory=True)])
     _stub_run(monkeypatch, failing_labels={advisory})
 
-    assert rc.main(["--only", "smoke"]) == 0
+    assert rc.run([section]) == 0
     assert f"[SKIP] {advisory}" in capsys.readouterr().out
 
-    assert rc.main(["--only", "smoke", "--strict"]) == 1
-    assert "FAILED sections: smoke" in capsys.readouterr().out
+    assert rc.run([section], strict=True) == 1
+    assert "FAILED sections: future" in capsys.readouterr().out
 
 
 def test_missing_ruff_fails_but_missing_pyright_only_skips(monkeypatch, capsys):
