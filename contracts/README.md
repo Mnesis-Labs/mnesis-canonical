@@ -16,6 +16,7 @@
 |---|---|---|
 | `XR_ROBOT_CONTRACT.md` | C3 — xr_bridge WS | VR↔机器人实时遥操作契约（帧协议/急停/重连/看门狗） |
 | `xr_bridge_SPEC.md` | C3 附属 | xr_bridge WebSocket 消息 SPEC 摘要（消息类型/载荷/时序） |
+| `PERCEPTION_COLOCALIZATION_CONTRACT.md` | C13 — 双端感知与共定位 | PS 轨：`ObservationLabel` / `scene_graph` / 共定位状态广播 |
 | `canonical_frame_schema_REFERENCE.md` | C1 — Canonical Frame Schema | 指回本仓 `mnesis_canonical/canonical_frame.schema.json` 的引用说明 |
 | `README.md` | — | 本文件（目录说明） |
 
