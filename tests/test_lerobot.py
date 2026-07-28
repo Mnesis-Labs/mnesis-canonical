@@ -15,6 +15,14 @@ from mnesis_canonical import (
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples"
 
 
+def _strip_nones(frames: list[dict]) -> list[dict]:
+    """Return a deep copy with None-valued keys removed (for round-trip comparison)."""
+    return [
+        {k: v for k, v in f.items() if v is not None}
+        for f in frames
+    ]
+
+
 def _episodes():
     """Return paths to all example episode data.jsonl files."""
     return sorted(EXAMPLE.glob("episode_*/data.jsonl"))
@@ -33,7 +41,9 @@ def test_to_lerobot_exposes_native_features():
 
 def test_round_trip_is_exact():
     frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
-    assert from_lerobot(to_lerobot(frames)) == frames
+    restored = from_lerobot(to_lerobot(frames))
+    # Strip None-valued keys from original so "missing == unknown" rule holds.
+    assert _strip_nones(restored) == _strip_nones(frames)
 
 
 def test_round_trip_without_optional_key():
@@ -49,13 +59,11 @@ def test_from_lerobot_ignores_extra_columns():
     """Non-canonical columns are still carried through (round-trip fidelity)."""
     frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
     columns = to_lerobot(frames)
-    columns["some_extra_feature"] = [None] * len(frames)  # non-canonical
-    # from_lerobot now preserves extra columns (round-trip principle).
+    columns["some_extra_feature"] = [None] * len(frames)  # non-canonical, all None
+    # from_lerobot strips None-valued keys (missing == unknown rule), so
+    # an all-None extra column is dropped entirely.
     restored = from_lerobot(columns)
-    assert "some_extra_feature" in restored[0]
-    assert restored == frames or all(
-        r["some_extra_feature"] is None for r in restored
-    )
+    assert "some_extra_feature" not in restored[0]
 
 
 # ── All example episodes ──────────────────────────────────────────────────
@@ -71,7 +79,8 @@ def test_round_trip_all_episodes(path):
     frames = read_jsonl(EXAMPLE / path)
     columns = to_lerobot(frames)
     restored = from_lerobot(columns)
-    assert restored == frames, (
+    # Strip None-valued keys from original so "missing == unknown" rule holds.
+    assert _strip_nones(restored) == _strip_nones(frames), (
         f"Mismatch for {path}:\n"
         f"  frame keys:     {sorted(frames[0])}\n"
         f"  lerobot cols:   {sorted(columns)}\n"
