@@ -33,6 +33,7 @@ import json
 import math
 from functools import lru_cache
 from pathlib import Path
+from typing import TypeGuard
 
 from .taxonomy_registry import list_term_ids
 
@@ -164,15 +165,16 @@ def validate_ps_message_jsonschema(msg: dict) -> list[str]:
 # --- helpers -----------------------------------------------------------------
 
 
-def _is_number(v: object) -> bool:
+def _is_number(v: object) -> TypeGuard[int | float]:
+    """True for real numbers; ``TypeGuard`` so callers' comparisons type-check."""
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-def _is_finite_number(v: object) -> bool:
+def _is_finite_number(v: object) -> TypeGuard[int | float]:
     return _is_number(v) and math.isfinite(float(v))
 
 
-def _is_int(v: object) -> bool:
+def _is_int(v: object) -> TypeGuard[int]:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
