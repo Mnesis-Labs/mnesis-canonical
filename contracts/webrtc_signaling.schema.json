@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mnesis-Labs/mnesis-canonical/blob/main/contracts/webrtc_signaling.schema.json",
+  "title": "Mnesis WebRTC Signaling Messages",
+  "description": "Schema for WebRTC signaling messages (video_offer/video_answer/video_ice) over the xr_bridge WS envelope. Authority: C3 v1.7 (issue #60). Each message wraps in the standard envelope {type, seq, ts, body}.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["video_offer", "video_answer", "video_ice"],
+      "description": "Message type — one of the three WebRTC signaling messages."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "description": "Sender monotonic sequence number (uint32)."
+    },
+    "ts": {
+      "type": "integer",
+      "description": "Sender Unix nanosecond timestamp (int64)."
+    },
+    "body": {
+      "type": "object",
+      "description": "Message payload — schema depends on type.",
+      "oneOf": [
+        { "$ref": "#/$defs/body_video_offer" },
+        { "$ref": "#/$defs/body_video_answer" },
+        { "$ref": "#/$defs/body_video_ice" }
+      ]
+    }
+  },
+  "required": ["type", "seq", "ts", "body"],
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "video_offer" } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_video_offer" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "video_answer" } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_video_answer" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "video_ice" } } },
+      "then": { "properties": { "body": { "$ref": "#/$defs/body_video_ice" } } }
+    }
+  ],
+  "$defs": {
+    "body_video_offer": {
+      "type": "object",
+      "description": "video_offer body: consumer → robot, SDP offer with multi-subscriber fields.",
+      "properties": {
+        "stream_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target video stream identifier (e.g. 'camera_head', 'camera_wrist_left')."
+        },
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Globally unique subscriber identifier (e.g. 'web_dashboard_1', 'quest_2')."
+        },
+        "sdp": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SDP offer text (JSON-escaped standard Session Description Protocol)."
+        },
+        "qos_hint": {
+          "type": "string",
+          "enum": ["low_latency", "stable"],
+          "description": "Optional QoS preference: 'low_latency' (Quest fine manipulation) or 'stable' (Web mapping, default)."
+        },
+        "codec": {
+          "type": "string",
+          "description": "Optional V2 reserved: requested video codec (e.g. 'h264', 'h265')."
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional V2 reserved: requested frame width (pixels)."
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional V2 reserved: requested frame height (pixels)."
+        }
+      },
+      "required": ["stream_id", "subscriber_id", "sdp"],
+      "additionalProperties": false
+    },
+    "body_video_answer": {
+      "type": "object",
+      "description": "video_answer body: robot → consumer, SDP answer with multi-subscriber fields.",
+      "properties": {
+        "stream_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target video stream identifier (matches video_offer.stream_id)."
+        },
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Subscriber identifier (matches video_offer.subscriber_id)."
+        },
+        "sdp": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SDP answer text (standard Session Description Protocol)."
+        },
+        "qos_hint": {
+          "type": "string",
+          "enum": ["low_latency", "stable"],
+          "description": "Optional QoS preference (echoed from video_offer for confirmation)."
+        },
+        "accepted": {
+          "type": "boolean",
+          "description": "Whether the offer is accepted (false = rejected, see message field)."
+        },
+        "message": {
+          "type": ["string", "null"],
+          "description": "Optional human-readable explanation (e.g. 'codec unsupported, falling back to mjpeg')."
+        }
+      },
+      "required": ["stream_id", "subscriber_id", "sdp", "accepted"],
+      "additionalProperties": false
+    },
+    "body_video_ice": {
+      "type": "object",
+      "description": "video_ice body: bidirectional ICE candidate exchange.",
+      "properties": {
+        "stream_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target video stream identifier."
+        },
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Subscriber identifier — routes ICE candidate to the correct WebRTC PeerConnection."
+        },
+        "candidate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ICE candidate text (standard format with IP/port/transport protocol)."
+        },
+        "sdp_mid": {
+          "type": "string",
+          "description": "Media description identifier (a=mid value from the SDP)."
+        },
+        "sdp_mline_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Media line index (0-based m= line index, alternate association)."
+        }
+      },
+      "required": ["stream_id", "subscriber_id", "candidate", "sdp_mid", "sdp_mline_index"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,7 +1,7 @@
 # XR_ROBOT_CONTRACT — xr_bridge WebSocket 实时遥操作契约
 
 > **契约编号**: C3
-> **版本**: v1.6
+> **版本**: v1.7
 > **Owner（定义方）**: Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md` 镜像于此）
 > **消费方**: Eidolon（Quest VR 前端）
 > **两侧测试**: Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试
@@ -105,7 +105,7 @@ VR ─── WS Close ──── Robot           [正常断开]
   "arms": [
     {"name": "main", "dof": 7, "joint_names": ["j1",...,"j7"]}
   ],
-  "protocol_version": "1.6",
+  "protocol_version": "1.7",
   "can_estop": true,
   "watchdog_timeout_ms": 500,
   "video_capabilities": {
@@ -395,7 +395,84 @@ VR ─── WS Close ──── Robot           [正常断开]
 | `transport` | string | 实际所走视频线：`"mjpeg"` / `"webrtc"`（取自 `C3_Info.video_capabilities.transports` 协商结果） |
 | `message` | string\|null | 可读说明（如 `"fps clamped 60→30"`）；可选 |
 
----
+### 3.14 `video_offer` — 消费端 → 机器人侧（SDP offer，v1.7 新增）
+
+消费端（Web 端 / Quest 头显）向机器人侧发起 WebRTC 连接协商，提交 SDP offer 描述。**本消息是 additive 新增**：≤v1.6 客户端忽略本消息，视频退回到 MJPEG 线（`video_capabilities.transports` 无 `webrtc` 时等价行为不变）。
+
+```json
+{
+  "stream_id": "camera_head",
+  "subscriber_id": "web_dashboard_1",
+  "sdp": "v=0\no=- 1234567890 2 IN IP4 127.0.0.1\ns=-\nt=0 0\nm=video 9 UDP/TLS/RTP/SAVPF 96\n...",
+  "qos_hint": "low_latency",
+  "codec": "h264",
+  "width": 1280,
+  "height": 720
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stream_id` | string | **目标视频流标识**。对应机器人侧的视频源（如 `"camera_head"` / `"camera_wrist_left"`）。同一路源可被多个 `subscriber_id` 同时订阅 —— 机器人侧据此复用编码 |
+| `subscriber_id` | string | **订阅者标识**，全局唯一（如 `"web_dashboard_1"` / `"quest_2"`）。机器人侧通过此字段区分「这条 answer 是回给 Web 还是回给 Quest」——**没有这个字段，双端同看就无法实现** |
+| `sdp` | string | SDP offer 文本（标准 Session Description Protocol，统一描述格式，不依赖具体实现）。编码为 JSON 字符串，上层使用时代码做 `\n` 换行还原 |
+| `qos_hint` | string | **可选**，QoS 偏好枚举：`"low_latency"`（Quest 精细操作，优先延迟） / `"stable"`（Web 长时建图，优先稳定）。两端 QoS 诉求不同，但**共用同一路编码**，靠此提示各订阅者的 ABR/缓冲策略，**不分裂成两套编码**。缺省 = `"stable"` |
+| `codec` | string | **可选（V2 预留）**，请求的视频编码（如 `"h264"` / `"h265"`）。为 V2 阶段 360° 全景流预留（码率显著高于单目），但**本卡只定字段不实现全景**。缺省 = 由 `C3_Info.video_capabilities.codecs` 协商结果决定 |
+| `width` | uint32 | **可选（V2 预留）**，请求的帧宽（像素）。缺省 = 由 `C3_CameraControl` 协商的当前生效分辨率 |
+| `height` | uint32 | **可选（V2 预留）**，请求的帧高（像素） |
+
+> **多订阅者语义**：当 Web 端和 Quest 端同时对同一 `stream_id` 发起 offer 时，机器人侧应：
+> 1. 对每个 `subscriber_id` 独立维护 WebRTC PeerConnection（多 peer 各自协商，各自 ICE）
+> 2. 编码侧只做**一路编码**，分发到各 peer（不因多订阅者而翻倍编码开销）
+> 3. 各 peer 的 `qos_hint` 影响各自的 ABR/缓冲策略，不影响编码参数
+
+### 3.15 `video_answer` — 机器人侧 → 消费端（SDP answer，v1.7 新增）
+
+机器人侧对 `video_offer` 的应答，提交 SDP answer 描述。
+
+```json
+{
+  "stream_id": "camera_head",
+  "subscriber_id": "web_dashboard_1",
+  "sdp": "v=0\no=- 9876543210 2 IN IP4 127.0.0.1\ns=-\nt=0 0\nm=video 9 UDP/TLS/RTP/SAVPF 96\n...",
+  "qos_hint": "low_latency",
+  "accepted": true,
+  "message": null
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stream_id` | string | 目标视频流标识（对应 `video_offer` 的 `stream_id`） |
+| `subscriber_id` | string | 订阅者标识（对应 `video_offer` 的 `subscriber_id`）——机器人侧据此将 answer 路由到正确的 WebRTC 协商会话 |
+| `sdp` | string | SDP answer 文本（标准 Session Description Protocol） |
+| `qos_hint` | string | **可选**，QoS 偏好枚举（同 `video_offer`。机器人侧在 answer 中回显，供消费端确认） |
+| `accepted` | bool | 是否接受 offer（`false` = 拒绝，通常是能力不匹配，见 `message`） |
+| `message` | string\|null | **可选**，可读说明（如 `"codec unsupported, falling back to mjpeg"`） |
+
+### 3.16 `video_ice` — 双向（ICE candidate 交换，v1.7 新增）
+
+WebRTC ICE candidate 双向交换。消费端与机器人侧均可发送。
+
+```json
+{
+  "stream_id": "camera_head",
+  "subscriber_id": "web_dashboard_1",
+  "candidate": "candidate:1 1 UDP 2122252543 192.168.1.100 49152 typ host",
+  "sdp_mid": "0",
+  "sdp_mline_index": 0
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stream_id` | string | 目标视频流标识 |
+| `subscriber_id` | string | 订阅者标识——机器人侧据此将 ICE candidate 路由到正确的 WebRTC PeerConnection |
+| `candidate` | string | ICE candidate 文本（标准 ICE candidate 格式，含 IP/端口/传输协议等） |
+| `sdp_mid` | string | 媒体描述标识（SDP 中 `a=mid` 值，用于将 candidate 关联到指定媒体轨） |
+| `sdp_mline_index` | uint32 | 媒体行索引（SDP 中 m= 行的 0-based 索引，备选关联方式） |
+
+> **ICE 交换时序**：`video_ice` 可在 offer/answer 交换完成前开始发送（Trickle ICE 语义），消费端与机器人侧都应支持在收到 answer 前积累候选地址。**信令流与媒体流分离**：`video_ice` 走本契约的 WS 信封（8442 端口），媒体流走 WebRTC 的 DTLS/SRTP（ICE 协商后直连，不经过 8442）。
 
 ## 4. 急停闩锁（E-Stop Latch）
 
@@ -468,6 +545,7 @@ VR ─── WS Close ──── Robot           [正常断开]
 - 单臂 v1.5 端发送 `C3_Frame` 时使用 `arms: [{arm_id: "main", ...}]` 1 元素数组。
 - `mode` 字段（`"position"` / `"joint"`，≤v1.4 顶层字段）保留为 `arms[]` 元素的**可选**字段，缺省 `"position"`。
 - **v1.6 新增均为 additive**：≤v1.5 客户端可忽略 `C3_CameraControl` / `C3_CameraStatus` 消息与 `C3_Info.video_capabilities` 字段，遥操作核心功能不受影响；未声明 `video_capabilities` 等价于仅支持 `mjpeg`，`webrtc` 线视为不可用。
+- **v1.7 新增均为 additive**：≤v1.6 客户端可忽略 `video_offer` / `video_answer` / `video_ice` 消息，视频退回到 MJPEG 线（`video_capabilities.transports` 缺省或仅有 `["mjpeg"]` 时，`webrtc` 线视为不可用，行为不变）。`stream_id` / `subscriber_id` 字段为多订阅者场景设计，**单订阅者场景下** `subscriber_id` 可固定为 `"default"`，不影响单 peer 正常协商。
 - 新增字段均为可选/扩展，不破坏现有消息结构。
 
 ---
@@ -483,3 +561,4 @@ VR ─── WS Close ──── Robot           [正常断开]
 | v1.4 | 2026-07 | 增加 `C3_Reset` 消息；明确坐标约定（§7）；细化安全规则（§8）。本文件迁入 canonical 作为单一真值 |
 | v1.5 | 2026-07 | **双臂数组信封**：`C3_Frame` 和 `C3_Status` 使用 `arms[]` 数组支持多臂，单臂端发送 1 元素数组向后兼容。**新增三消息**：`C3_GhostTrajectory`（规划预览轨迹）、`C3_PlanStatus`（规划状态变更）、`C3_ExecuteConfirm`（确认执行）。**逐臂 watchdog + 全局 estop 语义**：watchdog 逐臂独立超时检测；estop 一律全局停止，`arm_id` 仅作诊断标注。**`C3_Status` 对称扩展**：加入 `arms[].eef_pose`、`arms[].health`。**`C3_EStop` 扩展**：加入 `arm_id` 诊断字段（标注触发来源臂；停止范围保持全局）。**安全规则补充**：PlanGate 安全、规划预览有效期、向后兼容性声明（§9） |
 | v1.6 | 2026-07 | **相机控制协商**（additive）：新增 `C3_CameraControl`（头显 → 机器，下发 `{camera_id,width,height,fps,bitrate,codec}` 协商，语义对齐业界 `OPEN_CAMERA` 式协议，走本契约 WS 信封）+ `C3_CameraStatus`（机器 → VR，回报实际生效参数与传输线）。**视频传输能力声明**（additive）：`C3_Info.video_capabilities`（`transports: webrtc\|mjpeg` 等）——为已拍板的 **WebRTC 线（[DQ-1]）预留**，消费端 YC 后接入；缺省等价仅 `mjpeg`。≤v1.5 客户端忽略新消息/字段即可，wire format 零破坏（§9）。**夹爪通道 C8** 在 canonical 帧侧同步落地（`observation.gripper[.left\|.right]`，`[0,1]`，对齐 `arms[].gripper`），见 `canonical_frame_schema_REFERENCE.md` |
+| v1.7 | 2026-07 | **WebRTC 信令三消息**（additive，issue #60）：新增 `video_offer`（消费端 → 机器人侧，SDP offer）、`video_answer`（机器人侧 → 消费端，SDP answer）、`video_ice`（双向，ICE candidate 交换）。**多订阅者字段**：`stream_id`（目标视频流标识）+ `subscriber_id`（订阅者标识）——双端（Web + Quest）同看同一路源的核心区分字段。**QoS 提示**：`qos_hint`（可选，`low_latency` / `stable`），各订阅者 ABR/缓冲策略凭此区分，编码侧一路编码不分裂。**V2 预留**：`codec` / `width` / `height` 字段已定义但暂不实现全景。≤v1.6 客户端忽略三消息，视频退回到 MJPEG 线，零破坏（§9）。 |

@@ -8,7 +8,7 @@
 | C1 | **Canonical Frame Schema**（JSONL 帧格式：字段/向量长/双时间戳/词表） | v0.1 | canonical（`SPEC.md` + `canonical_frame.schema.json`） | Iris·Eidolon·Daedalus·Ambrosia | canonical `tests/` · Iris `CanonicalSchemaContractTest` · Ambrosia ingest 校验 |
 | C2 | **Episodes Ingest HTTP**（`POST /api/episodes` multipart：`manifest`+`jsonl`+`video?`+`frames?`；`X-App-Token?`） | v1.1 | Ambrosia（`docs/SPRINT_S4_CLINE.md` 契约节 + `docs/HANDOFF_S4.md`） | Iris·Eidolon·Daedalus | Ambrosia `tests/test_iris_contract.py`（Ct-1..11） · Iris `EpisodeUploaderHeaderTest`+S4 D2 |
 | C2a | frames.zip 规范：根目录 `%06d.jpg`（与 `frame_index` 对齐，1fps）；包≤200MB/帧≤5MB/≤3600 帧。服务端宽容收 png/jpg/jpeg/webp/bmp，规范名以 jpg 为准 | v1.1 | Ambrosia | Iris（Eidolon/Daedalus 后续） | 同上 |
-| C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明） | v1.6 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
+| C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明/WebRTC 信令） | v1.7 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：关节读写/示教/安全），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **草案 TBD** | Daedalus（待定义） | Ambrosia（`bridge/hw_bridge.py` 现状=临时直连，待迁移到本契约） | 待建 |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
 
@@ -18,7 +18,8 @@
 - **2026-07-21 · `action.gripper`（Parthenon#16 问题二 = A，Muso 拍板）**：帧新增可选字段 `action.gripper`，类型 `float`，**归一化 `[0.0, 1.0]`**（`0.0`=完全张开，`1.0`=完全闭合）。字段缺失 = 该数据源不提供夹爪信息（**≠ `0.0`**）；越界/非数值报错，缺失不报错。`action` 向量长度不变（夹爪是独立可选字段，非把 action 扩成 7 维）。物理行程由 embodiment registry 描述，不进逐帧数据。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.validate` 同步。消费方（Iris/Eidolon/Daedalus/Ambrosia）按 additive 各自接入，缺失即按无夹爪处理。
 - **2026-07-22 · `observation.gripper[.left|.right]`（Parthenon#20 拍板 A，Muso）**：帧新增可选**观测侧**夹爪字段，类型 `float`，**闭合程度归一化 `[0.0, 1.0]`**（`0.0`=完全张开，`1.0`=完全闭合）——**方向与 `action.gripper` 一字不差一致**。`observation.gripper`=单/主夹爪（任意 profile）；`.left` / `.right`=双臂 `robot_v2`。缺失 = 无夹爪观测（**≠ `0.0`**）；越界/非有限报错。语义与 C3 `arms[].gripper` 对齐。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate}` / `contracts/canonical_frame_schema_REFERENCE.md` 同步。**背景**：原 PR#39 曾误把观测侧定义为 `0`=闭合（与 `action.gripper` 相反），本次统一改向。
 
-### C3 说明记录（端点补明确 → v1.6 additive 字段新增）
+### C3 说明记录（端点补明确 → v1.6 additive 字段新增 → v1.7 WebRTC 信令 additive）
+- **2026-07-28 · WebRTC 信令三消息（issue #60，C1 架构拍板后落卡）**：C3 v1.7 新增三条 WebRTC 信令消息——`video_offer`（消费端 → 机器人侧，SDP offer）、`video_answer`（机器人侧 → 消费端，SDP answer）、`video_ice`（双向，ICE candidate 交换）。**多订阅者字段**：`stream_id`（目标视频流标识）+ `subscriber_id`（订阅者标识）——机器人侧通过此字段区分「这条 answer 是回给 Web 还是回给 Quest」。**QoS 提示**：`qos_hint`（可选枚举，`low_latency` / `stable`），各订阅者 ABR/缓冲策略凭此区分，编码侧一路编码不分裂。**V2 预留**：`codec` / `width` / `height` 字段已定义但暂不实现 360° 全景。**additive 声明**：≤v1.6 客户端忽略三消息，视频退回到 MJPEG 线，遥操作核心功能零破坏。**JSON Schema**：`contracts/webrtc_signaling.schema.json` 附正例+反例测试。**消费方升版路径**：见本节末。**两侧测试**：Daedalus 侧 harness 需新增 `video_offer`/`video_answer`/`video_ice` 信令回合；Eidolon 侧 webapp `protocol.js` 需新增三条消息处理。
 - **2026-07-22 · `arms[].gripper` 端点定义补明确（Parthenon#20 拍板 A，Muso）**：C3 wire 的 `arms[].gripper` 原仅写「夹爪开度 [0.0, 1.0]」**未定义端点**（本次分歧根源）。补明确为「夹爪**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合」，方向与 canonical `action.gripper` / `observation.gripper` 一致。**这是把既有模糊补明确，wire 版本不变（仍 v1.5）**，`XR_ROBOT_CONTRACT.md` / `xr_bridge_SPEC.md` 同步并附消费方核对提示。既有实现（Daedalus xr_bridge / Eidolon / airbot webapp）在此定义明确前可能按相反方向理解，接入前须各自核对——各仓核对属后续独立卡。
 - **2026-07-25 · `HandGoal` 新增 confidence/axes/buttons（Daedalus PR#157，Muso 拍板）**：C3 `HandGoal` 新增三个可选字段——`confidence`（float，缺省 1.0，<0.3 视同 `tracking:false` 做安全降级）、`axes`（float 数组，缺省空）、`buttons`（bool 数组，缺省空）。三字段全部可选且向后兼容：不带这些字段的老帧行为完全不变。**动机**：`confidence` 支持渐进降级（追踪中逐步丢失而非二值丢失），`axes`/`buttons` 给 PICO 适配器（#152）映射 XRoboToolkit 全量手柄输入用。本次为 additive 变更，并入 **v1.6**（与同期 PR#39「相机控制协商/视频能力声明」additive 变更同属该 v1.5→v1.6 版本窗口，两者共享同一次 minor 升版，互不冲突）。**两侧测试**：Daedalus 侧 `tests/xr_bridge/test_frame_schema.py` + `test_safety.py`（已随 #157 合并）；Eidolon 侧 webapp `protocol.js` 补发仍在做（#155 T3，标注 pending）。
 
@@ -55,6 +56,13 @@ canonical 侧 `contracts/contracts.lock` 已随本次改动重算（`XR_ROBOT_CO
 - **Eidolon**（C3 消费方，Quest 前端）：升到 v1.6 后可读 `video_capabilities` 选择视频线、下发 `C3_CameraControl`；未升版时忽略新消息，遥操作核心不受影响。采 gripper 时按 `observation.gripper*` 写入 canonical 帧。
 - **airbot 仓 / Daedalus（C1 消费方，机器人采集面）**：`observation.gripper*` 为可选 additive——升 `mnesis-canonical` 版本后即可产出/校验带夹爪的帧；不升版的旧数据仍全绿。
 - **Ambrosia**（C1 消费方，ingest）：升 `mnesis-canonical` 依赖版本，ingest 校验自动接受 `observation.gripper*`（可选，范围 `[0,1]`）；无需改 schema 门。WebRTC 线 YC 后按 `video_capabilities` 接入。
+
+### 消费端升版路径（C3 v1.7 · WebRTC 信令三消息，issue #60）
+
+- **所有消费方**：`contracts.lock` 已重算，执行 `python -m mnesis_canonical.contracts_check --generate` 更新本地锁。`webrtc_signaling.schema.json` 为新增文件，首次加入 `contracts.lock` 跟踪范围。
+- **Daedalus**（C3 Owner，xr_bridge 服务端）：将 `docs/integration/XR_ROBOT_CONTRACT.md` 镜像同步到 v1.7；在 WS 信令处理器中新增 `video_offer` 接收 → `video_answer` 应答 → `video_ice` 双向中继（**信令流走 8442 WS 信封，媒体流走 WebRTC DTLS/SRTP 直连，不经过 8442**）。多订阅者场景：`stream_id` 关联编码器，`subscriber_id` 区分各 peer 的 PeerConnection。harness 新增 WebRTC 信令回合测试。**≤v1.6 客户端零改动**：未实现 `video_offer`/`video_answer`/`video_ice` 的旧客户端，视频退回到 MJPEG 线，行为不变。
+- **Eidolon**（C3 消费方，Quest 前端 + Web 前端）：升到 v1.7 后，Web 端常开（建图/3DGS 采集）和 Quest 端按需接入（精细操作）均可通过 `video_offer` 发起 WebRTC 协商。`subscriber_id` 区分两端——`"web_dashboard_1"` 与 `"quest_2"` 可同时订阅同一路 `stream_id`。`qos_hint` 按场景设置：Quest 端 → `"low_latency"`，Web 端 → `"stable"`。未升版时忽略 `video_*` 消息，视频退回到 MJPEG，遥操作核心不受影响。
+- **Ambrosia**（Web 控制台消费方，YC 后接入）：虽然 `video_*` 消息是 C3 线侧信令（不经过 C2 上传），但 Ambrosia 控制台的 Web 版视频预览需要消费 `video_offer`/`video_answer`/`video_ice` 建立 WebRTC 流。升版后按 `C3_Info.video_capabilities` 发现 `webrtc` 线，通过 `video_offer` 发起协商。`C3_CameraControl` 协商的 `codec`/`width`/`height`/`fps` 参数在 WebRTC 线中通过 SDP 传递，两套协商机制互补（`C3_CameraControl` 定参数 → `video_offer` 传 SDP）。
 
 升版校验：`python -m mnesis_canonical.contracts_check`（哈希一致）+ `pytest -q`（既有测试零改动全绿）。
 

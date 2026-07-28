@@ -1,7 +1,7 @@
 # xr_bridge WebSocket 消息 SPEC 摘要
 
 > **所属契约**: C3 — xr_bridge WS（详情见 `XR_ROBOT_CONTRACT.md`）
-> **版本**: v1.6
+> **版本**: v1.7
 > **本文件**: xr_bridge WebSocket 消息格式的简洁摘要，供快速参考。完整协议细节和语义见 `XR_ROBOT_CONTRACT.md`。
 
 ---
@@ -46,6 +46,9 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 | `C3_ExecuteConfirm` | VR → 机器 | 确认执行，携带 goal_seq |
 | `C3_CameraControl` | VR → 机器 | **v1.6** 相机控制协商，下发 `{camera_id,width,height,fps,bitrate,codec}` |
 | `C3_CameraStatus` | 机器 → VR | **v1.6** 相机协商结果回报，实际生效参数 + 传输线 |
+| `video_offer` | 消费端 → 机器人 | **v1.7** WebRTC SDP offer，多订阅者协商 |
+| `video_answer` | 机器人 → 消费端 | **v1.7** WebRTC SDP answer，多订阅者应答 |
+| `video_ice` | 双向 | **v1.7** WebRTC ICE candidate 交换 |
 
 ## 消息 body 结构
 
@@ -267,6 +270,78 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 | `transport` | string | 实际视频线：`mjpeg` / `webrtc` |
 | `message` | string\|null | 可读说明（可选） |
 
+### video_offer (消费端 → 机器人侧, v1.7)
+
+WebRTC SDP offer，消费端向机器人侧发起 WebRTC 连接协商。**additive 新增**：≤v1.6 客户端忽略本消息，视频退回到 MJPEG 线。
+
+```json
+{
+  "stream_id": "camera_head",
+  "subscriber_id": "web_dashboard_1",
+  "sdp": "v=0\no=- ...",
+  "qos_hint": "low_latency",
+  "codec": "h264",
+  "width": 1280,
+  "height": 720
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stream_id` | string | 目标视频流标识（如 `"camera_head"` / `"camera_wrist_left"`）。同一路源可被多个 `subscriber_id` 同时订阅 |
+| `subscriber_id` | string | **订阅者标识**，全局唯一（如 `"web_dashboard_1"` / `"quest_2"`）。机器人侧通过此字段区分「这条 answer 是回给 Web 还是回给 Quest」 |
+| `sdp` | string | SDP offer 文本（标准 Session Description Protocol） |
+| `qos_hint` | string | **可选**，`"low_latency"`（Quest 精细操作） / `"stable"`（Web 长时建图，缺省）。提示 ABR/缓冲策略，**不分裂编码** |
+| `codec` | string | **可选（V2 预留）**，请求视频编码（如 `"h264"`） |
+| `width` | uint32 | **可选（V2 预留）**，请求帧宽（像素） |
+| `height` | uint32 | **可选（V2 预留）**，请求帧高（像素） |
+
+### video_answer (机器人侧 → 消费端, v1.7)
+
+对 `video_offer` 的应答，提交 SDP answer。
+
+```json
+{
+  "stream_id": "camera_head",
+  "subscriber_id": "web_dashboard_1",
+  "sdp": "v=0\no=- ...",
+  "qos_hint": "low_latency",
+  "accepted": true,
+  "message": null
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stream_id` | string | 目标视频流标识（对应 `video_offer` 的 `stream_id`） |
+| `subscriber_id` | string | 订阅者标识（对应 `video_offer` 的 `subscriber_id`） |
+| `sdp` | string | SDP answer 文本 |
+| `qos_hint` | string | **可选**，QoS 偏好枚举（同 `video_offer`，回显供确认） |
+| `accepted` | bool | 是否接受 offer（`false` = 拒绝，见 `message`） |
+| `message` | string\|null | **可选**，可读说明（如 `"codec unsupported"`） |
+
+### video_ice (双向, v1.7)
+
+ICE candidate 双向交换。
+
+```json
+{
+  "stream_id": "camera_head",
+  "subscriber_id": "web_dashboard_1",
+  "candidate": "candidate:1 1 UDP 2122252543 192.168.1.100 49152 typ host",
+  "sdp_mid": "0",
+  "sdp_mline_index": 0
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stream_id` | string | 目标视频流标识 |
+| `subscriber_id` | string | 订阅者标识——路由到正确的 WebRTC PeerConnection |
+| `candidate` | string | ICE candidate 文本（含 IP/端口/传输协议） |
+| `sdp_mid` | string | 媒体描述标识（`a=mid` 值） |
+| `sdp_mline_index` | uint32 | 媒体行索引（m= 行的 0-based 索引） |
+
 ## 关键参数
 
 | 参数 | 默认值 |
@@ -292,6 +367,7 @@ WebSocket (WSS)  |  JSON 文本帧  |  UTF-8
 - v1.2/v1.3/v1.4 客户端忽略 `C3_GhostTrajectory`、`C3_PlanStatus`、`C3_ExecuteConfirm` 消息即可正常工作。
 - 单臂端发送 `C3_Frame` 时使用 `arms: [{arm_id: "main", ...}]` 1 元素数组，与 v1.5 服务端完全兼容。
 - ≤v1.5 客户端忽略 `C3_CameraControl` / `C3_CameraStatus` 消息与 `C3_Info.video_capabilities` 字段即可正常工作（v1.6 additive）。
+- **v1.7 additive**：≤v1.6 客户端忽略 `video_offer` / `video_answer` / `video_ice` 消息，视频退回到 MJPEG 线，遥操作核心功能不受影响。单订阅者场景下 `subscriber_id` 可固定为 `"default"`。
 - 新增字段均为可选/扩展，不破坏现有消息结构。
 
 ## 坐标约定
