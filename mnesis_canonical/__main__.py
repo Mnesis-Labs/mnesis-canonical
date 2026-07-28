@@ -31,7 +31,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         print(f"error: could not read {args.path}: {e}", file=sys.stderr)
         return 2
 
-    report = validate_frames(frames, strict_vocab=args.strict_vocab)
+    report = validate_frames(
+        frames, strict_vocab=args.strict_vocab, strict_stable=args.strict_stable,
+    )
     print(f"total={report.total} valid={report.valid} errors={len(report.errors)}")
 
     if report.errors:
@@ -164,6 +166,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--strict-vocab",
         action="store_true",
         help="Reject unknown source.device / source.modality values.",
+    )
+    v.add_argument(
+        "--strict-stable",
+        action="store_true",
+        help="Reject frames carrying any [experimental] field (freeze-only ingest).",
     )
     v.add_argument(
         "--max-errors",

@@ -68,6 +68,28 @@ GRIPPER_KEYS = (
 GRIPPER_MIN = 0.0
 GRIPPER_MAX = 1.0
 
+# Field-level status values (mirror canonical_frame.schema.json `x-status` and
+# SPEC.md §Versioning).  "stable" is the default / implicit value.
+FIELD_STATUS = ("experimental", "stable", "deprecated")
+
+# Experimental fields: frozen before promotion to `stable`.  These may be renamed
+# or reshaped without counting as a breaking change.  (Authoritative `x-status`
+# lives in canonical_frame.schema.json; this tuple keeps the pure-Python
+# validator in lock-step.)
+EXPERIMENTAL_KEYS = (
+    "observation.hand.left",
+    "observation.hand.right",
+    "observation.hand.left.rot",
+    "observation.hand.right.rot",
+    "observation.hand.layout",
+    "observation.hand.frame",
+    "observation.hand.source",
+)
+
+# Deprecated fields: removed in a future major version.  Empty for now; the
+# `--strict-stable` switch refuses both experimental and deprecated fields.
+DEPRECATED_KEYS = ()
+
 # --- Hand keypoints (C11, additive, optional, status: experimental) ----------
 # Skeleton-level hand data as a first-class observation.  The keypoint vectors
 # are **variable-length**: their length is declared by ``observation.hand.layout``
