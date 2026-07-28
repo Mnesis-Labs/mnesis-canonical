@@ -1,27 +1,30 @@
 name: CI
 
 on:
-  # push 收窄到 main：分支上的改动一律经 PR 事件跑 CI。
-  # 原先 push/pull_request 都是 "**"，同一个 PR 分支每推一次就并发两套内容
-  # 完全相同的 run（4 job × 2 = 8）。下面的双机化把这些 job 铺开跑得更快，
-  # 但重复本身仍在——同一个 commit 校验两遍不产生任何额外信息。
-  #
-  # 代价（务必知情）：PR 一旦与 base 冲突，GitHub 算不出 merge commit，
-  # pull_request 事件就不再触发；此前是靠 push:"**" 兜底才仍有 CI 信号。
-  # 收窄后冲突 PR 将完全没有 check（实测 #62 冲突期间 no checks reported）。
-  # 取舍理由：冲突 PR 的正确反馈是「先解决冲突」，GitHub 已用 CONFLICTING
-  # 明示，再跑一遍 CI 并不改变该结论。
+  # push 保持 "**"：这是冲突 PR 唯一的 CI 兜底。
+  # PR 一旦与 base 冲突，GitHub 算不出 merge commit，pull_request 事件就完全
+  # 不触发；#62 曾把 push 收窄到 [main]，实测冲突期间该 PR no checks reported，
+  # 连「这份代码本身是好是坏」都无从判断。Muso 2026-07-28 拍板保留兜底。
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: ["**"]
 
-# 同一 PR 只保留最新一次 run，旧的排队/在跑的直接取消——连续推送时后推的
-# 提交才是待验对象，前一版的结果无人会看。
-# main 上不取消：每个已合并 commit 都要留下自己的 CI 记录。
+# 同一分支/PR 只保留最新一次 run，旧的排队或在跑的直接取消——连续推送时后推的
+# 提交才是待验对象，前一版的结果无人会看。这是控制重复 run 的主要手段：
+# push 与 pull_request 双触发导致同一 commit 跑两套（group 不同、互不取消），
+# 但至少同一 group 内不会随推送次数堆积。
+#
+# cancel-in-progress 按「分支是不是 main」判断，不能按事件类型判断：
+# 上一版写的是 event_name == 'pull_request'，其前提是 push 只发生在 main 上；
+# 既然兜底恢复，分支 push 也要能取消旧 run，否则兜底 run 会越堆越多。
+#   pull_request → github.ref = refs/pull/<n>/merge ≠ main → 取消
+#   push 到分支  → refs/heads/<branch>            ≠ main → 取消
+#   push 到 main → refs/heads/main                       → 不取消，
+#                  每个已合并 commit 都要留下自己的 CI 记录
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
