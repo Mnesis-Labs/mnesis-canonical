@@ -1,0 +1,340 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mnesis.dev/schemas/semantic_perception/v1.json",
+  "title": "Mnesis Dual-Endpoint Semantic Perception message (C12)",
+  "description": "One PS message on the 8442 WebSocket, envelope v1 ({type, seq, ts, body}) — the C3 header verbatim, because these ride the same socket as 30 Hz teleop frames. Three types: semantic_label (up, headset -> bridge, event-driven), scene_graph (down, bridge -> headset, 1-5 Hz change-driven), colocalization (bidirectional, low-frequency + event). The reusable pieces live in $defs: an ObservationLabel is what BOTH ends produce, a scene_graph is the fused, robot-authoritative product. Authority: SPEC.md §Dual-endpoint semantic perception / CONTRACTS.md C12. Keep in lock-step with mnesis_canonical/semantic.py.",
+  "type": "object",
+  "required": ["type", "seq", "ts", "body"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["semantic_label", "scene_graph", "colocalization"],
+      "description": "PS message type."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295,
+      "description": "Sender's monotonically increasing sequence number (uint32), as in C3."
+    },
+    "ts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Sender's Unix nanosecond timestamp (int64), as in C3. Nanoseconds everywhere — the standard has one time unit (t_ns / t_hw_ns / observed_at_ns)."
+    },
+    "body": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "semantic_label" } }, "required": ["type"] },
+      "then": { "properties": { "body": { "$ref": "#/$defs/semantic_label_body" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "scene_graph" } }, "required": ["type"] },
+      "then": { "properties": { "body": { "$ref": "#/$defs/scene_graph" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "colocalization" } }, "required": ["type"] },
+      "then": { "properties": { "body": { "$ref": "#/$defs/colocalization_body" } } }
+    }
+  ],
+  "$defs": {
+    "pose": {
+      "type": "object",
+      "title": "Pose",
+      "description": "Rigid transform: metres + unit quaternion {x,y,z,w} (scalar LAST), right-handed — identical to head_pose_SE3 and to C3 eef_pose. One convention per standard.",
+      "required": ["t", "q"],
+      "properties": {
+        "t": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Translation [x, y, z] in metres."
+        },
+        "q": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "Unit quaternion [qx, qy, qz, qw] (scalar last)."
+        }
+      }
+    },
+    "class_id": {
+      "type": "string",
+      "description": "Object class. MUST be an id from taxonomies/object_class_v1.json — the value domain is registered in canonical and consumers MUST NOT invent classes, otherwise the two ends stop meaning the same thing by the same word. This enum is generated from that file; adding a class is a PR there.",
+      "enum": [
+        "unknown",
+        "cup",
+        "bottle",
+        "can",
+        "bowl",
+        "plate",
+        "tray",
+        "box",
+        "jar",
+        "bin",
+        "cutlery",
+        "screwdriver",
+        "wrench",
+        "hammer",
+        "pliers",
+        "scissors",
+        "pen",
+        "brush",
+        "block",
+        "ball",
+        "cloth",
+        "bag",
+        "food",
+        "book",
+        "phone",
+        "laptop",
+        "keyboard",
+        "mouse",
+        "remote",
+        "switch",
+        "handle",
+        "door",
+        "drawer",
+        "table",
+        "shelf",
+        "chair",
+        "cabinet",
+        "person",
+        "hand",
+        "robot_arm",
+        "gripper",
+        "obstacle"
+      ]
+    },
+    "observation_label": {
+      "type": "object",
+      "title": "ObservationLabel",
+      "description": "One end's observation of one object. Produced by the robot end (Daedalus), the headset end (Eidolon), or a human adjudication — the same shape for all three, which is the entire point of C12. Not authoritative on its own; the fused verdict lives in scene_graph.",
+      "required": [
+        "label_id",
+        "class_id",
+        "confidence",
+        "source",
+        "frame_id",
+        "pose",
+        "observed_at_ns"
+      ],
+      "properties": {
+        "label_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable id for this object across frames (UUIDv4 recommended). Re-observing the same object reuses the id — that is what makes tracking possible."
+        },
+        "class_id": { "$ref": "#/$defs/class_id" },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Producer's confidence in class_id. Required: an input without a stated confidence cannot be fused. Human adjudications use 1.0."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["robot", "headset", "human"],
+          "description": "Which end produced the label. 'headset' and 'human' are in the enum from day one even though headset recognition (PS4) and human adjudication are backlog — widening an enum later is a contract change every consumer has to revisit."
+        },
+        "sensor": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional producer-local sensor id (e.g. 'cam_overhead'). Provenance only; carries no geometric meaning — the frame is frame_id."
+        },
+        "frame_id": {
+          "type": "string",
+          "enum": ["map"],
+          "description": "Reference frame of pose. MUST be the shared frame: a sensor- or headset-local pose is not fusable. The headset end transforms into 'map' using the colocalization extrinsic before publishing."
+        },
+        "pose": { "$ref": "#/$defs/pose" },
+        "extent": {
+          "type": "array",
+          "items": { "type": "number", "exclusiveMinimum": 0 },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Optional 3D bounding-box size [dx, dy, dz] in metres, in the pose's own frame. OMIT the key when the size is unknown — never null, never zeros (SPEC §Conventions: absent means unknown)."
+        },
+        "observed_at_ns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "When the observation was made, Unix nanoseconds. Distinct from the envelope ts (when the message was sent) — the fuser needs the observation time, not the transport time."
+        }
+      }
+    },
+    "scene_graph_label": {
+      "title": "Scene-graph label",
+      "description": "An ObservationLabel plus the fusion verdict.",
+      "allOf": [
+        { "$ref": "#/$defs/observation_label" },
+        {
+          "type": "object",
+          "required": ["state", "witnesses"],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": ["confirmed", "unconfirmed", "disputed", "stale"],
+              "description": "confirmed = corroborated; unconfirmed = one witness, uncontradicted; disputed = witnesses disagree on the class; stale = not re-observed recently but still believed to exist. A stale label is NOT dropped from the graph: 'I no longer see it' and 'it is gone' are different claims."
+            },
+            "witnesses": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["robot", "headset", "human"] },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Every source that has observed this object. MUST include the label's own source."
+            },
+            "dispute": {
+              "type": "object",
+              "minProperties": 2,
+              "propertyNames": { "enum": ["robot", "headset", "human"] },
+              "additionalProperties": { "$ref": "#/$defs/class_id" },
+              "description": "What each disagreeing witness called it, e.g. {'robot': 'cup', 'headset': 'bottle'}. Present exactly when state is 'disputed' — without it the graph records THAT there was a disagreement but not what it was, which is what a human adjudication needs to resolve it."
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "state": { "const": "disputed" } }, "required": ["state"] },
+              "then": { "required": ["dispute"] },
+              "else": { "not": { "required": ["dispute"] } }
+            }
+          ]
+        }
+      ]
+    },
+    "scene_graph": {
+      "type": "object",
+      "title": "scene_graph",
+      "description": "The fusion product: robot-end authoritative (Daedalus, ADR-004). Sent change-driven at 1-5 Hz; silence means nothing changed, so consumers MUST NOT treat it as a heartbeat.",
+      "required": ["map_id", "revision", "updated_at_ns", "labels"],
+      "properties": {
+        "map_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The map these labels are expressed in — the same map the colocalization extrinsic aligns the headset to."
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Monotonically increasing per map_id. A consumer redraws iff the revision it holds is older; this is the whole reason the graph is cheap to send."
+        },
+        "updated_at_ns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "When this revision was produced, Unix nanoseconds."
+        },
+        "labels": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/scene_graph_label" },
+          "description": "Fused labels; label_id is unique within a graph. An empty array is valid — an empty map is a real state."
+        }
+      }
+    },
+    "semantic_label_body": {
+      "type": "object",
+      "title": "semantic_label body (uplink: headset -> bridge)",
+      "description": "Event-driven. Several observations at once are BATCHED into one message rather than burst as several — the socket is shared with 30 Hz teleop.",
+      "required": ["map_id", "labels"],
+      "properties": {
+        "map_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Map the poses are expressed in."
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "allOf": [
+              { "$ref": "#/$defs/observation_label" },
+              {
+                "properties": {
+                  "source": {
+                    "enum": ["headset", "human"],
+                    "description": "Uplink only carries headset-side output: a 'robot' label is already on the authoritative side and never travels up."
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "colocalization_body": {
+      "type": "object",
+      "title": "colocalization body (bidirectional)",
+      "description": "The headset<->map alignment: extrinsic + quality + the colocalization_stale event. Low frequency (<=1 Hz) plus event-driven; the event is NOT a fourth message type, it is this message with a non-ok state, so alignment health has exactly one place to be read from.",
+      "required": ["map_id", "state"],
+      "properties": {
+        "map_id": { "type": "string", "minLength": 1 },
+        "state": {
+          "type": "string",
+          "enum": ["ok", "stale", "lost"],
+          "description": "ok = T_map_headset is currently valid; stale = the last extrinsic is still carried but no longer trusted; lost = no usable extrinsic (the key is omitted)."
+        },
+        "T_map_headset": {
+          "allOf": [{ "$ref": "#/$defs/pose" }],
+          "description": "Extrinsic T_map<-headset: transforms a point in the headset frame into the map frame. Required when state is 'ok'; MUST be omitted when state is 'lost' — an identity transform as a stand-in silently places every headset label at the map origin."
+        },
+        "computed_at_ns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "When the extrinsic was computed, Unix nanoseconds. Required whenever T_map_headset is present: the age of the alignment is what makes it trustworthy or not."
+        },
+        "quality": {
+          "type": "object",
+          "description": "Alignment quality. Required when state is 'ok' — an extrinsic without a quality figure cannot be gated on.",
+          "required": ["rmse_m", "inlier_ratio"],
+          "properties": {
+            "rmse_m": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Registration RMSE in metres."
+            },
+            "inlier_ratio": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Fraction of correspondences that are inliers."
+            },
+            "match_count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of correspondences used."
+            }
+          }
+        },
+        "event": {
+          "type": "string",
+          "const": "colocalization_stale",
+          "description": "Set on the event-driven notification that alignment is no longer trustworthy. Contradicts state 'ok'."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional human-readable cause (e.g. 'tracking lost', 'map revision changed')."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "ok" } }, "required": ["state"] },
+          "then": { "required": ["T_map_headset", "quality"] }
+        },
+        {
+          "if": { "properties": { "state": { "const": "lost" } }, "required": ["state"] },
+          "then": { "not": { "required": ["T_map_headset"] } }
+        },
+        {
+          "if": { "required": ["T_map_headset"] },
+          "then": { "required": ["computed_at_ns"] }
+        },
+        {
+          "if": { "required": ["event"] },
+          "then": { "properties": { "state": { "enum": ["stale", "lost"] } } }
+        }
+      ]
+    }
+  }
+}

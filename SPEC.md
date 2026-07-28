@@ -199,6 +199,141 @@ or `mnesis_canonical.migrate_hand_v0_frames(frames)` in-process. The migration
 renames the three carried fields, drops the derived `hand_pose`, and declares
 `layout = mediapipe_hand_21` + `frame = head_anchored`.
 
+## Dual-endpoint semantic perception (C12, PS0)
+
+The robot end (Mnesis-Daedalus) and the headset end (Mnesis-Eidolon) look at the
+same room and produce **the same kind of thing**: "there is a `cup` at this pose
+in the map, and I am 0.87 sure". This section defines that thing once, here,
+before either end implements it — the C1 video-signalling precedent: canonical
+defines, both ends consume read-only. Two independently-defined schemas would
+mean the fuser opens with an adapter layer and `class_id` drifts on day one.
+
+This repo defines the contract only. Fusion is Daedalus (ADR-004); headset-side
+consumption is Eidolon. Reference implementation of the validators:
+`mnesis_canonical.semantic`; JSON Schema for non-Python consumers:
+`mnesis_canonical/semantic.schema.json`; golden samples: `examples/semantic/`.
+
+### `ObservationLabel` — what both ends emit
+
+| Key | Type | Req | Meaning |
+|---|---|---|---|
+| `label_id` | str | ✅ | Stable id for this object **across frames** (UUIDv4 recommended). Re-observing the same object reuses it — that is what makes tracking possible |
+| `class_id` | str | ✅ | Object class, **from `taxonomies/object_class_v1.json`** — see below |
+| `confidence` | float | ✅ | `[0, 1]`. Required: an input without a stated confidence cannot be fused. Human adjudication uses `1.0` |
+| `source` | str | ✅ | `robot` \| `headset` \| `human` |
+| `sensor` | str | optional | Producer-local sensor id (`cam_overhead`). **Provenance only** — geometry is `frame_id`, exactly as `observation.hand.source` carries no geometry |
+| `frame_id` | str | ✅ | Must be `map` — the **shared** frame. A sensor- or headset-local pose is rejected, not silently mis-fused |
+| `pose` | obj | ✅ | `{"t": [x,y,z], "q": [x,y,z,w]}` — metres + **unit** quaternion, scalar last, right-handed (same convention as `head_pose_SE3`) |
+| `extent` | float[3] | optional | 3D bbox size `[dx,dy,dz]` in metres, positive. **Omit when unknown** — never null, never zeros (§Conventions) |
+| `observed_at_ns` | int | ✅ | When the observation was made, **Unix nanoseconds** — distinct from the envelope `ts` (when the message was sent) |
+
+`source` carries **`headset` and `human` from day one**, although headset-side
+recognition (PS4) and human adjudication are backlog. Widening an enum later is a
+contract change every consumer has to revisit; the two values cost nothing now.
+
+**Nanoseconds, not float seconds.** The PS0 draft used `observed_at` in
+fractional seconds. The standard already has exactly one time unit — `t_ns`,
+`t_hw_ns`, `events.jsonl` `t_ns`, and the C3 envelope `ts` are all integer
+nanoseconds — and a second unit inside one wire format is a conversion bug
+waiting on a boundary. Named `observed_at_ns` so the unit is in the field name.
+
+### `class_id` — the value domain is registered, not invented
+
+`taxonomies/object_class_v1.json` is the **only** source of `class_id`, resolved
+through the taxonomy registry (`mnesis_canonical.taxonomy_registry`, the same
+mechanism as `skeletons/` for `observation.hand.layout` and `embodiments/` for
+`observation.state`). A class the two ends need but the file lacks is a **PR
+against that file** — never a locally invented string, because the fusion
+contract exists precisely so that `cup` from the headset and `cup` from the robot
+are the same term. `unknown` is a real observation with an undetermined class,
+**not** a hole for a missing taxonomy entry.
+
+### `scene_graph` — the fused product (robot end authoritative)
+
+```jsonc
+{
+  "map_id": "lab_bench_a",
+  "revision": 42,                  // monotonic per map_id; consumers redraw off it
+  "updated_at_ns": 1785196801480000000,
+  "labels": [{
+    /* ...ObservationLabel... */
+    "state":     "confirmed",      // confirmed | unconfirmed | disputed | stale
+    "witnesses": ["robot", "headset"],
+    "dispute":   { "robot": "cup", "headset": "bottle" }   // iff state == disputed
+  }]
+}
+```
+
+- `state`: `confirmed` (corroborated) · `unconfirmed` (one witness, uncontradicted)
+  · `disputed` (witnesses disagree on the class) · `stale` (not re-observed
+  recently, still believed to exist). **A `stale` label is not dropped**: "I no
+  longer see it" and "it is gone" are different claims, and only the producer can
+  tell them apart. Consumers render it degraded.
+- `witnesses` ⊆ `{robot, headset, human}`, unique, and MUST contain the label's
+  own `source`.
+- `dispute` is present **exactly when** `state == "disputed"`: it maps each
+  disagreeing witness to what it called the object, its keys are a subset of
+  `witnesses`, its values come from the same taxonomy, and they must actually
+  differ. Without it the graph records *that* there was a disagreement but not
+  what it was — which is the one thing a human adjudication needs to resolve it.
+- `label_id` is unique within a graph; an empty `labels` array is valid (an empty
+  map is a real state).
+
+### The three 8442 messages (envelope v1)
+
+Envelope v1 is the **C3 public header verbatim** — `{type, seq, ts, body}`,
+`seq` uint32, `ts` int64 Unix ns — because these ride the same 8442 socket a
+bridge already demultiplexes for teleop.
+
+| Type | Direction | Rate | `body` |
+|---|---|---|---|
+| `semantic_label` | up (headset → bridge) | event-driven, ≤ 5 Hz | `{map_id, labels[≥1]}`, each label `source ∈ {headset, human}` |
+| `scene_graph` | down (bridge → headset) | **1–5 Hz, change-driven** | the `scene_graph` object above |
+| `colocalization` | bidirectional | **≤ 1 Hz** + event | see below |
+
+**Low frequency is a requirement, not a guideline.** These share the socket with
+30 Hz teleop frames; the ceilings are hard (`mnesis_canonical.PS_MAX_HZ`, checked
+by `validate_ps_stream`). A producer with several observations **batches them
+into one `semantic_label`** — the body carries an array — instead of bursting.
+The `scene_graph` band is a ceiling with a nominal floor: change-driven means
+**silence is legal** when the map does not change, so consumers must not
+implement a 1 Hz heartbeat off it.
+
+A `robot`-sourced label never travels on `semantic_label`: it is already on the
+authoritative side.
+
+#### `colocalization` body
+
+```jsonc
+{
+  "map_id": "lab_bench_a",
+  "state":  "ok",                     // ok | stale | lost
+  "T_map_headset": { "t": [...], "q": [...] },   // T_map←headset
+  "computed_at_ns": 1785196800940000000,
+  "quality": { "rmse_m": 0.014, "inlier_ratio": 0.91, "match_count": 428 },
+  "event":  "colocalization_stale",   // only with state stale | lost
+  "reason": "tracking recovered; extrinsic not re-solved"
+}
+```
+
+- `T_map_headset` transforms a point in the headset frame into the map frame — it
+  is what lets the headset publish labels in `frame_id: "map"` at all. **Required
+  when `state == "ok"`, and MUST be omitted when `state == "lost"`**: an identity
+  transform published as a stand-in silently parks every headset label at the map
+  origin. `computed_at_ns` is required whenever it is present — the age of an
+  alignment is what makes it trustworthy.
+- `quality` is required when `state == "ok"`; an extrinsic without a quality
+  figure cannot be gated on.
+- **`colocalization_stale` is not a fourth message type.** The event is this
+  message with a non-`ok` state, so alignment health has exactly one place to be
+  read from.
+
+### Golden samples
+
+`examples/semantic/` carries one validated sample per message plus the three
+boundary cases the consumers asked for: `disputed`, `stale`, and
+`source: "headset"`.
+
 ## Episode layout (on disk / upload)
 ```
 episodes/ep_<n>/

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mnesis-Labs/mnesis-canonical/blob/main/taxonomies/taxonomy.schema.json",
+  "title": "Mnesis Taxonomy Registry",
+  "description": "Schema for taxonomy entries: one JSON file per closed vocabulary. A taxonomy is the SINGLE SOURCE of a value domain that travels between repos — annotation verbs (taxonomies/manipulation_v1.json, consumed by annotations/spans.jsonl `action`) and object classes (taxonomies/object_class_v1.json, consumed by ObservationLabel `class_id`, C12). Consumers MUST NOT invent terms: adding one is a registry PR here, not a local extension, otherwise the value domain drifts per consumer and fusion has to maintain a mapping table.",
+  "type": "object",
+  "required": ["taxonomy_id", "version", "description"],
+  "properties": {
+    "taxonomy_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Taxonomy identifier, used as the filename stem and as the referencing id (e.g. 'object_class_v1')."
+    },
+    "version": {
+      "type": "string",
+      "description": "Taxonomy version (e.g. '1.0'). Adding a term is a minor bump; removing or renaming one is a major bump."
+    },
+    "description": {
+      "type": "string",
+      "description": "What this taxonomy is the value domain FOR — name the consuming field."
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/term" },
+      "description": "Verb terms. Present on action taxonomies (consumed by annotations/spans.jsonl `action`)."
+    },
+    "classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/term" },
+      "description": "Object-class terms. Present on object-class taxonomies (consumed by ObservationLabel `class_id`)."
+    }
+  },
+  "oneOf": [
+    { "required": ["actions"] },
+    { "required": ["classes"] }
+  ],
+  "$defs": {
+    "term": {
+      "type": "object",
+      "required": ["id", "name_en", "definition"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Term id — this is the value that travels on the wire."
+        },
+        "name_en": { "type": "string", "description": "Human-readable English name." },
+        "name_zh": { "type": "string", "description": "Human-readable Chinese name." },
+        "category": {
+          "type": "string",
+          "description": "Optional grouping for UI (e.g. 'container', 'tool'). Carries no wire semantics."
+        },
+        "definition": {
+          "type": "string",
+          "description": "The boundary of the term — what counts and what does not. This is what keeps two repos labelling the same thing the same way."
+        }
+      }
+    }
+  }
+}

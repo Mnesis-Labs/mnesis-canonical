@@ -1,0 +1,79 @@
+{
+  "type": "scene_graph",
+  "seq": 204,
+  "ts": 1785196801500000000,
+  "body": {
+    "map_id": "lab_bench_a",
+    "revision": 42,
+    "updated_at_ns": 1785196801480000000,
+    "labels": [
+      {
+        "label_id": "a5a3927d-4b1e-4e2e-9f09-0c1d2e3f4a5b",
+        "class_id": "cup",
+        "confidence": 0.94,
+        "source": "robot",
+        "sensor": "cam_overhead",
+        "frame_id": "map",
+        "pose": {
+          "t": [0.412, 0.903, -0.231],
+          "q": [0.0, 0.0, 0.0, 1.0]
+        },
+        "extent": [0.08, 0.11, 0.08],
+        "observed_at_ns": 1785196801420000000,
+        "state": "confirmed",
+        "witnesses": ["robot", "headset"]
+      },
+      {
+        "label_id": "d8d6c5a4-8e4a-4b5b-9c3c-3f4a5b6c7d8e",
+        "class_id": "screwdriver",
+        "confidence": 0.61,
+        "source": "robot",
+        "sensor": "cam_wrist_right",
+        "frame_id": "map",
+        "pose": {
+          "t": [0.204, 0.898, 0.152],
+          "q": [0.0, 0.0, 0.7071068, 0.7071068]
+        },
+        "observed_at_ns": 1785196801390000000,
+        "state": "unconfirmed",
+        "witnesses": ["robot"]
+      },
+      {
+        "label_id": "e9e7d6b5-9f5b-4c6c-8d4d-4a5b6c7d8e9f",
+        "class_id": "cup",
+        "confidence": 0.55,
+        "source": "robot",
+        "sensor": "cam_overhead",
+        "frame_id": "map",
+        "pose": {
+          "t": [0.618, 0.901, -0.104],
+          "q": [0.0, 0.3826834, 0.0, 0.9238795]
+        },
+        "extent": [0.07, 0.22, 0.07],
+        "observed_at_ns": 1785196801410000000,
+        "state": "disputed",
+        "witnesses": ["robot", "headset"],
+        "dispute": {
+          "robot": "cup",
+          "headset": "bottle"
+        }
+      },
+      {
+        "label_id": "f0f8e7c6-0a6c-4d7d-9e5e-5b6c7d8e9f01",
+        "class_id": "box",
+        "confidence": 0.78,
+        "source": "headset",
+        "sensor": "passthrough_left",
+        "frame_id": "map",
+        "pose": {
+          "t": [-0.311, 0.884, 0.402],
+          "q": [0.0, 0.0, 0.0, 1.0]
+        },
+        "extent": [0.24, 0.16, 0.18],
+        "observed_at_ns": 1785196788000000000,
+        "state": "stale",
+        "witnesses": ["headset"]
+      }
+    ]
+  }
+}
