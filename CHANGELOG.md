@@ -16,6 +16,43 @@ are decoupled:
 
 ### Added
 
+- **双端语义契约 C12 / PS0（Parthenon#58 · Daedalus ADR-004 · #77 · Muso 拍板）**。
+  机器人端（Daedalus）与头显端（Eidolon）产出的是同一种东西，所以它在 canonical
+  定义一次，两端只读消费（照 C1 视频信令先例）。**本仓只定契约不写实现**：融合归
+  Daedalus，头显消费归 Eidolon。
+
+  - `ObservationLabel` —— 两端产出的统一观测标签：`label_id` / `class_id` /
+    `confidence` / `source` / `sensor?` / `frame_id` / `pose` / `extent?` /
+    `observed_at_ns`。
+  - `scene_graph` —— 融合产物（机器人端权威）：`map_id` / `revision` /
+    `updated_at_ns` / `labels[]`，label = ObservationLabel + `state` /
+    `witnesses` / `dispute?`。
+  - 三个 8442 WS 消息，**信封 v1 = C3 公共头 `{type,seq,ts,body}` 原样**：
+    `semantic_label`（上行，事件驱动）、`scene_graph`（下行，1–5 Hz 变更驱动）、
+    `colocalization`（双向，低频 + 事件）。
+  - `taxonomies/object_class_v1.json` + `taxonomy.schema.json` + **分类登记表
+    加载 API**（`list_taxonomies` / `load_taxonomy` / `list_term_ids`，root +
+    package 双份，与 `skeletons/` 同构）—— `class_id` 的唯一取值域。
+  - 校验器 `validate_observation_label` / `validate_scene_graph` /
+    `validate_ps_message` / `validate_ps_stream`，JSON Schema
+    `mnesis_canonical/semantic.schema.json`（头显端 JS 侧校验用），golden 样本
+    `examples/semantic/`（含 `disputed` / `stale` / `source:"headset"` 三个边界样本）。
+
+  **`source` 枚举第一天就含 `headset` / `human`**，尽管头显识别（PS4）与人裁决是
+  backlog —— 后补枚举值是契约变更，每个硬编码二值分支的消费方都要回头改。
+
+  **对草案的三处收紧**：① `observed_at` 浮点秒 → **`observed_at_ns` 整数纳秒**，
+  与 `t_ns` / `t_hw_ns` / C3 `ts` 统一（一个 wire 格式两种时间单位迟早出转换 bug）；
+  ② `frame_id` 收成闭集 `{map}`，把「不接受局部系」从散文变成可校验事实；
+  ③ `confidence` 必填 —— 没写置信度的输入没法融合。
+
+  **低频是硬要求**：`PS_MAX_HZ` 天花板由 `validate_ps_stream` 实测校验，多条观测
+  批进一条消息而不是连发 —— 这三个消息与 30 Hz teleop 帧共用同一条 socket。
+  变更驱动 = 没变更就静默，1 Hz 是标称下限不是心跳。
+
+  `contracts/` 与 `contracts.lock` **本次零改动**：PS 消息不改 C1 帧、不改 C3 既有
+  消息。
+
 - **手部关键点 `observation.hand.*`（C11 结案 · Parthenon#47 / #68 · Muso 拍板）**。
   七个**可选 / additive** 字段，把骨架级手部数据收进单一标准，取代 Iris 从 D-13 起
   私产的四个非标字段。老数据零破坏：不带这些键的帧校验行为完全不变。

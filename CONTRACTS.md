@@ -11,6 +11,7 @@
 | C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明） | v1.6 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：关节读写/示教/安全），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **草案 TBD** | Daedalus（待定义） | Ambrosia（`bridge/hw_bridge.py` 现状=临时直连，待迁移到本契约） | 待建 |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
+| C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b |
 
 ### C1 变更记录（additive-only；老数据零破坏）
 - **2026-07-27 · 手部关键点 `observation.hand.*`（C11 结案；Parthenon#47 / 本仓 #68；Muso 拍板）**：帧新增 7 个**可选 / additive** 字段，把骨架级手部数据收进单一标准，取代 Iris 私产的 `hand_left_kpts3d` / `hand_right_kpts3d` / `hand_kpts_source` / `hand_pose`。① `observation.hand.left` / `.right`：关节**位置**，展平 `[x,y,z,…]`（米），**变长** —— 长度 = `3 × K`，`K` 由 `observation.hand.layout` 经**骨架登记表**（新增 `skeletons/<id>.json`）解析，与 `embodiment_id` 的 `joint_names` 定义 `observation.state` 长度是同一机制。**不定长 63**：定长会把 MediaPipe 的 21 点拓扑冻进开放标准，而 Eidolon C2（WebXR 25 关节 / OpenXR 26，且带逐关节朝向）与 xMimic 类骨架 retargeting 吃的正是朝向。② `.rot`：关节**朝向**，展平四元数 `{x,y,z,w}`，长度 `4 × K`，仅原生提供朝向的来源填。③ `observation.hand.layout` + `observation.hand.frame`（`world` / `head_anchored` / `hand_local`）—— **有关键点时两者必填**：`frame` 是「2.5D 近似而非真 3D」这条警告的**机器可读形式**，消费方按 `frame == "world"` 过滤，而不是去认某个 source 字符串。④ `observation.hand.source` 只当溯源标签（开放集），不承载几何语义。**手不在场时整键省略**（不发零向量、不许 null）。**`hand_pose`（128 floats）不进 wire**：它是前两者的派生投影，且用标志位 + 补零编码缺席，与本次同时升为铁律的「缺失 = 未知，禁带内哨兵」冲突 —— 归 LeRobot 导出期投影。字段标 **`experimental`**（`SPEC.md` §Versioning 新增字段级 status）：已在产的数据当天进标准，同时保留 stable 前改名的权利。已注册布局：`mediapipe_hand_21`（stable）、`webxr_hand_25` / `openxr_hand_26`（experimental，**待 Eidolon 按真机实现核对**）。`SPEC.md` §Hand keypoints / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate,skeleton_registry,migrate}` / `skeletons/`（root+package 双份）/ `contracts/canonical_frame_schema_REFERENCE.md` 同步。**消费方对齐**：Iris 按新名改 `CanonicalFrame.toJsonLine`、补 `layout=mediapipe_hand_21` + `frame=head_anchored`、摘掉 `hand_pose`、重新 vendor schema 并从 `contracts.lock` 的 `local_extensions` 摘掉这四个字段；存量数据跑 `python -m mnesis_canonical migrate <data.jsonl> --out <data.jsonl>`。**校验器只认新名，不认双名** —— 标准里的别名从来不会死。
@@ -21,6 +22,39 @@
 ### C3 说明记录（端点补明确 → v1.6 additive 字段新增）
 - **2026-07-22 · `arms[].gripper` 端点定义补明确（Parthenon#20 拍板 A，Muso）**：C3 wire 的 `arms[].gripper` 原仅写「夹爪开度 [0.0, 1.0]」**未定义端点**（本次分歧根源）。补明确为「夹爪**闭合程度** [0.0, 1.0]：`0.0` = 完全张开，`1.0` = 完全闭合」，方向与 canonical `action.gripper` / `observation.gripper` 一致。**这是把既有模糊补明确，wire 版本不变（仍 v1.5）**，`XR_ROBOT_CONTRACT.md` / `xr_bridge_SPEC.md` 同步并附消费方核对提示。既有实现（Daedalus xr_bridge / Eidolon / airbot webapp）在此定义明确前可能按相反方向理解，接入前须各自核对——各仓核对属后续独立卡。
 - **2026-07-25 · `HandGoal` 新增 confidence/axes/buttons（Daedalus PR#157，Muso 拍板）**：C3 `HandGoal` 新增三个可选字段——`confidence`（float，缺省 1.0，<0.3 视同 `tracking:false` 做安全降级）、`axes`（float 数组，缺省空）、`buttons`（bool 数组，缺省空）。三字段全部可选且向后兼容：不带这些字段的老帧行为完全不变。**动机**：`confidence` 支持渐进降级（追踪中逐步丢失而非二值丢失），`axes`/`buttons` 给 PICO 适配器（#152）映射 XRoboToolkit 全量手柄输入用。本次为 additive 变更，并入 **v1.6**（与同期 PR#39「相机控制协商/视频能力声明」additive 变更同属该 v1.5→v1.6 版本窗口，两者共享同一次 minor 升版，互不冲突）。**两侧测试**：Daedalus 侧 `tests/xr_bridge/test_frame_schema.py` + `test_safety.py`（已随 #157 合并）；Eidolon 侧 webapp `protocol.js` 补发仍在做（#155 T3，标注 pending）。
+
+## C12 双端语义契约（PS0 · 契约先行 · canonical 定义，两端只读消费）
+
+> 来源：Muso 2026-07-28 拍板新增 **PS 轨（双端识别与共定位）**。设计全文 Parthenon `research/25-dual-endpoint-perception-and-colocalization_2026-07-28.md`（Parthenon#58）；决策落点 Daedalus ADR-004（Daedalus#238）；排期 Parthenon `ROADMAP.md` T2-percep。本仓 issue #77。
+> **契约先行的理由**：机器人端（Daedalus）与头显端（Eidolon）产出的是**同一种东西**。两端各自定义 schema，融合器第一天就要写适配层，`class_id` 立刻漂移。照 C1 视频信令先例：canonical 先行，两端只读消费。
+> **边界**：本仓**只定契约不写实现**。融合逻辑归 Daedalus（ADR-004），头显侧消费归 Eidolon。
+
+**定稿件**：`SPEC.md` §Dual-endpoint semantic perception（权威定义）· `mnesis_canonical/semantic.schema.json`（JSON Schema，供非 Python 端校验）· `mnesis_canonical/semantic.py`（参考校验器）· `taxonomies/object_class_v1.json` + `taxonomy.schema.json` + `mnesis_canonical/taxonomy_registry.py`（`class_id` 取值域）· `examples/semantic/`（golden 样本）· `tests/test_semantic.py`（本侧测试）。
+
+三层，故意分开：**`ObservationLabel`**（某一端的单次观测，本身不权威）→ **`scene_graph`**（融合产物，机器人端权威，label = ObservationLabel + `state`/`witnesses`/`dispute`）→ **三个 8442 消息**（信封 v1 = C3 公共头 `{type,seq,ts,body}` 原样，因为与 30 Hz teleop 共用同一条 socket）。
+
+### 本仓定稿对草案的三处收紧（以本仓定稿为准）
+
+1. **时间戳统一纳秒整数**：草案的 `observed_at`（浮点秒）定为 **`observed_at_ns`（int64 Unix 纳秒）**。标准里已有且仅有一种时间单位——`t_ns` / `t_hw_ns` / `events.jsonl` 的 `t_ns` / C3 信封 `ts` 全是整数纳秒；一个 wire 格式里放两种单位，边界转换出 bug 只是时间问题。单位写进字段名。同理 `updated_at_ns` / `computed_at_ns`。PS0 是 PS 轨第一张卡、两端尚无实现，此时统一成本最低。
+2. **`frame_id` 收成闭集 `{map}`**：草案写「必须是共同参考系，不接受局部系」，本仓把它变成**可校验事实**——`cam_overhead` / `headset` / `base_link` 一律拒收。头显端先用 `colocalization` 外参把点变换到 `map` 再发；不可融合的标签宁可被拒，不可被静默错融。
+3. **`confidence` 必填**：没写置信度的输入没法参与融合。人裁决标签填 `1.0`。
+
+### 关键设计（消费方按此实现，勿自行发挥）
+
+- **`source` 枚举第一天就含 `headset` / `human`**，尽管头显侧识别（PS4）与人裁决尚在 backlog。后补枚举值是契约变更，每个硬编码二值分支的消费方都得回头改一遍；现在加进去零成本。**上行 `semantic_label` 只收 `headset` / `human`**——`robot` 标签本来就在权威侧，不上行。
+- **`class_id` 取值域 = `taxonomies/object_class_v1.json`，消费方不得自造**。经**分类登记表**（`mnesis_canonical.taxonomy_registry`）解析，与 `skeletons/` 定义 `observation.hand.layout`、`embodiments/` 定义 `observation.state` 是同一机制——标准里只保留一种「取值域在别处声明」的做法。缺类别 = 对该文件开 PR。`unknown` 是「几何观测到了但类别未定」的**真实观测**，不是缺登记项的兜底。JSON Schema 内的 enum 由该文件生成，`tests/test_semantic.py` 钉死两者一致（头显端用 JS 校 schema，漂移即两端松紧不一）。
+- **`stale` 标签不从图里删**：「我不再看见它」和「它不在了」是两个断言，只有产出方分得清。消费方降级渲染，不当作消失。
+- **`dispute` 与 `state == "disputed"` 严格互为充要**，键 ⊆ `witnesses`，值取自同一分类表且必须真的不同。缺了它，图只记录「有过分歧」而不记录分歧内容，而人裁决恰恰只需要后者。
+- **`witnesses` 必须含标签自身的 `source`**；`label_id` 图内唯一；空 `labels` 合法（空地图是真实状态）。
+- **`colocalization_stale` 不是第四种消息**：它就是 `colocalization` 消息带非 `ok` 状态，共定位健康度只有一处可读。`state == "lost"` 时 **`T_map_headset` 必须整键省略**——拿单位阵顶替会把所有头显标签静默堆到地图原点（同「缺失 = 未知，禁带内哨兵」铁律）。`state == "ok"` 时 `T_map_headset` + `quality` 必填。
+- **低频是硬要求，不是建议**：`scene_graph` 1–5 Hz 变更驱动、`colocalization` ≤1 Hz + 事件、`semantic_label` 事件驱动 ≤5 Hz，天花板由 `PS_MAX_HZ` + `validate_ps_stream` 实测校验。有多条观测要发就**批进一条 `semantic_label`**（body 收数组），不要连发。**变更驱动 = 没变更就该静默**，1 Hz 是标称下限不是心跳，消费方不要照它实现 keep-alive。
+
+### 消费方解阻塞（PS0 已定稿，以下可开工）
+
+- **Daedalus（PS1 机器人端识别 / PS2a 融合 / PS3 桥接，C12 消费方 + ADR-004 Owner）**：`pip` 升 `mnesis-canonical` 后 `from mnesis_canonical import validate_observation_label, validate_scene_graph, validate_ps_message`；识别输出按 `ObservationLabel` 发，融合产物按 `scene_graph` 发（`revision` 每次变更递增），`class_id` 只用本仓分类表。8442 上按 `type` 分派三个新消息，与既有 `C3_*` 消息同信封共存。
+- **Eidolon（PS2b 头显消费，C12 消费方）**：vendor `mnesis_canonical/semantic.schema.json` 走 JS 侧 Draft 2020-12 校验；下行按 `scene_graph.revision` 判断是否重绘（不变则不重绘）；共定位健康度只读 `colocalization.state`；头显侧标注上行走 `semantic_label`（`source: "headset"`，人裁决 `source: "human"`），发前先用 `T_map_headset` 变换到 `map`。**头显侧识别（PS4）落地时不需要改契约**——枚举已就位。
+- **两端共用**：`examples/semantic/` 四个 golden 样本（含 `disputed` / `stale` / `source:"headset"` 三个边界样本）直接当 fixture 用。
+- **未动 `contracts/`**：PS 消息不改 C1 帧、不改 C3 既有消息，故 `contracts/*.md` 与 `contracts.lock` 本次零改动（本仓契约只读纪律）。C3 侧若要把这三个消息一并镜像进 `XR_ROBOT_CONTRACT.md`，属 Daedalus（C3 Owner）的独立卡。
 
 ## C2 幂等语义（重复上传去重）
 

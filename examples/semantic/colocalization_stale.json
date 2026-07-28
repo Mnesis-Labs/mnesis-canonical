@@ -1,0 +1,21 @@
+{
+  "type": "colocalization",
+  "seq": 10,
+  "ts": 1785196812000000000,
+  "body": {
+    "map_id": "lab_bench_a",
+    "state": "stale",
+    "T_map_headset": {
+      "t": [1.204, 0.0, -0.518],
+      "q": [0.0, 0.7071068, 0.0, 0.7071068]
+    },
+    "computed_at_ns": 1785196800940000000,
+    "quality": {
+      "rmse_m": 0.014,
+      "inlier_ratio": 0.91,
+      "match_count": 428
+    },
+    "event": "colocalization_stale",
+    "reason": "headset tracking recovered after loss; extrinsic not re-solved"
+  }
+}

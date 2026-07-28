@@ -54,3 +54,18 @@ def test_wheel_install_loader(tmp_path: Path) -> None:
     assert result.returncode == 0, f"Loader failed:\n{result.stderr}"
     count = int(result.stdout.strip())
     assert count == 5, f"Expected 5 embodiments, got {count}"
+
+    # The C12 class_id value domain is read from bundled taxonomy data at
+    # validation time — if it does not ship in the wheel, every label a consumer
+    # validates fails on class_id rather than on anything real.
+    code = (
+        "import mnesis_canonical as m; "
+        "print(len(m.object_class_ids()), 'cup' in m.object_class_ids())"
+    )
+    result = subprocess.run(
+        [str(python), "-c", code],
+        capture_output=True, text=True, cwd=tmp_path,
+    )
+    assert result.returncode == 0, f"Taxonomy loader failed:\n{result.stderr}"
+    count, has_cup = result.stdout.split()
+    assert int(count) > 0 and has_cup == "True", result.stdout

@@ -15,7 +15,9 @@ lives in Mnesis Ambrosia.
   `validate_frame` / `validate_frames`, `read_jsonl` / `write_jsonl`.
 - `examples/` — tiny valid episodes across capture surfaces: `episode_0`
   (phone / `ego_human`), `episode_quest` (Quest / `teleop`), `episode_robot`
-  (robot / `robot_replay`).
+  (robot / `robot_replay`); plus `examples/semantic/` — golden C12 messages.
+- `taxonomies/` — registered value domains: annotation verbs (`manipulation_v1`)
+  and object classes (`object_class_v1`, the domain of `class_id`).
 
 ## Install / use
 ```bash

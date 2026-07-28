@@ -1,0 +1,301 @@
+{
+  "taxonomy_id": "object_class_v1",
+  "version": "1.0",
+  "description": "Closed object-class taxonomy for dual-endpoint perception (C12). All ObservationLabel.class_id values MUST be one of these ids — on the robot end (Daedalus) and on the headset end (Eidolon) alike. A class the two ends need but this file lacks is a PR against this file, never a locally invented string: the whole point of the fusion contract is that 'cup' from the headset and 'cup' from the robot are the same term.",
+  "classes": [
+    {
+      "id": "unknown",
+      "name_en": "Unknown",
+      "name_zh": "未知类别",
+      "category": "other",
+      "definition": "Geometry was observed and localised, but the class was NOT determined. This is a real observation with an undetermined class — NOT a placeholder for a class this taxonomy is missing (that is a registry PR) and NOT a way to publish a label the producer does not believe in."
+    },
+    {
+      "id": "cup",
+      "name_en": "Cup / Mug",
+      "name_zh": "杯子",
+      "category": "container",
+      "definition": "Open-topped drinking vessel, with or without a handle. An open vessel wide enough to eat from is 'bowl'; a closed/necked vessel is 'bottle'."
+    },
+    {
+      "id": "bottle",
+      "name_en": "Bottle",
+      "name_zh": "瓶子",
+      "category": "container",
+      "definition": "Necked container, typically capped (water/drink bottle, dispenser bottle). Distinguished from 'cup' by the narrowed neck."
+    },
+    {
+      "id": "can",
+      "name_en": "Can",
+      "name_zh": "罐",
+      "category": "container",
+      "definition": "Rigid cylindrical metal container (drink can, tin)."
+    },
+    {
+      "id": "bowl",
+      "name_en": "Bowl",
+      "name_zh": "碗",
+      "category": "container",
+      "definition": "Open round vessel, wider than it is tall."
+    },
+    {
+      "id": "plate",
+      "name_en": "Plate",
+      "name_zh": "盘子",
+      "category": "container",
+      "definition": "Flat or shallow dish."
+    },
+    {
+      "id": "tray",
+      "name_en": "Tray",
+      "name_zh": "托盘",
+      "category": "container",
+      "definition": "Flat carrier with a raised rim, used to move several objects at once."
+    },
+    {
+      "id": "box",
+      "name_en": "Box / Carton",
+      "name_zh": "盒/箱",
+      "category": "container",
+      "definition": "Rigid rectangular container, open or closed."
+    },
+    {
+      "id": "jar",
+      "name_en": "Jar",
+      "name_zh": "罐子",
+      "category": "container",
+      "definition": "Wide-mouthed container with a screw or clamp lid."
+    },
+    {
+      "id": "bin",
+      "name_en": "Bin / Basket",
+      "name_zh": "箱筐",
+      "category": "container",
+      "definition": "Large open receptacle objects are dropped into (waste bin, parts basket, tote)."
+    },
+    {
+      "id": "cutlery",
+      "name_en": "Cutlery",
+      "name_zh": "餐具",
+      "category": "tool",
+      "definition": "Hand-held eating implement — fork, knife, spoon, chopsticks."
+    },
+    {
+      "id": "screwdriver",
+      "name_en": "Screwdriver",
+      "name_zh": "螺丝刀",
+      "category": "tool",
+      "definition": "Driver tool for screws, any tip type."
+    },
+    {
+      "id": "wrench",
+      "name_en": "Wrench / Spanner",
+      "name_zh": "扳手",
+      "category": "tool",
+      "definition": "Tool that applies torque to a nut or bolt."
+    },
+    {
+      "id": "hammer",
+      "name_en": "Hammer",
+      "name_zh": "锤子",
+      "category": "tool",
+      "definition": "Striking tool with a weighted head."
+    },
+    {
+      "id": "pliers",
+      "name_en": "Pliers",
+      "name_zh": "钳子",
+      "category": "tool",
+      "definition": "Hinged gripping tool."
+    },
+    {
+      "id": "scissors",
+      "name_en": "Scissors",
+      "name_zh": "剪刀",
+      "category": "tool",
+      "definition": "Hinged cutting tool with two blades."
+    },
+    {
+      "id": "pen",
+      "name_en": "Pen / Pencil / Marker",
+      "name_zh": "笔",
+      "category": "tool",
+      "definition": "Hand-held writing or marking implement."
+    },
+    {
+      "id": "brush",
+      "name_en": "Brush",
+      "name_zh": "刷子",
+      "category": "tool",
+      "definition": "Bristled implement for cleaning or applying (paint brush, cleaning brush)."
+    },
+    {
+      "id": "block",
+      "name_en": "Block / Cube",
+      "name_zh": "积木块",
+      "category": "primitive",
+      "definition": "Rigid geometric primitive used as a manipulation target (cube, cuboid, cylinder peg)."
+    },
+    {
+      "id": "ball",
+      "name_en": "Ball",
+      "name_zh": "球",
+      "category": "primitive",
+      "definition": "Rigid or soft sphere."
+    },
+    {
+      "id": "cloth",
+      "name_en": "Cloth / Towel",
+      "name_zh": "布/毛巾",
+      "category": "deformable",
+      "definition": "Flat deformable textile — towel, rag, garment laid out."
+    },
+    {
+      "id": "bag",
+      "name_en": "Bag",
+      "name_zh": "袋子",
+      "category": "deformable",
+      "definition": "Deformable carrier with an opening (plastic bag, pouch, backpack)."
+    },
+    {
+      "id": "food",
+      "name_en": "Food item",
+      "name_zh": "食物",
+      "category": "food",
+      "definition": "Edible item handled as a single object (fruit, vegetable, packaged snack)."
+    },
+    {
+      "id": "book",
+      "name_en": "Book / Document",
+      "name_zh": "书/文件",
+      "category": "other",
+      "definition": "Bound book, notebook, or stack of paper handled as one object."
+    },
+    {
+      "id": "phone",
+      "name_en": "Phone",
+      "name_zh": "手机",
+      "category": "electronics",
+      "definition": "Hand-held mobile phone or similar slab device."
+    },
+    {
+      "id": "laptop",
+      "name_en": "Laptop",
+      "name_zh": "笔记本电脑",
+      "category": "electronics",
+      "definition": "Portable computer with a hinged screen."
+    },
+    {
+      "id": "keyboard",
+      "name_en": "Keyboard",
+      "name_zh": "键盘",
+      "category": "electronics",
+      "definition": "Detached computer keyboard."
+    },
+    {
+      "id": "mouse",
+      "name_en": "Mouse",
+      "name_zh": "鼠标",
+      "category": "electronics",
+      "definition": "Computer pointing device."
+    },
+    {
+      "id": "remote",
+      "name_en": "Remote / Controller",
+      "name_zh": "遥控器/手柄",
+      "category": "electronics",
+      "definition": "Hand-held button device — TV remote, game controller, XR controller."
+    },
+    {
+      "id": "switch",
+      "name_en": "Switch / Button",
+      "name_zh": "开关/按钮",
+      "category": "fixture",
+      "definition": "Fixed actuator mounted on a surface — light switch, push button, valve handle."
+    },
+    {
+      "id": "handle",
+      "name_en": "Handle",
+      "name_zh": "把手",
+      "category": "fixture",
+      "definition": "Graspable fixture attached to a door, drawer, or appliance. The moving panel itself is 'door' or 'drawer'."
+    },
+    {
+      "id": "door",
+      "name_en": "Door",
+      "name_zh": "门",
+      "category": "fixture",
+      "definition": "Hinged or sliding panel that opens a room, cabinet, or appliance."
+    },
+    {
+      "id": "drawer",
+      "name_en": "Drawer",
+      "name_zh": "抽屉",
+      "category": "fixture",
+      "definition": "Sliding compartment in a cabinet or desk."
+    },
+    {
+      "id": "table",
+      "name_en": "Table / Desk",
+      "name_zh": "桌子",
+      "category": "furniture",
+      "definition": "Horizontal work surface on legs. The surface objects rest on, not the objects."
+    },
+    {
+      "id": "shelf",
+      "name_en": "Shelf",
+      "name_zh": "架子",
+      "category": "furniture",
+      "definition": "Horizontal storage surface mounted above the floor, or the rack holding several."
+    },
+    {
+      "id": "chair",
+      "name_en": "Chair",
+      "name_zh": "椅子",
+      "category": "furniture",
+      "definition": "Seat for one person."
+    },
+    {
+      "id": "cabinet",
+      "name_en": "Cabinet",
+      "name_zh": "柜子",
+      "category": "furniture",
+      "definition": "Enclosed storage unit; its openings are 'door' / 'drawer'."
+    },
+    {
+      "id": "person",
+      "name_en": "Person",
+      "name_zh": "人",
+      "category": "agent",
+      "definition": "A whole human body in the scene. Safety-relevant: a fused label with class 'person' is what a consumer keys a keep-out volume off."
+    },
+    {
+      "id": "hand",
+      "name_en": "Hand",
+      "name_zh": "手",
+      "category": "agent",
+      "definition": "A human hand observed as an object in the map. Per-joint hand skeletons are NOT this — they travel as canonical frame `observation.hand.*` (C11)."
+    },
+    {
+      "id": "robot_arm",
+      "name_en": "Robot arm",
+      "name_zh": "机械臂",
+      "category": "agent",
+      "definition": "A robot manipulator observed in the scene (typically by the headset end, seeing the robot it teleoperates)."
+    },
+    {
+      "id": "gripper",
+      "name_en": "Gripper / End-effector",
+      "name_zh": "夹爪/末端",
+      "category": "agent",
+      "definition": "The end-effector of a manipulator, when observed separately from the arm."
+    },
+    {
+      "id": "obstacle",
+      "name_en": "Obstacle",
+      "name_zh": "障碍物",
+      "category": "other",
+      "definition": "A localised volume to avoid whose identity does not matter — use when the class is irrelevant, NOT when it is undetermined (that is 'unknown')."
+    }
+  ]
+}
