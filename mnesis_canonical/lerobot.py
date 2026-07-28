@@ -50,7 +50,17 @@ def from_lerobot(columns: dict[str, list]) -> list[dict]:
 
     Every column in the input is emitted as a key in each frame — no filtering
     to a static allowlist — so the round-trip is exact.
+
+    Keys whose value is ``None`` for a given frame are omitted, per the
+    ``missing = unknown`` rule (no in-band sentinels): a frame that originally
+    lacked a key does not get it back as ``None``.  This is safe because
+    ``None`` is never a semantically meaningful value for a canonical field
+    that was genuinely absent — fields that accept ``None`` (e.g.
+    ``spatial_anchor_id``) treat ``None`` and absent identically.
     """
     keys = list(columns.keys())
     n = len(next(iter(columns.values()))) if columns else 0
-    return [{key: columns[key][i] for key in keys} for i in range(n)]
+    return [
+        {key: columns[key][i] for key in keys if columns[key][i] is not None}
+        for i in range(n)
+    ]
