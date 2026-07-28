@@ -4,6 +4,10 @@
 (empty = valid). `validate_jsonl(path) -> ValidationReport` validates a whole
 episode sidecar. Used by Mnesis Ambrosia's ingest gate and by capture-surface CI.
 
+Errors are fatal; `frame_warnings(dict) -> list[str]` is the separate, non-fatal
+channel (`ValidationReport.warnings`) that makes undeclared keys visible without
+making them invalid — see `frame_warnings` for why that split exists.
+
 Profile-aware validation (v0.2+):
   - ``ego_v1`` (default when absent): fixed-length vectors, ``observation.images.ego`` required.
   - ``robot_v2``: variable-length ``observation.state`` and ``action``, open camera-key set,
@@ -15,6 +19,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .extension_registry import find_extension
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -22,6 +27,7 @@ from .schema import (
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
+    EXTENSION_PREFIX,
     GRIPPER_KEYS,
     GRIPPER_MAX,
     GRIPPER_MIN,
@@ -39,6 +45,8 @@ from .schema import (
     PROFILES,
     ROBOT_V2_VARIABLE_VECTORS,
     VECTOR_LENGTHS,
+    is_extension_key,
+    is_known_frame_key,
     required_keys_for_profile,
 )
 from .skeleton_registry import load_skeleton
@@ -370,11 +378,88 @@ def validate_frame(frame: dict, *, strict_vocab: bool = False) -> list[str]:
     return errors
 
 
+def frame_warnings(frame: dict) -> list[str]:
+    """Return non-fatal warnings for one frame (empty list = nothing to report).
+
+    Warnings are the visibility half of the extension mechanism (issue #69).
+    They never affect validity: :func:`validate_frame` still returns no error for
+    any of these, ``ValidationReport.ok`` is unaffected, and the CLI exit code
+    does not change.  Setting ``additionalProperties: false`` instead would have
+    broken the additive promise (a consumer pinned to an older schema turns red
+    the moment upstream adds a field) and collided head-on with the open
+    ``observation.images.<cam>`` key set.  So trespass is made *visible*, not
+    fatal.
+
+    A key is reported when it is not a standard field and:
+      - it does not use the reserved ``x-<vendor>.<field>`` namespace, or
+      - it uses the reserved ``x-`` prefix but is malformed, or
+      - it is registered in ``extensions/registry.json`` with a status that the
+        producer should act on (``promoted`` / ``withdrawn``).
+
+    A well-formed key in the reserved namespace is silent: that is the whole
+    point of reserving it.
+    """
+    warnings: list[str] = []
+    for key in frame:
+        if is_known_frame_key(key):
+            continue
+
+        if is_extension_key(key):
+            continue  # legal, declared, reserved — nothing to say
+
+        if key.startswith(EXTENSION_PREFIX):
+            warnings.append(
+                f"key '{key}' uses the reserved '{EXTENSION_PREFIX}' prefix but is "
+                f"not of the form x-<vendor>.<field> (e.g. 'x-iris.hand_left_kpts3d')"
+            )
+            continue
+
+        entry = find_extension(key)
+        if entry is not None:
+            status = entry.get("promotion_status", "active")
+            replaced_by = entry.get("replaced_by")
+            detail = (
+                f"the standard field is '{replaced_by}'"
+                if replaced_by
+                else "it was promoted by being dropped — see extensions/registry.json"
+            )
+            if status == "promoted":
+                warnings.append(
+                    f"key '{key}' is a registered extension owned by "
+                    f"{entry.get('owner_repo', 'unknown')} with "
+                    f"promotion_status=promoted: {detail}"
+                )
+            elif status == "withdrawn":
+                warnings.append(
+                    f"key '{key}' is a registered extension owned by "
+                    f"{entry.get('owner_repo', 'unknown')} marked withdrawn — "
+                    f"it should no longer be produced"
+                )
+            else:
+                warnings.append(
+                    f"key '{key}' is a registered extension owned by "
+                    f"{entry.get('owner_repo', 'unknown')} (status={status}) but does "
+                    f"not use the reserved '{EXTENSION_PREFIX}<vendor>.' namespace"
+                )
+            continue
+
+        warnings.append(
+            f"unknown key '{key}': not a canonical field. Extensions must use the "
+            f"reserved '{EXTENSION_PREFIX}<vendor>.' namespace and be registered in "
+            f"extensions/registry.json (see CONTRACTS.md §扩展登记)"
+        )
+    return warnings
+
+
 @dataclass
 class ValidationReport:
     total: int = 0
     valid: int = 0
     errors: list[tuple[int, str]] = field(default_factory=list)  # (line_no, message)
+    # Non-fatal (line_no, message) notices — unknown keys outside the reserved
+    # extension namespace.  Deliberately NOT part of ``ok``: additive-only means
+    # old data may never turn red because the standard grew.
+    warnings: list[tuple[int, str]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -426,6 +511,8 @@ def validate_frames(frames: list[dict], *, strict_vocab: bool = False) -> Valida
     for i, frame in enumerate(frames):
         report.total += 1
         errs = validate_frame(frame, strict_vocab=strict_vocab)
+        for w in frame_warnings(frame):
+            report.warnings.append((i, w))
 
         # Check for negative frame_index
         if not errs and "frame_index" in frame:

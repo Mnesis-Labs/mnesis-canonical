@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "extensions": [
+    {
+      "name": "hand_kpts_source",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-07-28",
+      "description": "Provenance label for the hand keypoints, e.g. 'mediapipe_world+arcore_pose'.",
+      "promotion_status": "promoted",
+      "replaced_by": "observation.hand.source",
+      "reference": "Mnesis-Labs/mnesis-canonical#68",
+      "notes": "Shipped by Iris from D-13, registered retroactively as the worked example for this registry (#69). Promoted 2026-07-27 with the rest of the C11 hand block."
+    },
+    {
+      "name": "hand_left_kpts3d",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-07-28",
+      "description": "Left-hand 3D keypoints, flattened [x,y,z,...] for MediaPipe's 21 landmarks (float[63]).",
+      "promotion_status": "promoted",
+      "replaced_by": "observation.hand.left",
+      "reference": "Mnesis-Labs/mnesis-canonical#68",
+      "notes": "Shipped by Iris from D-13, registered retroactively as the worked example for this registry (#69). Promoted 2026-07-27; migrate with `python -m mnesis_canonical migrate`."
+    },
+    {
+      "name": "hand_pose",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-07-28",
+      "description": "Concatenated per-frame hand vector (128 floats) with presence flags and zero padding for an absent hand.",
+      "promotion_status": "promoted",
+      "replaced_by": null,
+      "reference": "Mnesis-Labs/mnesis-canonical#68",
+      "notes": "Promoted by being DROPPED: it is a derived projection of observation.hand.*, and its zero padding contradicts the 'absent means unknown' iron rule. Derived shapes belong to the LeRobot exporter, not the wire. See SPEC.md §Hand keypoints."
+    },
+    {
+      "name": "hand_right_kpts3d",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-07-28",
+      "description": "Right-hand 3D keypoints, flattened [x,y,z,...] for MediaPipe's 21 landmarks (float[63]).",
+      "promotion_status": "promoted",
+      "replaced_by": "observation.hand.right",
+      "reference": "Mnesis-Labs/mnesis-canonical#68",
+      "notes": "Shipped by Iris from D-13, registered retroactively as the worked example for this registry (#69). Promoted 2026-07-27; migrate with `python -m mnesis_canonical migrate`."
+    }
+  ]
+}

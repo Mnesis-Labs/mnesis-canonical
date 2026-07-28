@@ -107,6 +107,7 @@ are **optional and additive** — frames without them validate unchanged.
 | `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. |
 | `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) |
+| `x-<vendor>.<field>` | any | *all* optional | **Reserved extension namespace** — a field the standard does not have yet, e.g. `x-iris.hand_left_kpts3d`. Legal by construction, registered in `extensions/registry.json`. See §Extensions |
 | `source.device` | str | *all* | one of `phone, glasses, quest, pico, robot, sim` (open set) |
 | `source.modality` | str | *all* | one of `ego_human, teleop, robot_replay, sim` (open set) |
 | `tracking_state` | str | *all* | e.g. `TRACKING, PAUSED, STOPPED` |
@@ -124,6 +125,11 @@ are **optional and additive** — frames without them validate unchanged.
   `action.gripper` absent ≠ `0.0`, `spatial_anchor_pose_SE3` absent = skip the
   consistency check, and an untracked hand omitting `observation.hand.<side>`
   rather than sending zeros.
+- **`x-<vendor>.` is reserved for extensions.** A field the standard does not
+  define yet is written as `x-<vendor>.<field>` (e.g. `x-iris.hand_left_kpts3d`)
+  and registered in `extensions/registry.json`. Keys outside that namespace that
+  the standard does not define are **warnings, never errors** — the frame stays
+  valid. See §Extensions.
 
 ## Hand keypoints (C11, additive, `experimental`)
 
@@ -198,6 +204,80 @@ python -m mnesis_canonical migrate episodes/ep_0/data.jsonl --out episodes/ep_0/
 or `mnesis_canonical.migrate_hand_v0_frames(frames)` in-process. The migration
 renames the three carried fields, drops the derived `hand_pose`, and declares
 `layout = mediapipe_hand_21` + `frame = head_anchored`.
+
+## Extensions — the reserved `x-<vendor>.` namespace (additive, v0.6+)
+
+Every standard eventually meets a producer that needs a field it does not have.
+The only question is whether that field is **declared or smuggled**, and that is
+decided by cost, not by discipline: when extending means opening a cross-repo
+contract card and waiting for a canonical release, while just writing the key
+costs nothing (ingest lets it through), producers write the key. Canonical then
+finds out last — which is exactly how four Iris hand fields lived in production
+for two weeks before §Hand keypoints existed (#68 / Parthenon#47).
+
+So extension is a **first-class, legal, visible** operation here.
+
+### 1. Write it in the reserved namespace
+```
+x-<vendor>.<field>        e.g.  x-iris.hand_left_kpts3d
+```
+Pattern: `^x-[a-z0-9][a-z0-9-]*\.[A-Za-z0-9_][A-Za-z0-9_.-]*$`, declared in
+`canonical_frame.schema.json` under `patternProperties`. The value may be
+anything. A key in this namespace is **silent** — no warning, no error.
+
+### 2. Register it
+One entry in `extensions/registry.json` (schema:
+`extensions/registry.schema.json`):
+
+| Key | Required | Meaning |
+|---|---|---|
+| `name` | ✅ | The key exactly as it appears on the wire |
+| `owner_repo` | ✅ | Who produces it, e.g. `Mnesis-Labs/Mnesis-Iris` |
+| `since` | ✅ | Registration date `YYYY-MM-DD` |
+| `description` | ✅ | Enough for another repo to see whether it needs the same thing |
+| `promotion_status` | ✅ | `active` · `proposed` · `promoted` · `withdrawn` |
+| `replaced_by` | — | The standard field it was promoted to (`null` = promoted by being dropped) |
+| `reference` | — | Issue / PR link with the reasoning |
+| `notes` | — | Anything else (e.g. when it actually first shipped) |
+
+**This is a PR to this repo alone.** No contract-change card, no cross-repo
+coordination, no waiting on a release. That is deliberate and load-bearing:
+registering has to be cheaper than hiding, or the mechanism does nothing.
+
+Read it back with `mnesis_canonical.list_extensions()` /
+`load_extension(name)` — filtering on `promotion_status="proposed"` is the
+early-warning list of **what is about to become standard**.
+
+### 3. Warnings, not errors
+`mnesis_canonical.frame_warnings(frame)` (and `ValidationReport.warnings`,
+printed by `python -m mnesis_canonical validate`) reports a key that is neither
+a standard field, nor a member of an open key family (`observation.images.<cam>`),
+nor well-formed in the reserved namespace. Registered-but-`promoted` keys are
+reported too, naming the standard field that replaced them.
+
+**Nothing here changes a frame's validity or the CLI exit code**, and
+`additionalProperties: false` is deliberately *not* set:
+
+- it would break the additive promise — a consumer pinned to an older schema
+  version turns red the moment upstream adds a field;
+- it collides head-on with the open `observation.images.<cam>` key set.
+
+The goal is to make trespass **visible**, not fatal.
+
+### 4. Promotion path
+`registered extension` → `standard field`:
+
+1. Owner sets `promotion_status: "proposed"` (still a one-repo PR).
+2. Canonical standardises the field — the normal `type:contract-change` flow,
+   now with the field's shape and its production history already on the table.
+3. On merge: entry becomes `promoted` + `replaced_by: "<standard field>"`, a
+   migration function ships (see `mnesis_canonical.migrate`), and producers get
+   a deprecation window during which the old key only warns.
+
+The C11 hand block walked exactly this path — retroactively. The four Iris keys
+are registered as the worked example (`promotion_status: "promoted"`), including
+`hand_pose`, which was promoted by being **dropped**: a derived projection with
+zero padding belongs to the exporter, not the wire.
 
 ## Episode layout (on disk / upload)
 ```

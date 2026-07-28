@@ -178,6 +178,11 @@
       "description": "[experimental] Provenance label for the hand keypoints (open set), e.g. 'mediapipe_world+arcore_pose' for an on-device estimate or an offline-refinement tag. Optional, and provenance ONLY — geometric semantics live in observation.hand.frame, not here."
     }
   },
+  "patternProperties": {
+    "^x-[a-z0-9][a-z0-9-]*\\.[A-Za-z0-9_][A-Za-z0-9_.-]*$": {
+      "description": "RESERVED EXTENSION NAMESPACE. A producer that needs a field this standard does not have yet writes it as x-<vendor>.<field> (e.g. 'x-iris.hand_left_kpts3d') and registers one line in extensions/registry.json — a PR to this repo alone, no cross-repo coordination. Declared here so the namespace is explicitly legal rather than merely tolerated. Value may be anything. NOTE: additionalProperties is deliberately NOT false — that would break the additive promise for consumers pinned to an older schema version and collide with the open observation.images.<cam> key set. Keys outside this namespace that the standard does not define are surfaced as WARNINGS by mnesis_canonical.frame_warnings, never as errors. See SPEC.md §Extensions."
+    }
+  },
   "dependentRequired": {
     "observation.hand.left": ["observation.hand.layout", "observation.hand.frame"],
     "observation.hand.right": ["observation.hand.layout", "observation.hand.frame"],

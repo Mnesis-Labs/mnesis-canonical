@@ -35,6 +35,29 @@ def test_cli_bad_episode_returns_one(tmp_path, capsys, good_frame):
     assert "t_hw_ns" in err
 
 
+def test_cli_prints_warnings_without_failing(tmp_path, capsys, good_frame):
+    """An undeclared key is printed as a warning; the exit code stays 0 (#69)."""
+    p = tmp_path / "data.jsonl"
+    f = good_frame()
+    f["grip_force"] = 0.5
+    p.write_text(json.dumps(f) + "\n", encoding="utf-8")
+
+    assert main(["validate", str(p)]) == 0
+    captured = capsys.readouterr()
+    assert "warnings=1" in captured.out
+    assert "warning: line 0" in captured.err and "grip_force" in captured.err
+
+
+def test_cli_reserved_namespace_produces_no_warning(tmp_path, capsys, good_frame):
+    p = tmp_path / "data.jsonl"
+    f = good_frame()
+    f["x-iris.finger_curl"] = [0.1]
+    p.write_text(json.dumps(f) + "\n", encoding="utf-8")
+
+    assert main(["validate", str(p)]) == 0
+    assert "warnings=0" in capsys.readouterr().out
+
+
 def test_cli_missing_file_returns_two(capsys):
     assert main(["validate", "does/not/exist.jsonl"]) == 2
     assert "not found" in capsys.readouterr().err

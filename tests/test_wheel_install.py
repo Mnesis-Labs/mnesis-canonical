@@ -46,11 +46,17 @@ def test_wheel_install_loader(tmp_path: Path) -> None:
     python = venv / "bin" / "python"
     if not python.exists():
         python = venv / "Scripts" / "python.exe"
-    code = "import mnesis_canonical as m; print(len(m.list_embodiments()))"
+    # Both bundled registries must travel in the wheel (package-data), not just
+    # the modules that read them.
+    code = (
+        "import mnesis_canonical as m; "
+        "print(len(m.list_embodiments()), len(m.list_extensions()))"
+    )
     result = subprocess.run(
         [str(python), "-c", code],
         capture_output=True, text=True, cwd=tmp_path,
     )
     assert result.returncode == 0, f"Loader failed:\n{result.stderr}"
-    count = int(result.stdout.strip())
-    assert count == 5, f"Expected 5 embodiments, got {count}"
+    embodiments, extensions = (int(x) for x in result.stdout.split())
+    assert embodiments == 5, f"Expected 5 embodiments, got {embodiments}"
+    assert extensions == 4, f"Expected 4 registered extensions, got {extensions}"

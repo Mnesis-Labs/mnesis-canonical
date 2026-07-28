@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Mnesis-Labs/mnesis-canonical/blob/main/extensions/registry.schema.json",
+  "title": "Mnesis Canonical Extension Registry",
+  "description": "Schema for extensions/registry.json — the public list of non-standard frame keys that producers carry today. Authority: SPEC.md §Extensions (issue #69, root-cause card for Parthenon#47). Registering is deliberately a one-repo PR with no cross-repo coordination: the cost of declaring an extension MUST stay below the cost of hiding it, or producers keep shipping invisible fields and canonical finds out last.",
+  "type": "object",
+  "required": ["version", "extensions"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Registry file format version."
+    },
+    "extensions": {
+      "type": "array",
+      "description": "One entry per registered extension key. Sorted by name.",
+      "items": { "$ref": "#/$defs/extension" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "extension": {
+      "type": "object",
+      "required": ["name", "owner_repo", "since", "description", "promotion_status"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]*$",
+          "description": "The frame key exactly as it appears on the wire. NEW registrations MUST use the reserved namespace 'x-<vendor>.<field>' (e.g. 'x-iris.hand_left_kpts3d'). Unprefixed names exist only for pre-standard fields registered retroactively."
+        },
+        "owner_repo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The repository that produces the field, e.g. 'Mnesis-Labs/Mnesis-Iris'. Whoever writes the key owns the entry."
+        },
+        "since": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Registration date (YYYY-MM-DD). For retroactive entries this is the date the field was registered, not the date it first shipped — see notes."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the field carries, in enough detail for another repo to decide whether it needs the same thing."
+        },
+        "promotion_status": {
+          "type": "string",
+          "enum": ["active", "proposed", "promoted", "withdrawn"],
+          "description": "'active' = in production, no promotion requested. 'proposed' = the owner is asking for it to become a standard field. 'promoted' = it became a standard field; 'replaced_by' names it and the extension is on its deprecation window. 'withdrawn' = no longer produced."
+        },
+        "replaced_by": {
+          "type": ["string", "null"],
+          "description": "The standard field this extension was promoted to. null when the field was promoted by being DROPPED (e.g. a derived projection that belongs to an exporter). Required in spirit when promotion_status = 'promoted'."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Issue / PR / spec link with the reasoning, e.g. 'Mnesis-Labs/mnesis-canonical#68'."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Anything a consumer needs that does not fit above — e.g. when the field actually first shipped."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

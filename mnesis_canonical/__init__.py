@@ -4,6 +4,14 @@ The reference Python implementation of the Canonical Schema: typed frame,
 validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 """
 from .embodiment_registry import list_embodiment_ids, list_embodiments, load_embodiment
+from .extension_registry import (
+    PROMOTION_STATUSES,
+    find_extension,
+    list_extension_names,
+    list_extensions,
+    load_extension,
+    load_registry,
+)
 from .io import read_jsonl, write_jsonl
 from .isaac import (
     from_isaac,
@@ -21,6 +29,8 @@ from .schema import (
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
+    EXTENSION_KEY_PATTERN,
+    EXTENSION_PREFIX,
     GRIPPER_KEYS,
     GRIPPER_MAX,
     GRIPPER_MIN,
@@ -32,14 +42,18 @@ from .schema import (
     HAND_ROT_KEYS,
     HAND_SIDES,
     HAND_SOURCE_KEY,
+    KNOWN_FRAME_KEYS,
     MANIPULATION_ACTIONS,
     MODALITIES,
+    OPEN_KEY_PREFIXES,
     PROFILES,
     REQUIRED_KEYS,
     ROBOT_V2_VARIABLE_VECTORS,
     VECTOR_LENGTHS,
     CanonicalFrame,
     get_schema_version,
+    is_extension_key,
+    is_known_frame_key,
     required_keys_for_profile,
 )
 from .skeleton_registry import (
@@ -50,6 +64,7 @@ from .skeleton_registry import (
 )
 from .validate import (
     ValidationReport,
+    frame_warnings,
     load_json_schema,
     validate_annotations,
     validate_events,
@@ -85,9 +100,17 @@ __all__ = [
     "HAND_FRAMES",
     "DEVICES",
     "MODALITIES",
+    "KNOWN_FRAME_KEYS",
+    "OPEN_KEY_PREFIXES",
+    "EXTENSION_PREFIX",
+    "EXTENSION_KEY_PATTERN",
+    "PROMOTION_STATUSES",
+    "is_extension_key",
+    "is_known_frame_key",
     "required_keys_for_profile",
     "validate_frame",
     "validate_frames",
+    "frame_warnings",
     "validate_frame_jsonschema",
     "validate_events",
     "validate_annotations",
@@ -114,6 +137,11 @@ __all__ = [
     "list_skeleton_ids",
     "load_skeleton",
     "joint_count",
+    "list_extensions",
+    "list_extension_names",
+    "load_extension",
+    "find_extension",
+    "load_registry",
     "migrate_hand_v0",
     "migrate_hand_v0_frames",
     "__version__",
