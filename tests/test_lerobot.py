@@ -15,14 +15,6 @@ from mnesis_canonical import (
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples"
 
 
-def _strip_nones(frames: list[dict]) -> list[dict]:
-    """Return a deep copy with None-valued keys removed (for round-trip comparison)."""
-    return [
-        {k: v for k, v in f.items() if v is not None}
-        for f in frames
-    ]
-
-
 def _episodes():
     """Return paths to all example episode data.jsonl files."""
     return sorted(EXAMPLE.glob("episode_*/data.jsonl"))
@@ -41,9 +33,7 @@ def test_to_lerobot_exposes_native_features():
 
 def test_round_trip_is_exact():
     frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
-    restored = from_lerobot(to_lerobot(frames))
-    # Strip None-valued keys from original so "missing == unknown" rule holds.
-    assert _strip_nones(restored) == _strip_nones(frames)
+    assert from_lerobot(to_lerobot(frames)) == frames
 
 
 def test_round_trip_without_optional_key():
@@ -60,10 +50,10 @@ def test_from_lerobot_ignores_extra_columns():
     frames = read_jsonl(EXAMPLE / "episode_0" / "data.jsonl")
     columns = to_lerobot(frames)
     columns["some_extra_feature"] = [None] * len(frames)  # non-canonical, all None
-    # from_lerobot strips None-valued keys (missing == unknown rule), so
-    # an all-None extra column is dropped entirely.
+    # schema 不认识这一列，就没有立场判定它的 null 非法 —— 原样带过。
+    # （#89 曾把本断言反转成 `not in` 以迁就 blanket 丢弃；schema 驱动后不需要了。）
     restored = from_lerobot(columns)
-    assert "some_extra_feature" not in restored[0]
+    assert "some_extra_feature" in restored[0]
 
 
 # ── All example episodes ──────────────────────────────────────────────────
@@ -79,8 +69,7 @@ def test_round_trip_all_episodes(path):
     frames = read_jsonl(EXAMPLE / path)
     columns = to_lerobot(frames)
     restored = from_lerobot(columns)
-    # Strip None-valued keys from original so "missing == unknown" rule holds.
-    assert _strip_nones(restored) == _strip_nones(frames), (
+    assert restored == frames, (
         f"Mismatch for {path}:\n"
         f"  frame keys:     {sorted(frames[0])}\n"
         f"  lerobot cols:   {sorted(columns)}\n"
@@ -105,3 +94,39 @@ def test_no_dropped_or_invented_columns(path):
     invented = lerobot_keys - frame_keys
     assert not dropped, f"to_lerobot dropped keys from {path}: {sorted(dropped)}"
     assert not invented, f"to_lerobot invented keys for {path}: {sorted(invented)}"
+
+# ── 稀疏可选键的往返（canonical#87 回归）────────────────────────────────────────
+# 这里刻意**不针对 observation.hand.right 写死**。#67 那次只治了当时出问题的那一个
+# 字段（observation.images.ego），机制原样留着，于是 #72 加进 observation.hand.* 之后
+# 同一个 bug 立刻复发、把 main 红了 18 小时。所以这组用例测的是机制：
+# 「schema 声明为非 null 的键，在某些帧缺失时，往返后不得凭空出现」。
+
+def test_sparse_optional_key_is_not_fabricated():
+    """frame1 没有的可选键，往返后不许冒出来（值为 None 也不行）。"""
+    frames = [
+        {"index": 0, "observation.hand.left": [0.0] * 63, "observation.hand.right": [0.1] * 63},
+        {"index": 1, "observation.hand.left": [0.0] * 63},
+    ]
+    restored = from_lerobot(to_lerobot(frames))
+    assert "observation.hand.right" not in restored[1]
+    assert restored == frames
+
+
+def test_schema_nullable_key_keeps_its_explicit_null():
+    """schema 明确允许 null 的键（spatial_anchor_id），显式 null 必须原样保留。"""
+    frames = [
+        {"index": 0, "spatial_anchor_id": None},
+        {"index": 1, "spatial_anchor_id": "anchor-a"},
+    ]
+    restored = from_lerobot(to_lerobot(frames))
+    assert "spatial_anchor_id" in restored[0]
+    assert restored[0]["spatial_anchor_id"] is None
+    assert restored == frames
+
+
+def test_unknown_extension_column_is_carried_through():
+    """schema 不认识的键（厂商扩展）没有判定依据，一律原样带过，不擅自丢弃。"""
+    frames = [{"index": 0, "x-vendor.thing": None}, {"index": 1, "x-vendor.thing": None}]
+    restored = from_lerobot(to_lerobot(frames))
+    assert all("x-vendor.thing" in f for f in restored)
+    assert restored == frames
