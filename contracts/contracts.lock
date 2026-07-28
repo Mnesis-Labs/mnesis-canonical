@@ -1,8 +1,9 @@
 {
   "version": 1,
   "files": {
+    "XR_ROBOT_CONTRACT.md": "493715df7deea228dfa6c78af64be29e340c907dbec41086511fb31151d12887",
     "canonical_frame_schema_REFERENCE.md": "f9020d5c4f87f97579b27c59e22447d6d584912dace7cff15787939970f222c7",
-    "xr_bridge_SPEC.md": "617f9817162ee607b5ff9e366bae087ec3020a0cd911f4f1d85d17fe74a27f67",
-    "XR_ROBOT_CONTRACT.md": "a43291beb7f43a6cd52b79564b433a79fcf8ccc2d1fda6fdadb265fb5cbc7dea"
+    "webrtc_signaling.schema.json": "956c030879e967e27a05d15092f76029c8de64c1b7ec7fb64c52dfcfc951d203",
+    "xr_bridge_SPEC.md": "486cf763237d6e09393bfea1890f690c80a537eacce7a0486a8d8ffe90b0a04d"
   }
 }
