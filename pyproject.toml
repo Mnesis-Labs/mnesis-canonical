@@ -8,13 +8,13 @@ version = "0.5.0"
 description = "Mnesis Canonical Schema — open standard for embodied spatial-action data (the 'USB-C' for robot-trainable data)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [{ name = "Mnesis Labs" }]
 dependencies = []
 
 [project.optional-dependencies]
 jsonschema = ["jsonschema>=4.18"]
-dev = ["pytest>=8.0", "ruff>=0.6", "jsonschema>=4.18", "pyright>=1.1"]
+dev = ["pytest>=8.0", "ruff>=0.6", "jsonschema>=4.18", "pyright>=1.1", "build>=1.0", "twine>=4.0"]
 
 [project.scripts]
 mnesis-canonical = "mnesis_canonical.__main__:main"
