@@ -1,9 +1,9 @@
-# Release Checklist v1.0
+---
+archived: 2026-08-08
+superseded_by: DEV_GUIDE.md#5-发布流程
+---
 
-> **Canonical location:** [`docs/RELEASE_CHECKLIST_v1.0.md`](docs/RELEASE_CHECKLIST_v1.0.md)
->
-> This file is a root-level redirect so the gate artifact check finds it.
-> All edits, reviews, and automation should target the canonical copy above.
+# Release Checklist v1.0
 
 ---
 
