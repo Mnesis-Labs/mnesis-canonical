@@ -1,0 +1,93 @@
+name: CI-Fast (T1)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T1 快路径 —— 托管 runner 上的无状态检查（CI_POLICY R1，2026-08-08 混合方案）
+#
+# 这条腿存在的理由不是省钱（Actions 额度一直没在用），是**容量**：
+# 每仓只有两台 self-hosted runner，它们同时还在跑 lane，CI 排队是最实在的瓶颈
+# （实测 Parthenon 一个 PR 排 20 分钟没轮上；canonical 一度 6 个 run 排队、
+# 最老的等 50 分钟）。把无状态的那部分挪到别人的机器上，本机就腾给真正只有
+# 它能干的活。顺带消掉 CI 与 worker 抢同一份文件的冲突（uv.exe 被占那一类）。
+#
+# ⚠️ 本文件是**独立 workflow**，不是 ci.yml 里的一个 job —— 这是刻意的：
+#    额度守卫要能在耗尽前**单独 disable 掉 T1**，而 disable 的粒度是 workflow。
+#    并进 ci.yml 就等于把门禁和快路径绑死，一起停。
+#
+# ⚠️ 本腿**永远不是必需 check**。门禁真值在 ci.yml 的自托管腿上。
+#    理由：托管额度耗尽时 job 不排队，而是 3 秒秒败、0 步骤、无 runner，
+#    在 UI 上与真实失败**完全无法区分**（Parthenon#13，2026-07-21 全组织停摆）。
+#    它不当门禁，这种假红最多让人少一个快信号；当了门禁就是评审系统失明。
+#
+# 本仓是**公开仓 → 托管 runner 免费无限**，不占那 2000 分钟额度，
+# 所以选它做第一个试点：零成本、零风险。私有仓接入前需先装额度守卫。
+# ══════════════════════════════════════════════════════════════════════════════
+
+on:
+  # 杠杆③：只在 PR 与 push:main 触发，不是每分支每次 push。
+  # （ci.yml 的 push:"**" 兜底是给冲突 PR 用的，那条留在自托管腿上就够了；
+  #   T1 再兜一遍只是重复烧额度。）
+  pull_request:
+    # 杠杆②：paths-filter —— 只改文档不跑。
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+# 杠杆①：连推多次只跑最后一版。
+# 键必须让 push 与 pull_request 落进**同一组**，否则同一个 commit 会跑两遍 ——
+# `github.head_ref || github.ref` 就是那个坑（pull_request 得到裸分支名，
+# push 回落到 refs/heads/<branch>，两个不同字符串互不取消，实测 Parthenon 上
+# 每次推送白烧一份 runner）。ref_name 在 push 上是裸分支名，在 pull_request 上
+# 是 "<PR号>/merge"，所以 head.ref 必须放前面。
+concurrency:
+  group: ci-fast-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: T1 · Ruff + Pytest + Contracts
+    # T1 快路径（CI_POLICY R1）：本 job 全部是无状态检查 —— ruff / pytest /
+    # contracts / embodiment 四项都只读仓内文件，不碰 GPU、不碰机器人硬件、
+    # 不需要订阅登录态或网关 key（凭据类作业一律 T3，绝不上托管）。
+    # 因此它在谁的机器上跑都得出同一个结论，放托管即可。
+    # 不放 macOS：托管 macOS 倍率 ×10，而平台差异测试本来就归 ci.yml 的自托管腿。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # 托管 runner 上装 uv 是标准做法。注意这与「自托管上禁用 setup-* 类 action」
+      # 不冲突：那条规矩针对的是自托管机器上已有工具链、重装会撞权限/占用的场景。
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Venv + deps
+        # --seed 不能去掉：不带它建出来的 venv 没有 pip，
+        # tests/test_wheel_install.py 的 `python -m pip wheel` 会 "No module named pip"。
+        run: |
+          uv venv --seed
+          uv pip install -e ".[dev]"
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      - name: Pytest
+        run: uv run pytest -q
+
+      - name: Contracts integrity
+        run: uv run python -m mnesis_canonical.contracts_check
+
+      - name: Embodiment registry
+        run: uv run python -m mnesis_canonical.embodiment_check
