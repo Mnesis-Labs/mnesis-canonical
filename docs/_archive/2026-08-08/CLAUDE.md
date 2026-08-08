@@ -1,3 +1,8 @@
+---
+archived: 2026-08-08
+superseded_by: DEV_GUIDE.md
+---
+
 # mnesis-canonical · Agent 开发纪律（Worker Constitution）
 角色：本仓 worker，只处理指派的单个 issue。
 边界锁：只改本仓文件；对兄弟仓的意见用 `gh issue create --repo Mnesis-Labs/Parthenon` 提案，禁止直接改其他仓。
