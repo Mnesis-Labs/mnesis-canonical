@@ -29,6 +29,39 @@ concurrency:
 permissions:
   contents: read
 
+# ── pip 索引：阿里云为主、腾讯云备份（2026-08-09，#103）──────────────────────
+# 为什么必须在这里设：本仓的 pip 调用（tests/test_wheel_install.py 的
+# `python -m pip wheel`、scripts/release_check.py）**都不带 --index-url**，
+# 走的是 runner 机器的全局 pip 配置。而那份全局配置指向清华：
+#
+#   global.index-url = https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+#
+# 清华从 2026-08-08 起按 IP 封禁本编排机，症状是 `from versions: none`
+# ——**索引一个版本都不返回**，不是版本不匹配。#103 记录了一晚三次，
+# 分别打红 test_wheel_install 与 release_check，且与代码无关。
+#
+# 本机实测（curl --noproxy '*' 直连，出口 223.166.95.54 中国上海联通）：
+#   mirrors.tuna.tsinghua.edu.cn/pypi/web/simple   403   ← 封禁页
+#   mirrors.aliyun.com/pypi/simple                 200
+#   mirrors.cloud.tencent.com/pypi/simple          200
+#
+# 放 workflow env 而不是改机器全局 pip 配置的理由：这样它**可版本控制、可评审、
+# 随仓走**，换机器不会丢；而改全局配置是不可见的机器状态，下次换 runner 又是一个坑。
+# PIP_INDEX_URL / PIP_EXTRA_INDEX_URL 是 pip 官方认的环境变量，优先级高于配置文件，
+# 因此不必动那份全局配置就能覆盖它。
+#
+# ⚠️ 国内镜像必须直连：经代理出口是境外 IP，国内镜像对境外 IP 更容易 403 ——
+# 那会变成同一症状的第二条成因。runner 的 NO_PROXY 需含这两个域名。
+#
+# 同源修复见 Mnesis-Daedalus ci-selfhosted.yml 的 UV_INDEX_URL（那条走 uv 路径，
+# 与本条的 pip 路径是**两条独立代码路径**，改一处不覆盖另一处 —— #103 就是这么漏的）。
+env:
+  PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+  PIP_EXTRA_INDEX_URL: https://mirrors.cloud.tencent.com/pypi/simple/
+  # 镜像抽风时给 pip 自己的重试留余量（默认只重试 5 次、间隔很短）
+  PIP_RETRIES: "5"
+  PIP_TIMEOUT: "60"
+
 # ── 2026-07-28 双机化（CI_POLICY R1）──────────────────────────────────────────
 # 此前三个 job 全钉 [self-hosted, Windows, X64]，mac runner 接不了。实测代价：
 # 本仓一度 6 个 run 同时排队、最老的等 50 分钟，而同仓 mac runner 全程 busy=false。
