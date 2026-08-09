@@ -16,7 +16,7 @@ are decoupled:
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
 
-## [Unreleased]
+## [0.5.0] — 2026-07-30
 
 ### Added
 
@@ -289,6 +289,13 @@ are decoupled:
 - `examples/episode_0` (phone / ego_human).
 - Dual-timestamp design, quaternion `{x,y,z,w}` scalar-last, relative-delta action.
 
+## [Unreleased]
+
+### Added
+
+### Fixed
+
+[0.5.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.2.0

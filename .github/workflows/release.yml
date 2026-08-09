@@ -1,0 +1,76 @@
+# ── Release workflow ──────────────────────────────────────────────────────────
+# Triggered by pushing a version tag matching `v<major>.<minor>.<patch>`.
+# 1. Build sdist + wheel.
+# 2. Run the full release checklist (§2–§6).
+# 3. Create a GitHub Release with changelog notes.
+# 4. Publish to PyPI.
+#
+# PyPI trust: publishing is gated on a passing release check AND a signed tag.
+# The PYPI_TOKEN secret must be set in the repo or org.
+#
+# §7 (git tag) and §8 (GitHub Release + PyPI) of RELEASE_CHECKLIST_v1.0.md.
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write  # needed for creating GitHub Releases
+
+jobs:
+  check-and-publish:
+    name: Release checklist + publish
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: uv --version
+
+      - name: Venv + deps
+        run: uv venv --seed
+
+      - name: Install
+        run: uv pip install -e ".[dev]"
+
+      # ── §2–§6: release checklist (contracts, embodiments, lint, tests, smoke) ──
+      - name: Release checklist §2–§6
+        run: uv run python scripts/release_check.py
+
+      # ── Build sdist + wheel ──
+      - name: Build
+        run: uv run python -m build
+
+      # ── §8: GitHub Release ──
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          # Extract the changelog section for this version
+          CHANGELOG_SECTION=$(awk -v ver="$VERSION" '
+            /^## \[/ { if (found) { exit } }
+            /^## \['"$VERSION"'\]/ { found=1; next }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$CHANGELOG_SECTION" ]; then
+            NOTES="Release ${TAG}"
+          else
+            NOTES="${CHANGELOG_SECTION}"
+          fi
+          gh release create "$TAG" \
+            --title "mnesis-canonical ${TAG}" \
+            --notes "$NOTES" \
+            dist/*.tar.gz dist/*.whl
+
+      # ── PyPI publish ──
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: uv run twine upload dist/*
