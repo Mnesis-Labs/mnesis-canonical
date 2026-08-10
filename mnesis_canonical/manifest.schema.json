@@ -40,6 +40,36 @@
     "annotationsPath": {
       "type": ["string", "null"],
       "description": "Relative path to the annotations/spans.jsonl sidecar, or null if absent."
+    },
+    "provenance": {
+      "type": "object",
+      "description": "Optional provenance metadata identifying who produced the data, with which build, and in which session (C1-vNext, additive-only).",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "description": "Canonical schema version at the time of production (e.g. \"0.2.0\"). Consumers use this to select the correct parsing path."
+        },
+        "captureApp": {
+          "type": "string",
+          "description": "Capture surface identifier: \"iris\", \"argus\", etc. Orthogonal to source.device — the same phone can be driven by different capture apps."
+        },
+        "appVersion": {
+          "type": "string",
+          "description": "Capture app version (semver)."
+        },
+        "gitSha": {
+          "type": "string",
+          "description": "Capture app build commit SHA. The one field that actually pins provenance — version numbers can be forgotten or un-bumped, SHAs cannot."
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Anonymized device identifier: hex(sha256(salt || raw_id))[:16]. The salt is held by the capture app and does not travel with the data."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Shared session identifier for multi-device co-recording. All devices in the same recording session use the same value, enabling post-hoc episode grouping."
+        }
+      }
     }
   },
   "required": ["episodeIndex", "frameCount", "jsonlSizeBytes", "durationMs"],

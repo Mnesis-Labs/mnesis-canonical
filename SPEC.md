@@ -353,6 +353,26 @@ episodes/ep_<n>/
   manifest.json         # {episodeIndex, frameCount, jsonlSizeBytes, videoPath, videoSizeBytes, durationMs}
 ```
 
+### Manifest provenance (optional, additive, C1-vNext)
+
+The manifest may carry an optional `provenance` block that answers **who produced
+the data, with which build, and in which session** — the three questions that
+existing manifest fields (shape and size only) cannot answer:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schemaVersion` | string | Canonical schema version at production time (e.g. `"0.5.0"`). Consumers select the parsing path from this, not by field detection. |
+| `captureApp` | string | Capture surface identifier: `"iris"` / `"argus"` / … **Orthogonal to `source.device`** (which class of hardware) — the same `"phone"` can be driven by different capture apps. |
+| `appVersion` | string | Capture app version (semver). |
+| `gitSha` | string | Capture app build commit SHA. The one field that actually pins provenance: version numbers can be forgotten or un-bumped, SHAs cannot. |
+| `deviceId` | string | **Anonymised** device identifier: `hex(sha256(salt \|\| raw_id))[:16]`. The salt is held by the capture app and does not travel with the data. |
+| `sessionId` | string | Shared session identifier for multi-device co-recording. All devices in the same recording session use the same value, enabling post-hoc episode grouping by session. |
+
+All six fields are optional, and the `provenance` block itself is optional —
+existing manifests without it validate unchanged. Naming follows the manifest's
+camelCase convention (`schemaVersion`, `captureApp`, `appVersion`, `gitSha`,
+`deviceId`, `sessionId`), distinct from the frame schema's snake_case.
+
 ## Compatibility (must stay true — `4c` DATA5)
 - **LeRobot**: flat columns map 1:1 to LeRobot dataset features (`observation.state`, `action`, `timestamp`, `episode_index`, `frame_index`, `index`, `task_index`).
 - **Isaac / GR00T**: keep field names + units (SI metres, rad) compatible so episodes can feed NVIDIA physical-AI pipelines without re-labeling. Diff/decisions tracked here before any field is frozen.
