@@ -13,6 +13,36 @@
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
 | C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b |
 
+## 扩展登记表（Extension Registry）
+
+> **问题**：Iris 的四个手部字段能在库里躺半个月没人发现，根因是「扩展的成本高于隐瞒的成本」。
+> **解法**：把扩展设计成一等公民、合法且可见。保留 `x-<vendor>.` 命名空间，校验器对越界未知键发警告（不是错误），
+> 生产方发一个不需要跨仓协调的 PR 就能登记。
+
+### 登记流程
+
+1. 生产方在 `extensions/registry.json` 的 `extensions` 数组里加一条记录，包含 `name`（`x-<vendor>.<field>`）、
+   `owner_repo`、`since`、`description`、`promotion_status`。
+2. 开一个**只改本文件**的 PR——不需要跨仓协调，不需要契约变更流程。
+3. 校验器不认扩展名（标准字段名唯一），但扩展名因 `x-<vendor>.` 前缀不触发未知键警告。
+4. 晋升路径：登记扩展 → 标准字段（改名 + 迁移函数 + 弃用窗口）。见 `extensions/registry.json` 中
+   `promotion_status: promoted` 的样板（Iris 四个旧字段）。
+
+### 登记表 schema
+
+`extensions/registry.schema.json` 定义登记表格式。`extensions/registry.json` 是当前登记表。
+
+| 字段 | 类型 | 必填 | 含义 |
+|---|---|---|---|
+| `name` | str | ✅ | `x-<vendor>.<field>` 格式，如 `x-iris.hand_left_kpts3d` |
+| `owner_repo` | str | ✅ | 拥有该扩展的仓库，如 `Mnesis-Labs/Mnesis-Iris` |
+| `since` | str | ✅ | 首次引入日期（YYYY-MM-DD） |
+| `description` | str | ✅ | 扩展字段含义 |
+| `promotion_status` | enum | ✅ | `registered`（仍为扩展）、`promoted`（已晋升为标准字段）、`deprecated`（正被淘汰） |
+| `promoted_to` | str | 条件 | 晋升后的标准字段名（`promotion_status=promoted` 时必填） |
+| `promoted_in_issue` | str | 条件 | 晋升的 issue 链接（`promotion_status=promoted/deprecated` 时推荐） |
+| `type` | str | 否 | 字段的 JSON 类型，如 `float[63]`、`string` |
+
 ### C1 变更记录（additive-only；老数据零破坏）
 - **2026-07-28 · 升两条通则：「缺失 = 未知，禁带内哨兵」+ 字段级 status（issue #70；来源 Parthenon#47 评审）**：两条都是本仓已临时拍过、但从未升成通则的规范，此前每加一个字段都要重新吵一遍。① 升 `SPEC.md` §Conventions 为铁律：「缺失 = 未知，禁带内哨兵」—— 任何情况下不得用 `0`、零向量、`-1`、`NaN`、`""`、存在标志位等带内哨兵值编码「未知/不适用」，不知道就省略该键；消费方 MUST NOT 给缺失可选字段填默认值。回指两次既有拍板：2026-07-21 `action.gripper` 缺失 ≠ `0.0`、2026-07-27 `spatial_anchor_pose_SE3` 缺失 ⇒ 跳过一致性校验（不回退 `head_pose_SE3`），并自动出局 #47 里 `hand_pose`（标志位 + 63 个零）一类带内哨兵方案。② 升字段级 `status`（`experimental` / `stable` / `deprecated`）为 `SPEC.md` §Versioning 正式定义：`experimental` = 已收编可产可校验但 stable 前可改名/改形、不算破坏性；`stable` = 冻结、仅 additive、改名需 major；`deprecated` = 将移除、须附 `deprecated_since` + 迁移指引。`canonical_frame.schema.json` 每个 property 标 `x-status`（现有字段一律 `stable`，`observation.hand.*` 七字段标 `experimental`），`SPEC.md` 字段表加 Status 列并删除一份重复的「C8」夹爪行。③ `mnesis_canonical.schema` 新增 `FIELD_STATUS` + `EXPERIMENTAL_KEYS` 常量；`validate.{validate_frame,validate_frames}` 新增 `strict_stable` 参数、CLI `validate --strict-stable` 拒收含 experimental 字段的帧（下游「只吃冻结字段」的开关）。**老数据零破坏**：`strict_stable` 默认关闭，不加 flag 时 experimental 字段照常校验通过。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate,__main__}` 同步。
 - **2026-07-27 · 手部关键点 `observation.hand.*`（C11 结案；Parthenon#47 / 本仓 #68；Muso 拍板）**：帧新增 7 个**可选 / additive** 字段，把骨架级手部数据收进单一标准，取代 Iris 私产的 `hand_left_kpts3d` / `hand_right_kpts3d` / `hand_kpts_source` / `hand_pose`。① `observation.hand.left` / `.right`：关节**位置**，展平 `[x,y,z,…]`（米），**变长** —— 长度 = `3 × K`，`K` 由 `observation.hand.layout` 经**骨架登记表**（新增 `skeletons/<id>.json`）解析，与 `embodiment_id` 的 `joint_names` 定义 `observation.state` 长度是同一机制。**不定长 63**：定长会把 MediaPipe 的 21 点拓扑冻进开放标准，而 Eidolon C2（WebXR 25 关节 / OpenXR 26，且带逐关节朝向）与 xMimic 类骨架 retargeting 吃的正是朝向。② `.rot`：关节**朝向**，展平四元数 `{x,y,z,w}`，长度 `4 × K`，仅原生提供朝向的来源填。③ `observation.hand.layout` + `observation.hand.frame`（`world` / `head_anchored` / `hand_local`）—— **有关键点时两者必填**：`frame` 是「2.5D 近似而非真 3D」这条警告的**机器可读形式**，消费方按 `frame == "world"` 过滤，而不是去认某个 source 字符串。④ `observation.hand.source` 只当溯源标签（开放集），不承载几何语义。**手不在场时整键省略**（不发零向量、不许 null）。**`hand_pose`（128 floats）不进 wire**：它是前两者的派生投影，且用标志位 + 补零编码缺席，与本次同时升为铁律的「缺失 = 未知，禁带内哨兵」冲突 —— 归 LeRobot 导出期投影。字段标 **`experimental`**（`SPEC.md` §Versioning 新增字段级 status）：已在产的数据当天进标准，同时保留 stable 前改名的权利。已注册布局：`mediapipe_hand_21`（stable）、`webxr_hand_25` / `openxr_hand_26`（experimental，**待 Eidolon 按真机实现核对**）。`SPEC.md` §Hand keypoints / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate,skeleton_registry,migrate}` / `skeletons/`（root+package 双份）/ `contracts/canonical_frame_schema_REFERENCE.md` 同步。**消费方对齐**：Iris 按新名改 `CanonicalFrame.toJsonLine`、补 `layout=mediapipe_hand_21` + `frame=head_anchored`、摘掉 `hand_pose`、重新 vendor schema 并从 `contracts.lock` 的 `local_extensions` 摘掉这四个字段；存量数据跑 `python -m mnesis_canonical migrate <data.jsonl> --out <data.jsonl>`。**校验器只认新名，不认双名** —— 标准里的别名从来不会死。

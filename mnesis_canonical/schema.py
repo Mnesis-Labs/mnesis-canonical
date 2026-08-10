@@ -90,6 +90,12 @@ EXPERIMENTAL_KEYS = (
 # `--strict-stable` switch refuses both experimental and deprecated fields.
 DEPRECATED_KEYS = ()
 
+# Vendor extension namespace prefix pattern (x-<vendor>.<field>).
+# Keys matching this prefix are reserved for vendor-specific extensions and
+# are exempt from the unknown-key warning.  See SPEC.md §Conventions and
+# extensions/registry.json.
+VENDOR_EXTENSION_PREFIX = "x-"
+
 # --- Hand keypoints (C11, additive, optional, status: experimental) ----------
 # Skeleton-level hand data as a first-class observation.  The keypoint vectors
 # are **variable-length**: their length is declared by ``observation.hand.layout``
