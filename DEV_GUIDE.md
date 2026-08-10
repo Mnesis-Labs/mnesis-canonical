@@ -147,14 +147,49 @@ python -m mnesis_canonical.importers --help
 python -m mnesis_canonical.importers list
 ```
 
-### §7 Git & tag
+### §7 Git & tag（人工）
 - 所有变更提交到 `main`
 - `git tag -a v<version> -m "v<version>"`
 - `git push origin main --tags`
 
-### §8 GitHub Release
-- 从 tag 创建 Release，附 changelog notes
-- 上传 `sdist` / `wheel`（发布到 PyPI 时）
+### §8 GitHub Release + PyPI（自动）
+
+推 tag 即触发 `.github/workflows/release.yml`：版本守卫（tag vs 树里三个字符串）
+→ release_check §2–§6 → build → `twine check --strict` → **干净 venv 里装 wheel 跑
+CLI** → 建 GitHub Release → 发 PyPI。
+
+tag 已经存在、需要补发时（比如 workflow 晚于 tag 落地）：
+
+```bash
+gh workflow run release.yml -f tag=v0.5.0 -f dry_run=true   # 空跑：只校验+构建
+gh workflow run release.yml -f tag=v0.5.0                   # 确认后真发
+```
+
+`dry_run` 不是可选的礼貌：**PyPI 上传不可撤销**，同一版本号发错只能 yank，
+不能覆盖重发。没跑过的发布路径先空跑一次。
+
+### §9 PyPI Trusted Publishing（一次性人工前置）
+
+发布不用 `PYPI_TOKEN` secret，用 OIDC —— 仓里零凭据，也就没有「secret 到底设没
+设」这种从仓外看不见的机器状态（#109 卡了一轮就是卡在这上面）。
+
+首次发布前，有 PyPI 账号的人到
+<https://pypi.org/manage/account/publishing/> 建一个 **pending publisher**
+（项目还不存在时走这个入口，首次上传自动建项目）：
+
+| 字段 | 值 |
+|---|---|
+| PyPI Project Name | `mnesis-canonical` |
+| Owner | `Mnesis-Labs` |
+| Repository name | `mnesis-canonical` |
+| Workflow name | `release.yml` |
+| Environment name | **留空**（本 workflow 不用 environment，填了会对不上而拒签） |
+
+配完跑一次 §8 的补发命令即可。验收判据只有一条 —— 不是流水线绿了，是：
+
+```bash
+pip install mnesis-canonical && python -c "import mnesis_canonical; print(mnesis_canonical.__version__)"
+```
 
 ---
 

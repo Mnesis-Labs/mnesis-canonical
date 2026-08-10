@@ -1,15 +1,46 @@
-# ── Release workflow ──────────────────────────────────────────────────────────
-# Triggered by pushing a version tag matching `v<major>.<minor>.<patch>`.
-# 1. Build sdist + wheel.
-# 2. Run the full release checklist (§2–§6).
-# 3. Create a GitHub Release with changelog notes.
-# 4. Publish to PyPI.
+# ══════════════════════════════════════════════════════════════════════════════
+# Release —— 建 GitHub Release + 发 PyPI
 #
-# PyPI trust: publishing is gated on a passing release check AND a signed tag.
-# The PYPI_TOKEN secret must be set in the repo or org.
+# 「装不上的标准不叫标准」。本 workflow 唯一的产物判据是
+# `pip install mnesis-canonical` 能跑通，不是「流水线绿了」。
 #
-# §7 (git tag) and §8 (GitHub Release + PyPI) of RELEASE_CHECKLIST_v1.0.md.
-# ──────────────────────────────────────────────────────────────────────────────
+# ── 为什么 2026-08-11 重写（#109）─────────────────────────────────────────────
+# #98 加了本文件的第一版，之后 30 天 **一次都没跑过**（`gh run list
+# --workflow=release.yml` 返回空），PyPI 上依然 404。三个结构性原因，都在本文件里：
+#
+# 1. 只有 `push: tags` 一个触发口。v0.5.0 的 tag 打在 2026-07-28，本文件落地在
+#    2026-08-09 —— tag 比 workflow 早，push 事件早就过去了，**对 0.5.0 永远不会
+#    触发**，而 0.5.0 正是要发的那个版本。补触发口（workflow_dispatch）不是便利
+#    功能，是这条链路能不能对已存在的 tag 生效的前提。
+# 2. 跑在 `[self-hosted]`。本仓的自托管池是 Windows + macOS 混池（见 ci.yml 双机
+#    化注释），而第一版的步骤全是 bash-ism（`${GITHUB_REF_NAME}` / `awk` /
+#    `$(...)`）—— 派到 Windows runner 上默认 shell 是 pwsh，第一步就炸。发布是
+#    纯无状态作业（不碰硬件、不需要本机登录态），按 CI_POLICY R1 就该上托管；
+#    本仓公开，托管 runner 免费无限（见 ci-fast.yml）。
+# 3. 依赖 `PYPI_TOKEN` secret。那是一个**不可见的机器状态**：没人能从仓里看出它
+#    设没设，agent 连 `gh secret list` 都是 403。改用 PyPI Trusted Publishing
+#    (OIDC)：凭据由 GitHub 现签现用，仓里零 secret，人工那一步从「造 token→设
+#    secret→别泄漏→记得轮换」缩到「在 pypi.org 上填一次表」。
+#
+# ── 人工一次性前置（还没做的话本 workflow 会在最后一步失败）───────────────────
+# 到 https://pypi.org/manage/account/publishing/ 建一个 **pending publisher**
+# （项目还不存在时就是走这个入口，首次上传自动建项目）：
+#     PyPI Project Name:  mnesis-canonical
+#     Owner:              Mnesis-Labs
+#     Repository name:    mnesis-canonical
+#     Workflow name:      release.yml
+#     Environment name:   （留空 —— 本 workflow 不用 environment，填了会对不上）
+# 详见 DEV_GUIDE.md §5.9。
+#
+# ── 怎么用 ───────────────────────────────────────────────────────────────────
+#   正常发版：打 tag 推上去，自动触发
+#   补发已存在的 tag（v0.5.0 就属于这种）：
+#     gh workflow run release.yml -f tag=v0.5.0 -f dry_run=true   # 先空跑验证
+#     gh workflow run release.yml -f tag=v0.5.0                   # 确认后真发
+#
+# ⚠️ PyPI 上传**不可撤销**：同一个版本号发错了只能 yank，永远不能覆盖重发。
+#    所以 dry_run 存在，也所以 version_check --expect 必须挡在 build 之前。
+# ══════════════════════════════════════════════════════════════════════════════
 
 name: release
 
@@ -17,60 +48,129 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的已存在 tag，例如 v0.5.0"
+        required: true
+        type: string
+      dry_run:
+        description: "只跑校验与构建，不建 Release、不发 PyPI"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: write  # needed for creating GitHub Releases
+  contents: write   # 建 GitHub Release
+  id-token: write   # PyPI Trusted Publishing 的 OIDC 令牌
+
+# 同一个 tag 不允许两条发布流水线并行：它们会同时 twine upload，
+# 后到的那条撞 "File already exists" 打红，制造一次假故障。
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  check-and-publish:
-    name: Release checklist + publish
-    runs-on: [self-hosted]
+  release:
+    name: Release checklist · build · publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # tag push 时 github.ref 就是 refs/tags/v<x>；workflow_dispatch 时
+          # 默认检出的是默认分支，必须显式切到那个 tag，否则会拿 main 的树去
+          # 发一个 tag 名字的版本 —— 正是 §1 版本守卫要防的那类错配。
+          ref: ${{ inputs.tag || github.ref }}
 
-      - name: Toolchain
-        run: uv --version
+      - name: Resolve tag / version
+        id: v
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "tag=$TAG"           >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}"   >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Venv + deps
-        run: uv venv --seed
+        run: |
+          uv venv --seed
+          uv pip install -e ".[dev]"
 
-      - name: Install
-        run: uv pip install -e ".[dev]"
+      # ── §1：tag 必须和树里的三个版本字符串一致 ──
+      # 挡在 build 之前而不是 upload 之前：构建产物的文件名里就带版本号，
+      # 错配在这一步之后发现，dist/ 里已经是一个名字骗人的 wheel 了。
+      - name: Version guard (§1, tag vs tree)
+        run: uv run python scripts/version_check.py --expect "${{ steps.v.outputs.tag }}"
 
-      # ── §2–§6: release checklist (contracts, embodiments, lint, tests, smoke) ──
+      # ── §2–§6：契约 / embodiment / lint / 测试 / 冒烟 ──
       - name: Release checklist §2–§6
         run: uv run python scripts/release_check.py
 
-      # ── Build sdist + wheel ──
-      - name: Build
+      - name: Build sdist + wheel
         run: uv run python -m build
 
-      # ── §8: GitHub Release ──
+      # twine 自己的元数据校验：README 渲染不了、classifier 写错这类问题，
+      # PyPI 是在 upload 那一刻才拒的，那时候版本号已经烧掉一次机会了。
+      - name: twine check
+        run: uv run twine check --strict dist/*
+
+      # 真正回答「装不装得上」的一步：在一个干净 venv 里从 wheel 装（--no-index
+      # 断掉网络回退，确保装的就是刚构建的那个文件），再跑 CLI 与版本自报。
+      # 前面所有步骤跑的都是 `-e .` 的源码树，证明不了打包产物是完整的
+      # —— package-data 漏配（schema json 没进 wheel）就只在这一步现形。
+      - name: Smoke-test the built wheel
+        run: |
+          uv venv --seed /tmp/wheelcheck
+          uv pip install --python /tmp/wheelcheck/bin/python \
+            --no-index --find-links dist mnesis-canonical
+          /tmp/wheelcheck/bin/mnesis-canonical --help
+          # validate 会加载打进包里的 canonical_frame.schema.json —— 这一行才是
+          # package-data 真的进了 wheel 的证明，光 import 得到的是假绿。
+          /tmp/wheelcheck/bin/mnesis-canonical validate examples/episode_0/data.jsonl
+          /tmp/wheelcheck/bin/python -c "import mnesis_canonical as m; \
+            assert m.__version__ == '${{ steps.v.outputs.version }}', m.__version__; \
+            print('installed wheel reports', m.__version__)"
+
+      - name: Dry run — stopping before publish
+        if: inputs.dry_run
+        run: |
+          echo "dry_run=true：校验、构建、装包冒烟全部通过，不建 Release、不发 PyPI。"
+          ls -l dist/
+
+      # ── GitHub Release（幂等）──
+      # v0.5.0 的 Release 早就手工建过了。补发场景下不能无脑 `gh release create`
+      # ——那会因为已存在直接报错打红，把一条本来能走完的补发流水线卡在倒数第二步。
       - name: GitHub Release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          # Extract the changelog section for this version
-          CHANGELOG_SECTION=$(awk -v ver="$VERSION" '
-            /^## \[/ { if (found) { exit } }
-            /^## \['"$VERSION"'\]/ { found=1; next }
-            found { print }
-          ' CHANGELOG.md)
-          if [ -z "$CHANGELOG_SECTION" ]; then
-            NOTES="Release ${TAG}"
+          TAG="${{ steps.v.outputs.tag }}"
+          VERSION="${{ steps.v.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在 —— 只补传构建产物。"
+            gh release upload "$TAG" dist/* --clobber
           else
-            NOTES="${CHANGELOG_SECTION}"
+            # 用 index()==1 做字面前缀匹配，不把版本号当正则：`.` 在正则里是
+            # 通配符，`0.5.0` 会顺带匹配上 `0x5y0`。
+            NOTES=$(awk -v hdr="## [$VERSION]" '
+              index($0, hdr) == 1 { found = 1; next }
+              found && /^## \[/   { exit }
+              found               { print }
+            ' CHANGELOG.md)
+            [ -n "$NOTES" ] || NOTES="Release $TAG"
+            gh release create "$TAG" \
+              --title "mnesis-canonical $TAG" \
+              --notes "$NOTES" \
+              dist/*
           fi
-          gh release create "$TAG" \
-            --title "mnesis-canonical ${TAG}" \
-            --notes "$NOTES" \
-            dist/*.tar.gz dist/*.whl
 
-      # ── PyPI publish ──
+      # ── PyPI（Trusted Publishing，无 secret）──
+      # 放在最后：它是唯一不可撤销的一步，前面任何一项没过都不该走到这里。
       - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: uv run twine upload dist/*
+        if: ${{ !inputs.dry_run }}
+        uses: pypa/gh-action-pypi-publish@release/v1

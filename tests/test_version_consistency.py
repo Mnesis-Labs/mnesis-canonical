@@ -58,6 +58,29 @@ def test_mismatch_is_reported_and_exits_one(monkeypatch, capsys):
     assert "0.2.0" in out
 
 
+def test_expect_accepts_the_matching_tag_with_and_without_v():
+    """The release workflow passes the raw tag; a bare version must work too."""
+    version = vc.read_dunder_version()
+    assert vc.check(expect=f"v{version}") == []
+    assert vc.check(expect=version) == []
+    assert vc.main(["--expect", f"v{version}"]) == 0
+
+
+def test_expect_rejects_a_tag_that_disagrees_with_the_tree(capsys):
+    """Publishing v9.9.9 from a 0.5.0 tree would burn that version on PyPI forever."""
+    problems = vc.check(expect="v9.9.9")
+    assert len(problems) == 4
+    assert any("release tag" in line and "9.9.9" in line for line in problems)
+    assert vc.main(["--expect", "v9.9.9"]) == 1
+    assert "VERSION MISMATCH" in capsys.readouterr().out
+
+
+def test_expect_only_strips_a_leading_v():
+    """`removeprefix` must not eat a 'v' anywhere else — 'v1.0.0v' is not '1.0.0'."""
+    monkey = vc.check(expect="0v.1.0")
+    assert any("'0v.1.0'" in line for line in monkey)
+
+
 def test_project_table_scoping_ignores_tool_ruff_target_version():
     """`[tool.ruff] target-version` must not be mistaken for the project version."""
     text = '[project]\nversion = "1.2.3"\n\n[tool.ruff]\ntarget-version = "py310"\n'

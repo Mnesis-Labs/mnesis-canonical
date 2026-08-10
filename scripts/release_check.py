@@ -4,8 +4,9 @@
 Runs every machine-executable checklist item and exits non-zero if any fails, so
 "forgot to run one of the steps" stops being possible.  §1's version-string half
 is a comparison of three strings, so it runs here too (#76 — it used to be a
-reminder and the strings drifted).  Only §1's CHANGELOG rollover and §7/§8 stay
-manual; the script prints a reminder for those.
+reminder and the strings drifted).  Only §1's CHANGELOG rollover and §7's tag
+push stay manual — §8 (GitHub Release + PyPI) is what the tag push triggers
+(#109); the script prints a reminder for the rest.
 
     python scripts/release_check.py [--only SECTION] [--strict]
 """
@@ -23,7 +24,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
 MANUAL_REMINDER = ("not automated: §1 CHANGELOG [Unreleased] rollover · "
-                   "§7 git tag & push · §8 GitHub Release")
+                   "§7 git tag & push  |  §8 GitHub Release + PyPI runs itself "
+                   "from the tag (.github/workflows/release.yml)")
 
 VERSION_CHECK = REPO_ROOT / "scripts" / "version_check.py"
 
