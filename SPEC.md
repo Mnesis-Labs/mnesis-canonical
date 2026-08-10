@@ -1,4 +1,4 @@
-# Mnesis Canonical Schema — Specification (v0.2)
+# Mnesis Canonical Schema — Specification (SPEC_VERSION v0.2)
 
 > The open standard for **embodied spatial-action data** — one schema that every
 > capture surface (phone / glasses / Quest / robot / sim) emits and the Mnesis
@@ -437,7 +437,7 @@ Additive, so no forced migration; adopt lazily:
    "no presets — use `capture` defaults".
 
 ## Versioning
-- Spec is versioned (`v0.2`). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
+- Spec is versioned (SPEC_VERSION v0.2). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
 - **Field-level status.** Each field carries a status: one of
   `experimental`, `stable`, or `deprecated`. The authoritative value is the
   `x-status` key in `canonical_frame.schema.json` (mirrored as the `[experimental]`
