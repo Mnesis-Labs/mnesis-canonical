@@ -15,6 +15,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .embodiment_registry import load_embodiment
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -280,9 +281,9 @@ def validate_frame(
             _validate_vector_field(frame, key, expected_len, errors)
 
     # --- observation.images validation (profile-aware) ---
+    img_keys = [k for k in frame if k.startswith("observation.images.")]
     if profile == "robot_v2":
         # robot_v2: at least one observation.images.<cam> must exist
-        img_keys = [k for k in frame if k.startswith("observation.images.")]
         if not img_keys:
             errors.append(
                 "robot_v2 profile requires at least one observation.images.<cam> key"
@@ -290,6 +291,45 @@ def validate_frame(
         for k in img_keys:
             if not isinstance(frame[k], str):
                 errors.append(f"{k} must be a string (file reference, '' allowed)")
+    elif profile == "ego_multicam_v1":
+        # ego_multicam_v1: open camera-key set, at least one required. Camera names
+        # are NOT free strings — they must be declared in the embodiment's
+        # capture.cameras[].name (registry is the single source of truth). A camera
+        # that drops a frame omits its key entirely (iron rule: missing = unknown),
+        # so only a subset of the declared rig is required to be present.
+        if not img_keys:
+            errors.append(
+                "ego_multicam_v1 profile requires at least one observation.images.<cam> key"
+            )
+        for k in img_keys:
+            if not isinstance(frame[k], str):
+                errors.append(f"{k} must be a string (file reference, '' allowed)")
+        eid = frame.get("embodiment_id")
+        if eid is None:
+            errors.append(
+                "ego_multicam_v1 profile requires embodiment_id to resolve camera names"
+            )
+        else:
+            try:
+                emb = load_embodiment(eid)
+            except LookupError:
+                errors.append(f"embodiment_id '{eid}' is not a registered embodiment")
+            else:
+                cameras = (emb.get("capture") or {}).get("cameras") or []
+                valid_names = {c.get("name") for c in cameras if isinstance(c, dict)}
+                if not valid_names:
+                    errors.append(
+                        f"embodiment '{eid}' does not declare capture.cameras "
+                        "(required for ego_multicam_v1)"
+                    )
+                else:
+                    for k in img_keys:
+                        cam = k[len("observation.images."):]
+                        if cam not in valid_names:
+                            errors.append(
+                                f"observation.images.{cam}: camera '{cam}' is not "
+                                f"declared in embodiment '{eid}' capture.cameras"
+                            )
     else:
         # ego_v1: observation.images.ego is required (already checked above)
         if not isinstance(frame["observation.images.ego"], str):

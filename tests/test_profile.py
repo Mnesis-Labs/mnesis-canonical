@@ -302,3 +302,111 @@ def test_required_keys_robot_v2():
 
 def test_required_keys_default():
     assert required_keys_for_profile(None) == required_keys_for_profile("ego_v1")
+
+
+# ── ego_multicam_v1 profile (issue #115) ───────────────────────────────────────
+
+# airbot_play declares capture.cameras = [{name: wrist}, {name: front}] — a
+# registered camera rig we can validate ego_multicam_v1 camera names against.
+_AIRBOT = "airbot_play"
+
+
+def _multicam_frame(cam_keys: list[str]) -> dict:
+    """A valid ego_multicam_v1 frame with fixed-length vectors."""
+    f = {
+        "index": 0, "episode_index": 0, "task_index": 0, "frame_index": 0,
+        "t_ns": 1_000_000, "t_hw_ns": 1_000_000_000,
+        "timestamp": "2026-07-21T00:00:00.000Z",
+        "head_pose_SE3": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        "observation.state": [0.0] * 7,
+        "action": [0.0] * 6,
+        "spatial_anchor_id": None,
+        "source.device": "glasses", "source.modality": "ego_human",
+        "tracking_state": "TRACKING",
+        "profile": "ego_multicam_v1",
+        "embodiment_id": _AIRBOT,
+    }
+    for cam in cam_keys:
+        f[f"observation.images.{cam}"] = ""
+    return f
+
+
+def test_ego_multicam_v1_valid_multiple_cameras():
+    """ego_multicam_v1 accepts multiple declared camera keys."""
+    f = _multicam_frame(["wrist", "front"])
+    assert validate_frame(f) == []
+
+
+def test_ego_multicam_v1_single_camera_valid():
+    """A single declared camera key is enough (subset of the rig)."""
+    f = _multicam_frame(["wrist"])
+    assert validate_frame(f) == []
+
+
+def test_ego_multicam_v1_requires_at_least_one_camera():
+    """ego_multicam_v1 must have at least one observation.images.<cam> key."""
+    f = _multicam_frame([])
+    errs = validate_frame(f)
+    assert any("observation.images" in e for e in errs)
+
+
+def test_ego_multicam_v1_does_not_require_ego_camera():
+    """ego_multicam_v1 does not require observation.images.ego."""
+    f = _multicam_frame(["wrist"])
+    assert "observation.images.ego" not in f
+    assert validate_frame(f) == []
+
+
+def test_ego_multicam_v1_requires_embodiment_id():
+    """ego_multicam_v1 requires embodiment_id to resolve camera names."""
+    f = _multicam_frame(["wrist"])
+    del f["embodiment_id"]
+    errs = validate_frame(f)
+    assert any("embodiment_id" in e for e in errs)
+
+
+def test_ego_multicam_v1_unknown_embodiment_rejected():
+    """ego_multicam_v1 with an unregistered embodiment_id is rejected."""
+    f = _multicam_frame(["wrist"])
+    f["embodiment_id"] = "nonexistent_robot"
+    errs = validate_frame(f)
+    assert any("nonexistent_robot" in e for e in errs)
+
+
+def test_ego_multicam_v1_undeclared_camera_rejected():
+    """A camera name not in capture.cameras is rejected (not a free string)."""
+    f = _multicam_frame(["wrist", "bogus_cam"])
+    errs = validate_frame(f)
+    assert any("bogus_cam" in e for e in errs)
+
+
+def test_ego_multicam_v1_ego_camera_only_if_declared():
+    """observation.images.ego is valid only if the embodiment declares an 'ego' camera."""
+    # airbot_play has no 'ego' camera → must be rejected
+    f = _multicam_frame(["wrist", "ego"])
+    errs = validate_frame(f)
+    assert any("camera 'ego' is not declared" in e for e in errs)
+
+
+def test_ego_multicam_v1_fixed_length_vectors():
+    """ego_multicam_v1 keeps fixed-length observation.state (7) and action (6)."""
+    f = _multicam_frame(["wrist"])
+    f["observation.state"] = [0.0] * 14  # wrong length for ego device
+    errs = validate_frame(f)
+    assert any("observation.state" in e for e in errs)
+
+
+def test_ego_multicam_v1_embodiment_without_cameras_rejected():
+    """ego_multicam_v1 against an embodiment with no capture.cameras is rejected."""
+    f = _multicam_frame(["wrist"])
+    f["embodiment_id"] = "dual_airbot_play"  # has no capture.cameras
+    errs = validate_frame(f)
+    assert any("capture.cameras" in e for e in errs)
+
+
+def test_required_keys_ego_multicam_v1():
+    """ego_multicam_v1 shares the base required-key set (no fixed camera)."""
+    keys = required_keys_for_profile("ego_multicam_v1")
+    assert "observation.images.ego" not in keys
+    assert "observation.state" in keys
+    assert "action" in keys

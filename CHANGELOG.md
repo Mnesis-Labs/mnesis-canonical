@@ -7,7 +7,7 @@ and this project adheres to [SemVer-of-the-schema](README.md#compatibility-commi
 — the **package version** (this changelog) and the **schema version** (SPEC.md §Versioning)
 are decoupled:
 
-> **Package 0.5.0** is the current version — the same string as
+> **Package 0.6.0** is the current version — the same string as
 > `mnesis_canonical.__version__` and `pyproject.toml` `[project] version`, kept in
 > lockstep by `scripts/version_check.py`.
 >
@@ -15,6 +15,21 @@ are decoupled:
 > **0.3.0**: `ego_v1` = v0.1 backward-compatible default; `robot_v2` adds
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
+
+## [0.6.0] — 2026-08-11
+
+### Added
+
+- **新 profile `ego_multicam_v1`（issue #115）**。多相机 ego 设备的图像键集——`observation.images.<camera_name>` 开放命名集合，相机名取自 embodiment registry `capture.cameras[].name`（不是自由字符串，校验时比对 registry 拼错即报错）。
+
+  - `ego_v1` 与 `robot_v2` 零改动，现有数据零迁移。
+  - `observation.state` / `action` 保持定长（`float[7]` / `float[6]`），与 `ego_v1` 一致——这是 ego 设备，不是机器人。
+  - `embodiment_id` 必填（相机名解析依赖 registry）。
+  - 缺帧相机 = 键缺失（遵循铁律「缺失 = 未知，禁带内哨兵」），不填空串。
+  - 相机名仅 embodiment 内唯一，跨 embodiment 训练时下游用 `embodiment_id` 限定。
+  - 多帧率 rig（广角 60fps / 鱼眼 30fps）：参考相机定帧序列，其余相机在 manifest 声明各自 fps，逐帧只放路径——转换器侧决定，非新 wire 字段。
+
+  `SPEC.md`（profile 章节 + 字段表）/ `canonical_frame.schema.json`（profile 枚举 + allOf）/ `mnesis_canonical.{schema,validate}`（`PROFILES`、`required_keys_for_profile`、图像键注册表校验）/ `contracts/canonical_frame_schema_REFERENCE.md` / conformance `tests/test_profile.py` 同步。
 
 ## [0.5.0] — 2026-07-30
 
@@ -295,6 +310,7 @@ are decoupled:
 
 ### Fixed
 
+[0.6.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.3.0

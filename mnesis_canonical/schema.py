@@ -42,9 +42,11 @@ DEVICES = ("phone", "glasses", "quest", "pico", "robot", "sim")
 MODALITIES = ("ego_human", "teleop", "robot_replay", "sim")
 
 # Profile names (v0.2+).
-#   ego_v1   — original v0.1 frame (fixed-length vectors, obs.images.ego required)
-#   robot_v2 — robot-centric frame (variable-length state/action, open cameras, eef_pose)
-PROFILES = ("ego_v1", "robot_v2")
+#   ego_v1          — original v0.1 frame (fixed-length vectors, obs.images.ego required)
+#   robot_v2        — robot-centric frame (variable-length state/action, open cameras, eef_pose)
+#   ego_multicam_v1 — multi-camera ego device (fixed-length vectors, open camera keys
+#                     validated against embodiment registry capture.cameras[].name)
+PROFILES = ("ego_v1", "robot_v2", "ego_multicam_v1")
 DEFAULT_PROFILE = "ego_v1"
 
 # When profile is "robot_v2", these fields are variable-length (no fixed-size check).
@@ -172,6 +174,10 @@ _REQUIRED_KEYS_ROBOT_V2 = (
     "tracking_state",
 )
 
+# Required JSON keys for the ego_multicam_v1 profile (no fixed camera key, fixed vectors).
+# Same base set as robot_v2 but with fixed-length state/action (like ego_v1).
+_REQUIRED_KEYS_EGO_MULTICAM = _REQUIRED_KEYS_ROBOT_V2
+
 # For v0.1 backwards-compat: the base set of required keys is the ego_v1 set.
 REQUIRED_KEYS = _REQUIRED_KEYS_EGO_V1
 
@@ -181,6 +187,8 @@ def required_keys_for_profile(profile: str | None) -> tuple[str, ...]:
     p = profile or DEFAULT_PROFILE
     if p == "robot_v2":
         return _REQUIRED_KEYS_ROBOT_V2
+    if p == "ego_multicam_v1":
+        return _REQUIRED_KEYS_EGO_MULTICAM
     return _REQUIRED_KEYS_EGO_V1
 
 

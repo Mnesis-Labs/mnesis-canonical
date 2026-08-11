@@ -110,7 +110,7 @@
     },
     "profile": {
       "type": "string",
-      "enum": ["ego_v1", "robot_v2"],
+      "enum": ["ego_v1", "robot_v2", "ego_multicam_v1"],
       "x-status": "stable",
       "description": "Frame profile (v0.2+). When absent, defaults to ego_v1 (backward-compatible)."
     },
@@ -219,12 +219,24 @@
     {
       "if": {
         "not": {
+          "anyOf": [
+            { "required": ["profile"], "properties": { "profile": { "const": "robot_v2" } } },
+            { "required": ["profile"], "properties": { "profile": { "const": "ego_multicam_v1" } } }
+          ]
+        }
+      },
+      "then": {
+        "required": ["observation.images.ego"]
+      }
+    },
+    {
+      "if": {
+        "not": {
           "required": ["profile"],
           "properties": { "profile": { "const": "robot_v2" } }
         }
       },
       "then": {
-        "required": ["observation.images.ego"],
         "properties": {
           "observation.state": {
             "minItems": 7,

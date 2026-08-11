@@ -29,6 +29,7 @@ defaults to `ego_v1` (identical to the v0.1 schema — full backward compatibili
 |---|---|---|
 | `ego_v1` | Original v0.1 frame (default) | Fixed-length vectors, `observation.images.ego` required |
 | `robot_v2` | Robot-centric frame | Variable-length `observation.state`/`action`, open camera keys, optional `eef_pose` |
+| `ego_multicam_v1` | Multi-camera ego device | Fixed-length vectors, open camera keys validated against embodiment registry `capture.cameras[].name` |
 
 ### `ego_v1` profile
 The original v0.1 frame. Fields are identical to the table below; no change in
@@ -56,6 +57,41 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
   the commanded gripper via `action.gripper` and the observed gripper via
   `observation.gripper` on the **same** `[0,1]` closedness scale. All gripper
   keys are **optional and additive** — frames without them validate unchanged.
+
+### `ego_multicam_v1` profile
+Designed for **multi-camera ego devices** — a single ego capture surface whose
+image stream is a *named camera set* rather than one `ego` stream. This is the
+wire representation for the Argus (龙旗 DatCap) headband: 5 global-shutter
+cameras (2× wide 1920×1200@60fps, 3× fisheye 1920×1200@30fps) that share one
+FSYNC trigger. It exists so those 5 streams live in one canonical frame — one
+capture = one episode — instead of being collapsed into a single `ego` key,
+forked into per-surface private key names, or spread across five episodes.
+
+- `observation.images.<camera_name>` is an **open, named key set** — at least one
+  camera key is required per frame. `camera_name` is **NOT a free string**: it
+  must be one of that embodiment's `capture.cameras[].name` (registry
+  `embodiments/<id>.json`, schema `embodiment.schema.json`). A misspelled or
+  undeclared camera name is a validation error, never a silent new key. Camera
+  names are unique **within** an embodiment only (not globally); downstream
+  training that mixes embodiments disambiguates with `embodiment_id`.
+- Because camera names resolve against the embodiment registry, `embodiment_id`
+  is **required** for this profile — it is how the camera rig is declared.
+- The `ego_v1` key `observation.images.ego` is, in this profile, simply "the
+  camera named `ego`" — it is valid iff the embodiment declares a camera of that
+  name. Phone-side data is untouched: a single-camera phone capture still uses
+  `ego_v1`.
+- **Dropped camera = missing key.** When a camera drops a frame, that frame's key
+  is **omitted entirely** — never an empty string, never a sentinel — per the
+  iron rule "缺失 = 未知，禁带内哨兵" (absent means unknown). Only a subset of the
+  declared rig need be present on any given frame.
+- `observation.state` and `action` stay **fixed-length** (`float[7]` / `float[6]`)
+  exactly as `ego_v1`: this is an ego device, not a robot.
+- **Multi-frame-rate rigs.** Wide 60fps / fisheye 30fps can share one 30Hz frame
+  sequence: the **reference camera** (one configured camera) sets the frame
+  sequence and the per-frame `t_hw_ns` join key; the other cameras declare their
+  own `fps` in the embodiment's `capture.cameras[].fps` and only the path is
+  carried per frame. The reference camera is a **converter-side / capture-side
+  decision**, not a new wire field — this profile only carries per-frame paths.
 
 ### Gripper channel (C8, additive)
 The gripper is a **continuous scalar in `[0.0, 1.0]`** (`0.0` = fully open, `1.0` = fully
@@ -88,10 +124,10 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
 | `t_hw_ns` | int | *all* | **Hardware** ns (ARCore `frame.timestamp`) — **join key** pose↔video | `stable` |
 | `timestamp` | str | *all* | ISO-8601 wall clock (e.g. `2026-06-26T00:00:00.000Z`) | `stable` |
 | `head_pose_SE3` | float[7] | *all* | `[tx,ty,tz, qx,qy,qz,qw]` metres + quaternion **{x,y,z,w}**, right-handed | `stable` |
-| `observation.state` | float[7] or float[N] | *all* | 7-DoF state (`ego_v1`) or variable-length N (`robot_v2`, per registry `joint_names`) | `stable` |
-| `observation.images.ego` | str | `ego_v1` only | File reference to the ego video frame (`""` allowed) | `stable` |
-| `observation.images.<cam>` | str | `robot_v2` | Open camera key set — at least one required (`wrist_left`, `wrist_right`, `head`, etc.) | `stable` |
-| `action` | float[6] or float[N] | *all* | Relative delta `[tx,ty,tz, rx,ry,rz]` (`ego_v1`, 6) or variable-length N (`robot_v2`) | `stable` |
+| `observation.state` | float[7] or float[N] | *all* | 7-DoF state (`ego_v1` / `ego_multicam_v1`) or variable-length N (`robot_v2`, per registry `joint_names`) | `stable` |
+| `observation.images.ego` | str | `ego_v1` only | File reference to the ego video frame (`""` allowed). In `ego_multicam_v1`, this is the camera named `ego` if the embodiment declares it | `stable` |
+| `observation.images.<cam>` | str | `robot_v2`, `ego_multicam_v1` | Open camera key set — at least one required. `robot_v2`: free keys (`wrist_left`, `wrist_right`, `head`, etc.). `ego_multicam_v1`: camera names validated against embodiment registry `capture.cameras[].name` | `stable` |
+| `action` | float[6] or float[N] | *all* | Relative delta `[tx,ty,tz, rx,ry,rz]` (`ego_v1` / `ego_multicam_v1`, 6) or variable-length N (`robot_v2`) | `stable` |
 | `observation.eef_pose.left` | float[7] | `robot_v2` optional | Left end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` | `stable` |
 | `observation.eef_pose.right` | float[7] | `robot_v2` optional | Right end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` | `stable` |
 | `action.gripper` | float | *all* optional | Gripper channel (v0.4+), **normalized** `[0.0, 1.0]` — `0.0` = fully open, `1.0` = fully closed. **Absence ≠ `0.0`** (absent = source provides no gripper info). Per-machine physical stroke lives in the embodiment registry, not per-frame | `stable` |
@@ -107,7 +143,7 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
 | `observation.hand.source` | str | *all* optional | **[experimental]** Provenance label (open set), e.g. `mediapipe_world+arcore_pose`. Provenance **only** — geometry lives in `observation.hand.frame` | `experimental` |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) | `stable` |
 | `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. | `stable` |
-| `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` | `stable` |
+| `profile` | str | *all* optional | One of `ego_v1` (default), `robot_v2`, or `ego_multicam_v1` | `stable` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) | `stable` |
 | `source.device` | str | *all* | one of `phone, glasses, quest, pico, robot, sim` (open set) | `stable` |
 | `source.modality` | str | *all* | one of `ego_human, teleop, robot_replay, sim` (open set) | `stable` |
