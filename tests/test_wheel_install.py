@@ -66,7 +66,7 @@ def test_wheel_install_loader(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, f"Loader failed:\n{result.stderr}"
     count, reported, installed = result.stdout.split()
-    assert int(count) == 5, f"Expected 5 embodiments, got {count}"
+    assert int(count) == 6, f"Expected 6 embodiments, got {count}"
     # What pip installed it as vs. what the package says about itself: #76's bug
     # was exactly these two disagreeing, and the old assertion never looked.
     assert installed == reported == expected, (
