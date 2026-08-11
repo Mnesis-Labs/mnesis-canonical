@@ -40,6 +40,43 @@
     "annotationsPath": {
       "type": ["string", "null"],
       "description": "Relative path to the annotations/spans.jsonl sidecar, or null if absent."
+    },
+    "sidecars": {
+      "type": "array",
+      "description": "Generic side-channel registry (SPEC §Episode layout). Each entry references one sidecar file (IMU, audio, logs, calibration, ...) that is NOT one of the dedicated single-purpose pointers above. New kinds are registered additively; the kind field is a controlled vocabulary, not a free string.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Controlled vocabulary: imu | audio | log | calib | ... (additive registration). Consumers discover all channels of one kind by filtering on this field."
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative path to the sidecar file within the episode directory."
+          },
+          "format": {
+            "type": "string",
+            "description": "Sidecar serialization format, e.g. jsonl | parquet | wav | json."
+          },
+          "rateHz": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Optional sample rate in Hz (e.g. 1000 for a 1 kHz IMU)."
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Byte size of the sidecar file on disk."
+          },
+          "frame": {
+            "type": "string",
+            "description": "Optional reference-frame / channel identifier (e.g. 'imu0')."
+          }
+        },
+        "required": ["kind", "path"],
+        "additionalProperties": false
+      }
     }
   },
   "required": ["episodeIndex", "frameCount", "jsonlSizeBytes", "durationMs"],

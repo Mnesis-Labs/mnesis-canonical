@@ -487,3 +487,256 @@ def test_manifest_build_without_annotations_path(tmp_path):
     frames = [{"episode_index": 1, "t_ns": 1_000_000}]
     m = build_manifest(frames, jsonl_size_bytes=50)
     assert "annotationsPath" not in m
+
+
+# ── sidecars[] manifest (v0.6+) ────────────────────────────────────────────────────
+
+
+def test_manifest_build_with_sidecars(tmp_path):
+    """build_manifest accepts sidecars parameter."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    sc = [
+        {"kind": "imu", "path": "sensors/imu.jsonl",
+         "format": "jsonl", "rateHz": 1000, "sizeBytes": 12345},
+    ]
+    m = build_manifest(frames, jsonl_size_bytes=50, sidecars=sc)
+    assert m["sidecars"] == sc
+    assert m["frameCount"] == 1
+
+
+def test_manifest_build_without_sidecars_omits_field(tmp_path):
+    """build_manifest omits sidecars when not provided."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50)
+    assert "sidecars" not in m
+
+
+def test_manifest_build_with_empty_sidecars_omits_field(tmp_path):
+    """build_manifest omits sidecars when an empty list is provided."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50, sidecars=[])
+    assert "sidecars" not in m
+
+
+def test_manifest_build_sidecars_rejects_unknown_kind(tmp_path):
+    """build_manifest rejects sidecar entries with unknown kind."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="unknown sidecar kind"):
+        build_manifest(frames, jsonl_size_bytes=50, sidecars=[{"kind": "bogus", "path": "x.jsonl"}])
+
+
+def test_manifest_build_sidecars_rejects_missing_path(tmp_path):
+    """build_manifest rejects sidecar entries missing path."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="missing 'path'"):
+        build_manifest(frames, jsonl_size_bytes=50, sidecars=[{"kind": "imu"}])
+
+
+def test_manifest_build_sidecars_multiple_entries(tmp_path):
+    """build_manifest accepts multiple sidecar entries."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    sc = [
+        {"kind": "imu", "path": "sensors/imu.jsonl",
+         "format": "jsonl", "rateHz": 1000, "sizeBytes": 12345},
+        {"kind": "audio", "path": "audio/capture.wav", "format": "wav", "sizeBytes": 99999},
+    ]
+    m = build_manifest(frames, jsonl_size_bytes=50, sidecars=sc)
+    assert len(m["sidecars"]) == 2
+    assert m["sidecars"][0]["kind"] == "imu"
+    assert m["sidecars"][1]["kind"] == "audio"
+
+
+def test_manifest_for_episode_discovers_sidecars(tmp_path):
+    """manifest_for_episode auto-discovers sidecar files under well-known dirs."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":1,"t_ns":1000000}\n{"episode_index":1,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    sensors = ep / "sensors"
+    sensors.mkdir()
+    (sensors / "imu.jsonl").write_text(
+        '{"t_hw_ns":1000000000,"accel_mps2":[0,0,-9.8],"gyro_radps":[0,0,0],"mag_uT":[0,0,0]}\n',
+        encoding="utf-8",
+    )
+    m = manifest_for_episode(ep)
+    assert "sidecars" in m
+    assert len(m["sidecars"]) == 1
+    assert m["sidecars"][0]["kind"] == "imu"
+    assert m["sidecars"][0]["path"] == "sensors/imu.jsonl"
+    assert m["sidecars"][0]["format"] == "jsonl"
+    assert m["sidecars"][0]["sizeBytes"] > 0
+    assert m["sidecars"][0].get("frame") == "imu"
+
+
+def test_manifest_for_episode_discovers_multiple_sidecar_dirs(tmp_path):
+    """manifest_for_episode discovers sidecar files across multiple dirs."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":1,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    for d in ("sensors", "audio", "logs", "calib"):
+        (ep / d).mkdir()
+    (ep / "sensors" / "imu.jsonl").write_text("x\n", encoding="utf-8")
+    (ep / "audio" / "capture.wav").write_text("x\n", encoding="utf-8")
+    (ep / "logs" / "session.jsonl").write_text("x\n", encoding="utf-8")
+    (ep / "calib" / "extrinsics.json").write_text("x\n", encoding="utf-8")
+    m = manifest_for_episode(ep)
+    assert len(m["sidecars"]) == 4
+    kinds = {sc["kind"] for sc in m["sidecars"]}
+    assert kinds == {"imu", "audio", "log", "calib"}
+
+
+def test_manifest_for_episode_without_sidecar_dirs_omits_sidecars(tmp_path):
+    """manifest_for_episode omits sidecars when no well-known dirs exist."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":1,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    m = manifest_for_episode(ep)
+    assert "sidecars" not in m
+
+
+def test_validate_manifest_sidecars_consistent(tmp_path):
+    """sidecars entries pointing to existing files pass."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    sensors = ep / "sensors"
+    sensors.mkdir()
+    imu = sensors / "imu.jsonl"
+    imu.write_text("x\n", encoding="utf-8")
+    imu_bytes = imu.stat().st_size
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+        "sidecars": [
+            {"kind": "imu", "path": "sensors/imu.jsonl", "format": "jsonl", "sizeBytes": imu_bytes},
+        ],
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_validate_manifest_sidecars_missing_file(tmp_path):
+    """sidecars entry pointing to a non-existent file fails."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+        "sidecars": [
+            {"kind": "imu", "path": "sensors/imu.jsonl"},
+        ],
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("sidecars[0].path" in e and "does not exist" in e for e in result["errors"])
+
+
+def test_validate_manifest_sidecars_size_mismatch(tmp_path):
+    """sidecars entry with wrong sizeBytes fails."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    sensors = ep / "sensors"
+    sensors.mkdir()
+    (sensors / "imu.jsonl").write_text("x\n", encoding="utf-8")
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+        "sidecars": [
+            {"kind": "imu", "path": "sensors/imu.jsonl", "sizeBytes": 999},
+        ],
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("sizeBytes mismatch" in e for e in result["errors"])
+
+
+def test_validate_manifest_sidecars_null_omitted(tmp_path):
+    """No sidecars in manifest → no sidecar check (additive-only)."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_write_manifest_roundtrips_with_sidecars(tmp_path):
+    """write_manifest includes sidecars when sidecar dirs are present."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":3,"t_ns":1000000}\n{"episode_index":3,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    sensors = ep / "sensors"
+    sensors.mkdir()
+    (sensors / "imu.jsonl").write_text(
+        '{"t_hw_ns":1000000000,"accel_mps2":[0,0,-9.8]}\n',
+        encoding="utf-8",
+    )
+    out = write_manifest(ep)
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert "sidecars" in written
+    assert written["sidecars"][0]["kind"] == "imu"
+    assert written["sidecars"][0]["path"] == "sensors/imu.jsonl"
+
+
+def test_manifest_with_sidecars_passes_schema(tmp_path):
+    """A manifest with sidecars validates against the JSON Schema."""
+    import jsonschema
+
+    from mnesis_canonical.manifest import _MANIFEST_SCHEMA  # noqa: PLC270
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": 100,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+        "sidecars": [
+            {"kind": "imu", "path": "sensors/imu.jsonl",
+             "format": "jsonl", "rateHz": 1000, "sizeBytes": 12345, "frame": "imu0"},
+        ],
+    }
+    jsonschema.validate(manifest, _MANIFEST_SCHEMA)
+
+
+def test_manifest_sidecars_are_additive_backward_compatible(tmp_path):
+    """Old manifests without sidecars still validate."""
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": 100,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+    }
+    import jsonschema
+
+    from mnesis_canonical.manifest import _MANIFEST_SCHEMA  # noqa: PLC270
+    jsonschema.validate(manifest, _MANIFEST_SCHEMA)

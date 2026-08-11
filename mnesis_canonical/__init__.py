@@ -12,7 +12,13 @@ from .isaac import (
     to_isaac,
 )
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
-from .manifest import build_manifest, manifest_for_episode, validate_manifest, write_manifest
+from .manifest import (
+    SIDECAR_KINDS,
+    build_manifest,
+    manifest_for_episode,
+    validate_manifest,
+    write_manifest,
+)
 from .migrate import migrate_hand_v0, migrate_hand_v0_frames
 from .schema import (
     ANNOTATION_HANDS,
@@ -138,6 +144,7 @@ __all__ = [
     "manifest_for_episode",
     "validate_manifest",
     "write_manifest",
+    "SIDECAR_KINDS",
     "to_isaac",
     "from_isaac",
     "quat_xyzw_to_wxyz",
