@@ -2,7 +2,7 @@
 
 > **所属契约**: C1 — Canonical Frame Schema
 > **版本**: v0.2（additive-only; v0.1 帧仍通过校验）
-> **additive 增补**: 夹爪观测通道 `observation.gripper[.left|.right]`（闭合程度 [0.0,1.0]，`0.0`=完全张开 / `1.0`=完全闭合，可选；方向与 `action.gripper`、C3 `arms[].gripper` 一致）
+> **additive 增补**: 夹爪观测通道 `observation.gripper[.left|.right]`（闭合程度 [0.0,1.0]，`0.0`=完全张开 / `1.0`=完全闭合，可选；方向与 `action.gripper`、C3 `arms[].gripper` 一致）· 相机内参 `camera_intrinsics`（C9 v1，含畸变模型枚举，放 embodiment registry `capture.cameras[].intrinsics`）
 > **定义方**: canonical（本仓）
 > **消费方**: Iris · Eidolon · Daedalus · Ambrosia
 
@@ -94,6 +94,7 @@ check-jsonschema --schemafile mnesis_canonical/canonical_frame.schema.json episo
 | `source.device` | str | — | *all* | 采集设备（phone/glasses/quest/pico/robot/sim） |
 | `source.modality` | str | — | *all* | 采集模态（ego_human/teleop/robot_replay/sim） |
 | `tracking_state` | str | — | *all* | 跟踪状态 |
+| `camera_intrinsics` (C9, 见 embodiment registry `capture.cameras[].intrinsics`) | object | — | *all* opt | 相机内参（设备/标定属性，非逐帧字段）。含畸变模型枚举（`pinhole` / `pinhole_radtan` / `kannala_brandt` / `double_sphere`），fx/fy/cx/cy/分辨率/畸变系数。详见 `SPEC.md` §Camera intrinsics 与 `embodiments/embodiment.schema.json` |
 
 ## 相关
 

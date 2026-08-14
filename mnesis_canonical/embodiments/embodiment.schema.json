@@ -129,6 +129,51 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "description": "Per-camera frame rate if it differs from default_fps (optional)."
+              },
+              "intrinsics": {
+                "type": "object",
+                "description": "Camera intrinsic parameters and distortion model (C9, v1, additive). Optional: embodiment entries without intrinsics remain valid. When present, model is required — a coefficient vector without a model name is ambiguous.",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "enum": ["pinhole", "pinhole_radtan", "kannala_brandt", "double_sphere"],
+                    "description": "Distortion model name. 'pinhole' = no distortion; 'pinhole_radtan' = Brown-Conrady (radial+tangential, diverges past ~180° FOV); 'kannala_brandt' = Kannala-Brandt fisheye (OpenCV, valid for ≥200° FOV); 'double_sphere' = Double Sphere (Usenko et al., valid for ≥200° FOV)."
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Image width in pixels (e.g. 1920)."
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Image height in pixels (e.g. 1200)."
+                  },
+                  "fx": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Focal length in pixels (x-axis)."
+                  },
+                  "fy": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "description": "Focal length in pixels (y-axis)."
+                  },
+                  "cx": {
+                    "type": "number",
+                    "description": "Principal point x-coordinate in pixels."
+                  },
+                  "cy": {
+                    "type": "number",
+                    "description": "Principal point y-coordinate in pixels."
+                  },
+                  "distortion": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "description": "Distortion coefficient vector. Length and meaning depend on model: pinhole_radtan uses [k1,k2,p1,p2,k3] (3-5 elements), kannala_brandt uses [k1,k2,k3,k4] (4 elements), double_sphere uses [xi,alpha,k1,k2,k3,k4] (6 elements). Optional: pinhole model has no distortion."
+                  }
+                },
+                "required": ["model", "width", "height", "fx", "fy", "cx", "cy"]
               }
             },
             "required": ["name", "resolution"]

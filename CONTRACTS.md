@@ -11,6 +11,8 @@
 | C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明/WebRTC 信令） | v1.7 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：关节读写/示教/安全），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **草案 TBD** | Daedalus（待定义） | Ambrosia（`bridge/hw_bridge.py` 现状=临时直连，待迁移到本契约） | 待建 |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
+| C9 | ** 一等字段**（相机内参：fx/fy/cx/cy + 畸变模型枚举，放 embodiment registry ；模型必须含鱼眼——pinhole 系在 200°FOV 发散） | v1 | canonical（ §Camera intrinsics + ） | Iris·Eidolon 产出 · Ambrosia/重构消费 · 龙旗 DatCap | canonical  · Iris/Eidolon 产出端自校验 |
+| C9 | **`camera_intrinsics` 一等字段**（相机内参：fx/fy/cx/cy + 畸变模型枚举，放 embodiment registry `capture.cameras[].intrinsics`；模型必须含鱼眼——pinhole 系在 200°FOV 发散） | v1 | canonical（`SPEC.md` §Camera intrinsics + `embodiments/embodiment.schema.json`） | Iris·Eidolon 产出 · Ambrosia/重构消费 · 龙旗 DatCap | canonical `tests/test_camera_intrinsics.py` · Iris/Eidolon 产出端自校验 |
 | C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b |
 
 ### C1 变更记录（additive-only；老数据零破坏）
@@ -19,6 +21,9 @@
 - **2026-07-24 · embodiment registry 增 `capture` 段 + `capture_profiles` 预设（issue #41，Muso 站会直派 2026-07-22）**：embodiment registry（`embodiments/<id>.json` + `embodiment.schema.json`）新增两个**可选/additive**结构，把"换型即配好采集参数"收进契约单一真值——设备端换 embodiment id 即拿到帧率/相机组合/夹爪语义/示教模式/标定要求，无需各消费端硬编码。① `capture`：`default_fps`、`max_duration_s`、`cameras[{name,resolution,fps?}]`、`gripper_capture{mode∈continuous|binary|none, normalized_range?}`（物理行程仍在 `gripper_range`，不在此）、`demonstration_modes⊆{kinesthetic,leader_follower,teleop_only}`（消费端据此切采集 UI）、`calibration{hand_eye_required}`。② `capture_profiles`：命名预设数组 `{name,task?,fps?,cameras?,annotation_template?}`，一机可挂多套。两机型真值：`so_arm101`=leader_follower / front+wrist@640×480 / 30fps / 免手眼标定；`airbot_play`=kinesthetic（重力补偿拖动示教）/ wrist@640×480+front@1280×720 / 30fps / 免手眼标定。**老 registry 条目无这两段仍校验通过**（既有测试零改动）。SPEC.md（§Embodiment registry — capture section，含消费端升版路径）/ `embodiment.schema.json`（root+package 双份同步）/ conformance `tests/test_capture.py` 同步。消费方（Ambrosia 采集/控制台、AIRBOT 采集端）按 additive 惰性接入：换型时读 `capture` 配帧率/相机/时长，按 `gripper_capture.mode` 与 `demonstration_modes` 切 UI，`hand_eye_required` 为真则标定前禁录，`capture_profiles` 按 `name` 供选。
 - **2026-07-21 · `action.gripper`（Parthenon#16 问题二 = A，Muso 拍板）**：帧新增可选字段 `action.gripper`，类型 `float`，**归一化 `[0.0, 1.0]`**（`0.0`=完全张开，`1.0`=完全闭合）。字段缺失 = 该数据源不提供夹爪信息（**≠ `0.0`**）；越界/非数值报错，缺失不报错。`action` 向量长度不变（夹爪是独立可选字段，非把 action 扩成 7 维）。物理行程由 embodiment registry 描述，不进逐帧数据。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.validate` 同步。消费方（Iris/Eidolon/Daedalus/Ambrosia）按 additive 各自接入，缺失即按无夹爪处理。
 - **2026-07-22 · `observation.gripper[.left|.right]`（Parthenon#20 拍板 A，Muso）**：帧新增可选**观测侧**夹爪字段，类型 `float`，**闭合程度归一化 `[0.0, 1.0]`**（`0.0`=完全张开，`1.0`=完全闭合）——**方向与 `action.gripper` 一字不差一致**。`observation.gripper`=单/主夹爪（任意 profile）；`.left` / `.right`=双臂 `robot_v2`。缺失 = 无夹爪观测（**≠ `0.0`**）；越界/非有限报错。语义与 C3 `arms[].gripper` 对齐。SPEC.md / `canonical_frame.schema.json` / `mnesis_canonical.{schema,validate}` / `contracts/canonical_frame_schema_REFERENCE.md` 同步。**背景**：原 PR#39 曾误把观测侧定义为 `0`=闭合（与 `action.gripper` 相反），本次统一改向。
+
+### C9 变更记录（additive-only；老数据零破坏）
+- **2026-08-14 · `camera_intrinsics` 一等字段转正（issue #117；来源 龙旗 DatCap 3 路鱼眼 200° 需求）**：C9 从草案转正为 v1，相机内参作为 embodiment registry `capture.cameras[].intrinsics` 内的可选结构。定义畸变模型枚举（`pinhole` / `pinhole_radtan` / `kannala_brandt` / `double_sphere`），确保鱼眼 200° 视场使用正确模型（pinhole+radtan 在 180° 附近发散）。内参是设备/标定属性，不是逐帧属性——放 embodiment registry 不涨每帧体积。`SPEC.md` §Camera intrinsics / `embodiments/embodiment.schema.json`（root+package 双份同步）/ `mnesis_canonical.schema` 新增 `CAMERA_MODELS` / conformance `tests/test_camera_intrinsics.py` / `contracts/canonical_frame_schema_REFERENCE.md` 同步。**老数据零破坏**：`intrinsics` 为可选字段，现有 embodiment 条目无此段仍校验通过。
 
 ### C3 说明记录（端点补明确 → v1.6 additive 字段新增 → v1.7 WebRTC 信令 additive）
 - **2026-07-28 · WebRTC 信令三消息（issue #60，C1 架构拍板后落卡）**：C3 v1.7 新增三条 WebRTC 信令消息——`video_offer`（消费端 → 机器人侧，SDP offer）、`video_answer`（机器人侧 → 消费端，SDP answer）、`video_ice`（双向，ICE candidate 交换）。**多订阅者字段**：`stream_id`（目标视频流标识）+ `subscriber_id`（订阅者标识）——机器人侧通过此字段区分「这条 answer 是回给 Web 还是回给 Quest」。**QoS 提示**：`qos_hint`（可选枚举，`low_latency` / `stable`），各订阅者 ABR/缓冲策略凭此区分，编码侧一路编码不分裂。**V2 预留**：`codec` / `width` / `height` 字段已定义但暂不实现 360° 全景。**additive 声明**：≤v1.6 客户端忽略三消息，视频退回到 MJPEG 线，遥操作核心功能零破坏。**JSON Schema**：`contracts/webrtc_signaling.schema.json` 附正例+反例测试。**消费方升版路径**：见本节末。**两侧测试**：Daedalus 侧 harness 需新增 `video_offer`/`video_answer`/`video_ice` 信令回合；Eidolon 侧 webapp `protocol.js` 需新增三条消息处理。
@@ -133,8 +138,12 @@ Ambrosia 的 LeRobot/Isaac 导出应成为**稳定契约**,让 Daedalus/外部�
 ### C8(新草案)· `space_id` 跨引擎同空间对齐(来源:Eidolon TL IR-a · Iris TL 背书)
 现状 `spatial_anchor_id` 是各引擎私有 id(Iris=ARCore anchor、Eidolon=OpenXR anchor),**两命名空间不可关联,同房间的手机面+Quest 面数据 merge 不了**。建议 canonical 加 `space_id`(房间 UUID 或共享 fiducial 原点标识)+ 约定 anchor 位姿表示为**在该 space 系下**的 SE(3)。**这是 Ambrosia「同空间多面视图」/多视角 4DGS 的钥匙**。消费方=Iris·Eidolon·Ambrosia。
 
-### C9(新草案)· `camera_intrinsics` 一等字段(来源:Eidolon TL IR-b · Iris TL 背书)
-相机内参(fx,fy,cx,cy,畸变,分辨率)应是 **canonical 一等字段**,不塞各仓私有 sidecar。两采集面同表示后,**4DGS/重构才能同吃手机+Quest 帧**。Owner=canonical 定义;消费方=Iris·Eidolon 产出、Ambrosia/重构消费。
+### C9 · `camera_intrinsics` 一等字段（**已转正 v1，见上方主表**）
+> 已转正为 C9 v1：`SPEC.md` §Camera intrinsics + `embodiments/embodiment.schema.json` `capture.cameras[].intrinsics`。含畸变模型枚举（`pinhole` / `pinhole_radtan` / `kannala_brandt` / `double_sphere`）。
+>
+> 以下为原草案登记内容，保留供追溯：
+>
+> 相机内参(fx,fy,cx,cy,畸变,分辨率)应是 **canonical 一等字段**,不塞各仓私有 sidecar。两采集面同表示后,**4DGS/重构才能同吃手机+Quest 帧**。Owner=canonical 定义;消费方=Iris·Eidolon 产出、Ambrosia/重构消费。
 
 > **C8-C11 编号说明**：Eidolon/Tech-Lead 2026-07-10 曾在 PR#2 提出 C8-C11 四项跨仓建议，但 main 上 C8 已分配给 `space_id`、C9 已分配给 `camera_intrinsics`(后者主题已采纳落地)，造成编号撞车 → PR#2 长期 CONFLICTING。Muso 拍板（Parthenon#16 问题一 = A）关闭 PR#2，其中仍有效两项以新编号 **C10 / C11** 重新登记(见下)；原 C8「夹爪/末端执行通道」已单独立卡 mnesis-canonical#31。以下两条**仅为草案登记，待 Muso 拍板，不视为已生效契约**。
 

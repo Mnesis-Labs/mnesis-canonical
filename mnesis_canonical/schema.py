@@ -137,6 +137,19 @@ HAND_KEYS = (
     HAND_SOURCE_KEY,
 )
 
+# Camera distortion models (C9, v1, additive).
+# These live in embodiment registry capture.cameras[].intrinsics.model.
+#   pinhole          — no distortion, identity projection
+#   pinhole_radtan   — Brown-Conrady (radial + tangential), diverges past ~180° FOV
+#   kannala_brandt   — Kannala-Brandt fisheye (OpenCV cv2.fisheye), valid for ≥200° FOV
+#   double_sphere    — Double Sphere (Usenko et al.), valid for ≥200° FOV
+CAMERA_MODELS = (
+    "pinhole",
+    "pinhole_radtan",
+    "kannala_brandt",
+    "double_sphere",
+)
+
 # Required JSON keys for the default ego_v1 profile (dotted keys — LeRobot-style flat columns).
 _REQUIRED_KEYS_EGO_V1 = (
     "index",

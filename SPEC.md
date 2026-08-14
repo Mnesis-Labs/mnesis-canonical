@@ -436,6 +436,82 @@ Additive, so no forced migration; adopt lazily:
 5. **Presets:** offer `capture_profiles` by `name`; a missing/empty list means
    "no presets — use `capture` defaults".
 
+## Camera intrinsics (C9, v1, additive)
+
+Camera intrinsics are a **device/calibration attribute**, not a per-frame attribute.
+They live in the embodiment registry's `capture.cameras[].intrinsics` field so that
+every camera in the rig is described alongside its intrinsic parameters — no
+producer-sidecar divergence, no consumer guesswork.
+
+A set of intrinsic parameters without a **model name** is unusable: the same
+coefficient vector means different things under different models, and `pinhole_radtan`
+(Brown-Conrady) diverges past ≈180° field of view, making it physically impossible
+to represent the 200° fisheye lenses found on multi-camera devices like the
+Longitude DatCap rig.
+
+### `intrinsics` schema (optional, inside `capture.cameras[]`)
+
+| Key | Type | Required | Meaning |
+|---|---|---|---|
+| `model` | str | ✅ | Distortion model name — one of the controlled enum below |
+| `width` | int | ✅ | Image width in pixels (e.g. 1920) |
+| `height` | int | ✅ | Image height in pixels (e.g. 1200) |
+| `fx` | number | ✅ | Focal length in pixels (x-axis) |
+| `fy` | number | ✅ | Focal length in pixels (y-axis) |
+| `cx` | number | ✅ | Principal point x-coordinate (pixels) |
+| `cy` | number | ✅ | Principal point y-coordinate (pixels) |
+| `distortion` | number[] | optional | Distortion coefficient vector; length and meaning depend on `model` |
+
+### Distortion model enum
+
+| Model | Description | `distortion` length | Notes |
+|---|---|---|---|
+| `pinhole` | Pinhole camera (no distortion) | 0 | Identity projection; no correction applied |
+| `pinhole_radtan` | Pinhole + Brown-Conrady (radial + tangential) | 3–5 | Standard OpenCV `cv2.calibrateCamera` output: `[k1, k2, p1, p2, k3]` (k3 optional). **Diverges past ≈180° FOV — do not use for fisheye** |
+| `kannala_brandt` | Kannala-Brandt fisheye model (OpenCV `cv2.fisheye`) | 4 | `[k1, k2, k3, k4]`. Valid for fisheye up to ≥200° FOV. The standard fisheye model for DatCap-class devices |
+| `double_sphere` | Double Sphere camera model (Usenko et al.) | 6 | `[xi, alpha, k1, k2, k3, k4]`. Fisheye/wide-angle, valid for ≥200° FOV. Used when Kannala-Brandt is insufficient |
+
+### `camera_intrinsics` consumer contract
+
+1. **A consumer MUST NOT interpret a distortion coefficient vector without inspecting `model`.** The same vector `[0.1, -0.05, 0.01, 0.0]` means different things under `pinhole_radtan` (k1,k2,p1,p2) vs `kannala_brandt` (k1,k2,k3,k4).
+2. **A producer MUST set `model` when supplying `intrinsics`.** An intrinsics block without `model` is rejected by schema validation.
+3. **Additive, optional**: embodiment entries without `intrinsics` in their `capture.cameras[]` remain valid. Consumers fall back to their own defaults when it is absent.
+4. **Per-session calibration.** The embodiment registry holds device-level defaults. Per-session calibration data (e.g. from a calibration file) can override these via the manifest `calibration_ref` (issue #113) — the intrinsics structure defined here is the canonical form that both sides agree on.
+
+### Example (embodiment registry entry)
+
+```jsonc
+{
+  "id": "datcap_v1",
+  "capture": {
+    "cameras": [
+      {
+        "name": "front",
+        "resolution": [1920, 1200],
+        "intrinsics": {
+          "model": "kannala_brandt",
+          "width": 1920, "height": 1200,
+          "fx": 950.0, "fy": 945.0,
+          "cx": 960.0, "cy": 600.0,
+          "distortion": [0.02, -0.01, 0.005, 0.001]
+        }
+      },
+      {
+        "name": "wrist_left",
+        "resolution": [640, 480],
+        "intrinsics": {
+          "model": "pinhole_radtan",
+          "width": 640, "height": 480,
+          "fx": 320.5, "fy": 319.8,
+          "cx": 320.0, "cy": 240.0,
+          "distortion": [0.05, -0.02, 0.001, 0.003, 0.0]
+        }
+      }
+    ]
+  }
+}
+```
+
 ## Versioning
 - Spec is versioned (`v0.2`). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
 - **Field-level status.** Each field carries a status: one of

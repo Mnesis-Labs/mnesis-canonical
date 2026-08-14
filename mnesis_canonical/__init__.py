@@ -18,6 +18,7 @@ from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
     ANNOTATION_VISIBILITIES,
+    CAMERA_MODELS,
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
@@ -95,6 +96,7 @@ __version__ = "0.5.0"
 
 __all__ = [
     "CanonicalFrame",
+    "CAMERA_MODELS",
     "DEFAULT_PROFILE",
     "EVENT_TYPES",
     "EXPERIMENTAL_KEYS",
