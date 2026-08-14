@@ -40,6 +40,35 @@
     "annotationsPath": {
       "type": ["string", "null"],
       "description": "Relative path to the annotations/spans.jsonl sidecar, or null if absent."
+    },
+    "clock": {
+      "type": "object",
+      "description": "Cross-device clock synchronization metadata (C6). Present when the capture surface can measure its clock offset against a reference clock.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["ptp", "tsf", "ntp", "none"],
+          "description": "Time-synchronisation source: ptp (Precision Time Protocol), tsf (Wi-Fi TSF), ntp (NTP), or none (no synchronisation)."
+        },
+        "refDeviceId": {
+          "type": "string",
+          "description": "Device id of the reference clock in a multi-device session. Omitted when source is 'none'."
+        },
+        "offsetNs": {
+          "type": "integer",
+          "description": "Signed clock offset of this device relative to the reference clock, in nanoseconds. Positive means this device's clock is ahead of the reference."
+        },
+        "estErrorNs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Estimated uncertainty of offsetNs in nanoseconds. Non-negative. Downstream consumers use this to decide whether the data is fusible."
+        }
+      },
+      "required": ["source", "offsetNs", "estErrorNs"],
+      "dependentRequired": {
+        "refDeviceId": ["source"],
+        "source": ["refDeviceId"]
+      }
     }
   },
   "required": ["episodeIndex", "frameCount", "jsonlSizeBytes", "durationMs"],

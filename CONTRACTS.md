@@ -11,6 +11,7 @@
 | C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明/WebRTC 信令） | v1.7 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：关节读写/示教/安全），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **草案 TBD** | Daedalus（待定义） | Ambrosia（`bridge/hw_bridge.py` 现状=临时直连，待迁移到本契约） | 待建 |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
+| C6 | **Manifest 时钟段 `clock`**（`source`/`refDeviceId`/`offsetNs`/`estErrorNs` — 跨设备时间同步，manifest 可选段） | v0.1 | canonical（`SPEC.md` + `manifest.schema.json` + `manifest.py`） | Iris·Eidolon·Daedalus·Ambrosia | canonical `tests/test_manifest.py` · 待各消费方接入 |
 | C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b |
 
 ### C1 变更记录（additive-only；老数据零破坏）
@@ -124,8 +125,9 @@ canonical 侧 `contracts/contracts.lock` 已随本次改动重算（`XR_ROBOT_CO
 现状 C1 帧无版本号、无溯源。建议每帧(或每 episode manifest)加:`schema_version`(如 `"1.0"`)、`capture_app`(iris/eidolon/daedalus)+ `app_version` + `git_sha`、`device_id`(匿名化)、`session_id`、`calibration_ref`(内参/外参版本)。
 **价值**:① 数据格式演进可迁移(没版本号将来改字段=灾难);② 复现性/可追溯(数据公司的命脉——买家要知道每条数据"哪台设备、哪版 App、什么标定"出的);③ 调试跨设备问题的唯一抓手。**建议放 manifest 层(不涨每帧体积)+ 帧层只加 `schema_version`。**
 
-### C6(新草案)· 跨设备时间同步(数据质量隐患,现在没人管)
-`t_hw_ns` 是 pose↔video↔多设备的 join key,但**手机/机器人/Quest 三个时钟互相不对齐**——遥操作里"人手→机器人"的因果延迟、多视角融合全靠它。建议:每 session 记录一次**时钟偏移**(设备 vs 一个参考钟,NTP 或采集开始的握手)写进 manifest(`clock_offset_ns`),下游对齐时可校正。**Owner 待定(canonical 定义字段,各设备端各自测量);优先级:做多设备融合/遥操作因果分析前必须。**
+### C6(已转正 → 见上方 C6)· 跨设备时间同步(数据质量隐患,现在没人管)
+`t_hw_ns` 是 pose↔video↔多设备的 join key,但**手机/机器人/Quest 三个时钟互相不对齐**——遥操作里"人手→机器人"的因果延迟、多视角融合全靠它。建议:每 session 记录一次**时钟偏移**(设备 vs 一个参考钟,NTP 或采集开始的握手)写进 manifest(`clock_offset_ns`),下游对齐时可校正。**Owner:canonical(定义字段,各设备端各自测量);优先级:做多设备融合/遥操作因果分析前必须。**
+**2026-08-14 转正：** `manifest.json` 加 `clock` 段（`source`/`offsetNs`/`estErrorNs`/`refDeviceId`），契约登记表中 C6 已生效。见 issue #118。
 
 ### C7(新草案)· 数据集导出格式(Ambrosia S6-3 落地时定契约)
 Ambrosia 的 LeRobot/Isaac 导出应成为**稳定契约**,让 Daedalus/外部训练直接消费,不各写各的。Owner=Ambrosia(复用 canonical `to_lerobot`),消费方=Daedalus 训练 + 外部。

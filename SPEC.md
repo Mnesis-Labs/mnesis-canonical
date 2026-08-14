@@ -350,8 +350,38 @@ boundary cases the consumers asked for: `disputed`, `stale`, and
 episodes/ep_<n>/
   data.jsonl            # one CanonicalFrame per line  (required)
   video.mp4             # ego video, t_hw_ns-aligned    (optional)
-  manifest.json         # {episodeIndex, frameCount, jsonlSizeBytes, videoPath, videoSizeBytes, durationMs}
+  manifest.json         # {episodeIndex, frameCount, jsonlSizeBytes, videoPath, videoSizeBytes, durationMs, clock?}
 ```
+
+### `manifest.json` — `clock` segment (optional, C6)
+
+When a capture surface can measure its clock offset against a reference clock,
+the manifest may carry a `clock` object:
+
+```jsonc
+{
+  "source": "ptp",              // ptp | tsf | ntp | none
+  "refDeviceId": "quest_003",   // optional; which device is the reference
+  "offsetNs": 123456,           // signed ns: this device relative to reference
+  "estErrorNs": 500             // estimated uncertainty of offsetNs (ns, ≥ 0)
+}
+```
+
+| Key | Type | Req | Meaning |
+|---|---|---|---|
+| `source` | str | ✅ | Time-sync source: `ptp` (Precision Time Protocol, <1 ms), `tsf` (Wi-Fi TSF, ~1–10 ms), `ntp` (NTP, ~10–100 ms), or `none` (no synchronisation). Downstream trust thresholds MUST distinguish by source. |
+| `refDeviceId` | str | optional | Which device serves as the reference clock in a multi-device session. Omitted when `source` is `"none"`. |
+| `offsetNs` | int | ✅ | Signed clock offset in nanoseconds. Positive means this device's clock is ahead of the reference. |
+| `estErrorNs` | int | ✅ | Estimated uncertainty of `offsetNs` (non-negative, nanoseconds). Downstream consumers use this to decide whether the data from this device is fusible with others. |
+
+**Absence rule**: if the capture surface cannot measure or does not know the
+clock offset, the `clock` key is **omitted entirely** (never `null` or a stub
+object). This follows the standard's iron rule — absent means unknown.
+
+**Multi-device fusion**: paired with `sessionId` (see #113), multiple devices in
+the same session share a `sessionId` and each carries its own
+`clock.offsetNs` to correct to the same timeline. Both cards are required for
+a complete multi-device fusion capability.
 
 ## Compatibility (must stay true — `4c` DATA5)
 - **LeRobot**: flat columns map 1:1 to LeRobot dataset features (`observation.state`, `action`, `timestamp`, `episode_index`, `frame_index`, `index`, `task_index`).

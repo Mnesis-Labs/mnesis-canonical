@@ -32,8 +32,14 @@ def build_manifest(
     video_size_bytes: int = 0,
     events_path: str | None = None,
     annotations_path: str | None = None,
+    clock: dict | None = None,
 ) -> dict:
     """Build a manifest dict from in-memory frames (pure; no I/O).
+
+    ``clock`` is an optional dict with keys ``source``, ``offsetNs``,
+    ``estErrorNs``, and optionally ``refDeviceId`` (see
+    ``manifest.schema.json`` for the full schema). Pass ``None`` (default)
+    when no clock synchronisation info is available.
 
     Raises ValueError on an empty episode (a manifest needs at least one frame).
     """
@@ -52,6 +58,8 @@ def build_manifest(
         result["eventsPath"] = events_path
     if annotations_path is not None:
         result["annotationsPath"] = annotations_path
+    if clock is not None:
+        result["clock"] = clock
     return result
 
 
