@@ -16,6 +16,10 @@ here; the manifest only references it when a ``video.mp4`` is present on disk.
 
 This module also provides :func:`validate_manifest` for consistency checks
 between a manifest.json and its sibling data.jsonl (S2-5).
+
+Side channels that have no dedicated pointer (IMU, audio, logs, calibration, …)
+register via the generic ``sidecars[]`` array (SPEC §Episode layout). Each entry
+carries a controlled ``kind`` plus its on-disk ``path`` and optional metadata.
 """
 from __future__ import annotations
 
@@ -28,6 +32,19 @@ _SCHEMA_PATH = Path(__file__).resolve().parent / "manifest.schema.json"
 with open(_SCHEMA_PATH, encoding="utf-8") as _f:
     _MANIFEST_SCHEMA = json.loads(_f.read())
 
+# Controlled vocabulary for sidecar ``kind`` (additive registration, SPEC §Episode
+# layout). New kinds are added here, never invented ad hoc by a producer.
+SIDECAR_KINDS = frozenset({"imu", "audio", "log", "calib"})
+
+# Default ``kind``/``format`` for sidecar files discovered under a well-known
+# subdirectory (used by :func:`manifest_for_episode` auto-discovery).
+_SIDECAR_DIR_DEFAULTS = {
+    "sensors": ("imu", "jsonl"),
+    "audio": ("audio", "wav"),
+    "logs": ("log", "jsonl"),
+    "calib": ("calib", "json"),
+}
+
 
 def build_manifest(
     frames: list[dict],
@@ -37,9 +54,14 @@ def build_manifest(
     video_size_bytes: int = 0,
     events_path: str | None = None,
     annotations_path: str | None = None,
+    sidecars: list[dict] | None = None,
     provenance: dict | None = None,
 ) -> dict:
     """Build a manifest dict from in-memory frames (pure; no I/O).
+
+    ``sidecars`` is an optional list of sidecar descriptors (SPEC §Episode layout),
+    each with at least ``kind`` and ``path``. ``kind`` must be in the controlled
+    vocabulary :data:`SIDECAR_KINDS`.
 
     Raises ValueError on an empty episode (a manifest needs at least one frame).
 
@@ -63,9 +85,48 @@ def build_manifest(
         result["eventsPath"] = events_path
     if annotations_path is not None:
         result["annotationsPath"] = annotations_path
+    if sidecars:
+        for sc in sidecars:
+            if sc.get("kind") not in SIDECAR_KINDS:
+                raise ValueError(
+                    f"unknown sidecar kind {sc.get('kind')!r}; "
+                    f"expected one of {sorted(SIDECAR_KINDS)}"
+                )
+            if "path" not in sc:
+                raise ValueError(f"sidecar entry missing 'path': {sc!r}")
+        result["sidecars"] = sidecars
     if provenance is not None:
         result["provenance"] = provenance
     return result
+
+
+def _discover_sidecars(episode_dir: Path) -> list[dict]:
+    """Auto-discover sidecar files under the well-known subdirectories.
+
+    Each file under ``sensors/`` / ``audio/`` / ``logs/`` / ``calib/`` is
+    registered as a ``sidecars[]`` entry with the directory's default kind and
+    format, a real on-disk size, and a ``frame`` tag derived from the file stem
+    (e.g. ``sensors/imu.jsonl`` → ``kind=imu``, ``frame=imu``).
+    """
+    sidecars: list[dict] = []
+    for dirname, (kind, fmt) in _SIDECAR_DIR_DEFAULTS.items():
+        sub = episode_dir / dirname
+        if not sub.is_dir():
+            continue
+        for path in sorted(sub.iterdir()):
+            if not path.is_file():
+                continue
+            entry: dict = {
+                "kind": kind,
+                "path": f"{dirname}/{path.name}",
+                "format": fmt,
+                "sizeBytes": path.stat().st_size,
+            }
+            stem = path.stem
+            if stem and stem != dirname:
+                entry["frame"] = stem
+            sidecars.append(entry)
+    return sidecars
 
 
 def manifest_for_episode(episode_dir: str | Path, *, provenance: dict | None = None) -> dict:
@@ -98,6 +159,7 @@ def manifest_for_episode(episode_dir: str | Path, *, provenance: dict | None = N
         video_size_bytes=video_size,
         events_path=events_path,
         annotations_path=annotations_path,
+        sidecars=_discover_sidecars(episode_dir),
         provenance=provenance,
     )
 
@@ -218,5 +280,33 @@ def validate_manifest(episode_dir: str | Path) -> dict:
             errors.append(
                 f"annotationsPath '{manifest['annotationsPath']}' does not exist on disk"
             )
+
+    # --- sidecars consistency when present ---
+    if "sidecars" in manifest:
+        sidecars = manifest["sidecars"]
+        if not isinstance(sidecars, list):
+            errors.append("sidecars must be an array")
+        else:
+            for i, sc in enumerate(sidecars):
+                sc_path = sc.get("path") if isinstance(sc, dict) else None
+                if sc_path is None:
+                    errors.append(f"sidecars[{i}] missing 'path'")
+                    continue
+                full = episode_dir / sc_path
+                if not full.exists():
+                    errors.append(
+                        f"sidecars[{i}].path '{sc_path}' does not exist on disk"
+                    )
+                # Check sizeBytes consistency when present
+                if isinstance(sc, dict) and "sizeBytes" in sc:
+                    try:
+                        actual = full.stat().st_size
+                        if sc["sizeBytes"] != actual:
+                            errors.append(
+                                f"sidecars[{i}].sizeBytes mismatch: "
+                                f"manifest={sc['sizeBytes']} actual={actual}"
+                            )
+                    except OSError as e:
+                        errors.append(f"cannot stat sidecars[{i}].path '{sc_path}': {e}")
 
     return {"ok": len(errors) == 0, "errors": errors}

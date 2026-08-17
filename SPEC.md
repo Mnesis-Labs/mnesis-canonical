@@ -358,8 +358,57 @@ boundary cases the consumers asked for: `disputed`, `stale`, and
 episodes/ep_<n>/
   data.jsonl            # one CanonicalFrame per line  (required)
   video.mp4             # ego video, t_hw_ns-aligned    (optional)
-  manifest.json         # {episodeIndex, frameCount, jsonlSizeBytes, videoPath, videoSizeBytes, durationMs}
+  manifest.json         # {episodeIndex, frameCount, jsonlSizeBytes, videoPath, videoSizeBytes, durationMs, sidecars[]}
+  sensors/imu.jsonl     # 1000 Hz IMU (optional, via sidecars[])
+  audio/               # 4-channel audio (optional, via sidecars[])
+  logs/                # system logs (optional, via sidecars[])
+  calib/               # calibration files (optional, via sidecars[])
 ```
+
+### Sidecar registry (`sidecars[]`, additive, v0.6+)
+
+The manifest's `sidecars[]` array is the **generic extension point** for side-channel
+data that does not have a dedicated pointer in the manifest schema. Instead of adding
+a new single-purpose key (`imuPath`, `audioPath`, `logPath`, …) for every new sensor
+modality, all side channels register via this array:
+
+```jsonc
+"sidecars": [
+  {
+    "kind": "imu",            // controlled vocabulary (see below)
+    "path": "sensors/imu.jsonl",
+    "format": "jsonl",        // jsonl | parquet | wav | json | ...
+    "rateHz": 1000,           // optional, sample rate
+    "sizeBytes": 12345678,    // file size on disk
+    "frame": "imu0"           // optional, reference frame / channel id
+  }
+]
+```
+
+**Controlled vocabulary for `kind`.** The `kind` field is a controlled vocabulary
+(not a free string) so that downstream consumers can reliably discover all channels
+of a given type. New kinds are registered additively via the same mechanism as
+`skeletons/` entries — a PR against this repo that adds the kind to the vocabulary
+and documents its expected shape:
+
+| Kind | Description | Expected format | Required fields |
+|---|---|---|---|
+| `imu` | Inertial measurement unit (9-axis, 1000 Hz typical) | `jsonl` with per-line `t_hw_ns` + `accel_mps2[3]` + `gyro_radps[3]` + `mag_uT[3]` | `kind`, `path`, `format`, `rateHz` |
+| `audio` | Multi-channel audio recording (4-channel typical) | `wav` | `kind`, `path`, `format` |
+| `log` | System / capture session logs | `jsonl` | `kind`, `path`, `format` |
+| `calib` | Calibration data (camera intrinsics, extrinsics, IMU alignment) | `json` | `kind`, `path`, `format` |
+
+**Time alignment.** Every sidecar record MUST carry a `t_hw_ns` field in the same
+clock domain as the frame's `t_hw_ns` — this is the join key between side-channel
+data and video/pose frames. This is a hard requirement, not a recommendation: an IMU
+sampled at 1000 Hz that cannot be aligned to the video frame clock is unusable for
+sensor fusion.
+
+**Backward compatibility.** The `sidecars[]` array is purely additive and fully
+optional. Existing manifests without it validate unchanged. The three dedicated
+pointers (`videoPath`, `eventsPath`, `annotationsPath`) are **not** migrated into
+`sidecars[]` entries — they remain as top-level keys for backward compatibility.
+New side channels MUST use `sidecars[]` exclusively.
 
 ### Manifest provenance (optional, additive, C1-vNext)
 
