@@ -5,6 +5,11 @@ upload / ingest. Shape (camelCase, per SPEC):
 
     {episodeIndex, frameCount, jsonlSizeBytes, videoPath, videoSizeBytes, durationMs}
 
+An optional ``provenance`` block carries the who-built-which-build-in-which-session
+metadata (C1-vNext, additive-only):
+
+    {schemaVersion, captureApp, appVersion, gitSha, deviceId, sessionId}
+
 ``durationMs`` is derived from the wall-clock ``t_ns`` span of the frames. The
 video sidecar itself is binary capture *data* and is never produced or committed
 here; the manifest only references it when a ``video.mp4`` is present on disk.
@@ -32,10 +37,16 @@ def build_manifest(
     video_size_bytes: int = 0,
     events_path: str | None = None,
     annotations_path: str | None = None,
+    provenance: dict | None = None,
 ) -> dict:
     """Build a manifest dict from in-memory frames (pure; no I/O).
 
     Raises ValueError on an empty episode (a manifest needs at least one frame).
+
+    ``provenance`` is an optional dict with keys matching the ``provenance``
+    property in ``manifest.schema.json`` (C1-vNext, additive-only).  When
+    provided, the entire block is added verbatim — no validation beyond type
+    checking is performed here; the schema validator handles field-level checks.
     """
     if not frames:
         raise ValueError("cannot build a manifest for an empty episode")
@@ -52,12 +63,17 @@ def build_manifest(
         result["eventsPath"] = events_path
     if annotations_path is not None:
         result["annotationsPath"] = annotations_path
+    if provenance is not None:
+        result["provenance"] = provenance
     return result
 
 
-def manifest_for_episode(episode_dir: str | Path) -> dict:
+def manifest_for_episode(episode_dir: str | Path, *, provenance: dict | None = None) -> dict:
     """Read ``<episode_dir>/data.jsonl`` (and ``video.mp4`` / ``events.jsonl`` if present)
-    and build the manifest, filling in real on-disk sizes."""
+    and build the manifest, filling in real on-disk sizes.
+
+    ``provenance`` is forwarded to :func:`build_manifest` — see its docstring.
+    """
     episode_dir = Path(episode_dir)
     jsonl = episode_dir / "data.jsonl"
     frames = read_jsonl(jsonl)
@@ -82,13 +98,19 @@ def manifest_for_episode(episode_dir: str | Path) -> dict:
         video_size_bytes=video_size,
         events_path=events_path,
         annotations_path=annotations_path,
+        provenance=provenance,
     )
 
 
-def write_manifest(episode_dir: str | Path, *, indent: int = 2) -> Path:
-    """Compute and write ``<episode_dir>/manifest.json``; return its path."""
+def write_manifest(
+    episode_dir: str | Path, *, indent: int = 2, provenance: dict | None = None,
+) -> Path:
+    """Compute and write ``<episode_dir>/manifest.json``; return its path.
+
+    ``provenance`` is forwarded to :func:`manifest_for_episode` — see its docstring.
+    """
     episode_dir = Path(episode_dir)
-    manifest = manifest_for_episode(episode_dir)
+    manifest = manifest_for_episode(episode_dir, provenance=provenance)
     out = episode_dir / "manifest.json"
     out.write_text(json.dumps(manifest, indent=indent) + "\n", encoding="utf-8", newline="\n")
     return out
