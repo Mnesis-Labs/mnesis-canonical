@@ -215,6 +215,11 @@
     "observation.hand.left.rot": ["observation.hand.left"],
     "observation.hand.right.rot": ["observation.hand.right"]
   },
+  "patternProperties": {
+    "^x-[a-z][a-z0-9-_]*\\.": {
+      "description": "Vendor extension namespace (x-<vendor>.<field>). Reserved for vendor-specific extensions. See extensions/registry.json and SPEC.md §Conventions."
+    }
+  },
   "allOf": [
     {
       "if": {

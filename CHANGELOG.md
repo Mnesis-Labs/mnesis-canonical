@@ -293,6 +293,27 @@ are decoupled:
 
 ### Added
 
+- **C1-vNext — Manifest provenance section (issue #113, additive-only).**
+  The episode manifest now carries an optional `provenance` block answering
+  **who produced the data, with which build, and in which session** — the three
+  questions that the existing shape-and-size fields cannot answer:
+
+  - `schemaVersion` — canonical schema version at production time.
+  - `captureApp` — capture surface identifier (`"iris"` / `"argus"` / …),
+    orthogonal to `source.device`.
+  - `appVersion` — capture app version (semver).
+  - `gitSha` — capture app build commit SHA. The one field that pins provenance.
+  - `deviceId` — **anonymised** device identifier
+    (`hex(sha256(salt || raw_id))[:16]`).
+  - `sessionId` — shared session id for multi-device co-recording.
+
+  All six fields are optional, and the `provenance` block itself is optional —
+  existing manifests without it validate unchanged. Pure additive change.
+
+  `manifest.schema.json`, `manifest.py` (`build_manifest` / `manifest_for_episode`
+  / `write_manifest` accept a `provenance` kwarg), `SPEC.md` (§Manifest
+  provenance), `tests/test_manifest.py` (provenance conformance tests) synced.
+
 ### Fixed
 
 [0.5.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.5.0

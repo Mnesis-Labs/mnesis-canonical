@@ -34,7 +34,12 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     report = validate_frames(
         frames, strict_vocab=args.strict_vocab, strict_stable=args.strict_stable,
     )
-    print(f"total={report.total} valid={report.valid} errors={len(report.errors)}")
+    print(f"total={report.total} valid={report.valid} "
+          f"errors={len(report.errors)} warnings={len(report.warnings)}")
+
+    if report.warnings:
+        for line_no, msg in report.warnings[:20]:
+            print(f"  warning: line {line_no}: {msg}", file=sys.stderr)
 
     if report.errors:
         limit = args.max_errors or None

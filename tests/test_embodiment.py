@@ -27,15 +27,16 @@ _EMBODIMENTS_DIR = Path(__file__).resolve().parent.parent / "embodiments"
 
 
 def test_all_embodiments_exist():
-    """There must be at least 5 embodiment files (the initial set)."""
+    """There must be at least 6 embodiment files (initial set + ego_human_5cam_v1)."""
     paths = _discover_embodiments()
-    assert len(paths) >= 5, f"Expected >=5 embodiments, found {len(paths)}"
+    assert len(paths) >= 6, f"Expected >=6 embodiments, found {len(paths)}"
 
 
 def test_expected_embodiments_present():
-    """The five required embodiments must be present."""
+    """The six required embodiments must be present."""
     ids = {p.stem for p in _discover_embodiments()}
-    required = {"ego_human", "alohamini", "so_arm101", "airbot_play", "dual_airbot_play"}
+    required = {"ego_human", "alohamini", "so_arm101", "airbot_play",
+                "dual_airbot_play", "ego_human_5cam_v1"}
     missing = required - ids
     assert not missing, f"Missing required embodiments: {missing}"
 
@@ -156,30 +157,32 @@ _PKG_EMBODIMENTS_DIR = Path(__file__).resolve().parent.parent / "mnesis_canonica
 
 
 def test_package_embodiments_exist():
-    """The package embodiments directory must have the 5 embodiment files."""
+    """The package embodiments directory must have the 6 embodiment files."""
     paths = sorted(p for p in _PKG_EMBODIMENTS_DIR.iterdir()
                    if p.suffix == ".json" and p.name != "embodiment.schema.json")
-    assert len(paths) >= 5, f"Expected >=5, found {len(paths)}"
+    assert len(paths) >= 6, f"Expected >=6, found {len(paths)}"
 
 
-def test_loader_list_embodiments_returns_5():
-    """list_embodiments() must return exactly 5 entries."""
+def test_loader_list_embodiments_returns_6():
+    """list_embodiments() must return exactly 6 entries."""
     result = _list_embodiments()
-    assert len(result) == 5, f"Expected 5, got {len(result)}"
+    assert len(result) == 6, f"Expected 6, got {len(result)}"
 
 
 def test_loader_list_embodiment_ids():
-    """list_embodiment_ids() must return the five expected IDs."""
+    """list_embodiment_ids() must return the six expected IDs."""
     ids = _list_embodiment_ids()
     assert ids == sorted([
-        "ego_human", "alohamini", "so_arm101", "airbot_play", "dual_airbot_play",
+        "ego_human", "alohamini", "so_arm101", "airbot_play",
+        "dual_airbot_play", "ego_human_5cam_v1",
     ])
 
 
 def test_loader_expected_ids_present():
-    """All five required embodiment IDs must be present."""
+    """All six required embodiment IDs must be present."""
     ids = {e["id"] for e in _list_embodiments()}
-    required = {"ego_human", "alohamini", "so_arm101", "airbot_play", "dual_airbot_play"}
+    required = {"ego_human", "alohamini", "so_arm101", "airbot_play",
+                "dual_airbot_play", "ego_human_5cam_v1"}
     missing = required - ids
     assert not missing, f"Missing: {missing}"
 
@@ -201,7 +204,8 @@ def test_loader_load_embodiment_unknown():
 def test_loader_load_embodiment_validate():
     """load_embodiment(validate=True) must pass for all known embodiments."""
     pytest.importorskip("jsonschema")
-    for eid in ("ego_human", "alohamini", "so_arm101", "airbot_play", "dual_airbot_play"):
+    for eid in ("ego_human", "alohamini", "so_arm101", "airbot_play",
+                "dual_airbot_play", "ego_human_5cam_v1"):
         data = _load_embodiment(eid, validate=True)
         assert data["id"] == eid
 
@@ -211,7 +215,7 @@ def test_package_data_sync_with_root():
     root_dir = _EMBODIMENTS_DIR
     pkg_dir = _PKG_EMBODIMENTS_DIR
     for fname in ("airbot_play.json", "alohamini.json", "dual_airbot_play.json",
-                  "ego_human.json", "so_arm101.json"):
+                  "ego_human.json", "so_arm101.json", "ego_human_5cam_v1.json"):
         root_bytes = (root_dir / fname).read_bytes()
         pkg_bytes = (pkg_dir / fname).read_bytes()
         assert root_bytes == pkg_bytes, (
@@ -223,5 +227,5 @@ def test_loader_import_from_top_level():
     """The loader API must be importable from the top-level package."""
     from mnesis_canonical import list_embodiments as top_list
     from mnesis_canonical import load_embodiment as top_load
-    assert len(top_list()) == 5
+    assert len(top_list()) == 6
     assert top_load("airbot_play")["id"] == "airbot_play"

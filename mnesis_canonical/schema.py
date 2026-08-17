@@ -22,7 +22,7 @@ _VERSION_RE = re.compile(r"/(v[\w.]+)\.json$")
 
 
 def get_schema_version() -> str:
-    """Extract the Canonical Schema version from the JSON Schema ``$id`` field.
+    """Extract the Canonical Schema version (SPEC_VERSION) from the JSON Schema ``$id`` field.
 
     Returns a string like ``"v0.2"``, or ``"unknown"`` if parsing fails.
     """
@@ -89,6 +89,12 @@ EXPERIMENTAL_KEYS = (
 # Deprecated fields: removed in a future major version.  Empty for now; the
 # `--strict-stable` switch refuses both experimental and deprecated fields.
 DEPRECATED_KEYS = ()
+
+# Vendor extension namespace prefix pattern (x-<vendor>.<field>).
+# Keys matching this prefix are reserved for vendor-specific extensions and
+# are exempt from the unknown-key warning.  See SPEC.md §Conventions and
+# extensions/registry.json.
+VENDOR_EXTENSION_PREFIX = "x-"
 
 # --- Hand keypoints (C11, additive, optional, status: experimental) ----------
 # Skeleton-level hand data as a first-class observation.  The keypoint vectors

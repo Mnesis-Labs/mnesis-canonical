@@ -740,3 +740,121 @@ def test_manifest_sidecars_are_additive_backward_compatible(tmp_path):
 
     from mnesis_canonical.manifest import _MANIFEST_SCHEMA  # noqa: PLC270
     jsonschema.validate(manifest, _MANIFEST_SCHEMA)
+
+
+# ── provenance (C1-vNext, additive-only) ──────────────────────────────────────
+
+
+_PROVENANCE = {
+    "schemaVersion": "0.5.0",
+    "captureApp": "iris",
+    "appVersion": "1.2.3",
+    "gitSha": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+    "deviceId": "abcd1234ef567890",
+    "sessionId": "session-uuid-1234",
+}
+
+
+def test_manifest_build_with_provenance():
+    """build_manifest includes provenance when provided."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50, provenance=_PROVENANCE)
+    assert m["provenance"] == _PROVENANCE
+    assert m["frameCount"] == 1
+
+
+def test_manifest_build_without_provenance():
+    """build_manifest omits provenance when not provided (additive-only)."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50)
+    assert "provenance" not in m
+
+
+def test_manifest_for_episode_with_provenance(tmp_path):
+    """manifest_for_episode includes provenance when provided."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":0,"t_ns":1000000}\n{"episode_index":0,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    m = manifest_for_episode(ep, provenance=_PROVENANCE)
+    assert m["provenance"] == _PROVENANCE
+    assert m["frameCount"] == 2
+
+
+def test_manifest_for_episode_without_provenance(tmp_path):
+    """manifest_for_episode omits provenance when not provided (additive-only)."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    m = manifest_for_episode(ep)
+    assert "provenance" not in m
+
+
+def test_write_manifest_roundtrips_with_provenance(tmp_path):
+    """write_manifest with provenance writes and can be read back."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    (ep / "data.jsonl").write_text(
+        '{"episode_index":3,"t_ns":1000000}\n{"episode_index":3,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    out = write_manifest(ep, provenance=_PROVENANCE)
+    assert out == ep / "manifest.json"
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["provenance"] == _PROVENANCE
+    assert written["frameCount"] == 2
+
+
+def test_validate_manifest_with_provenance(tmp_path):
+    """A manifest with provenance passes validation (additive-only)."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n{"episode_index":0,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    manifest = build_manifest(
+        read_jsonl(jsonl),
+        jsonl_size_bytes=jsonl.stat().st_size,
+        provenance=_PROVENANCE,
+    )
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_provenance_does_not_affect_existing_manifests(tmp_path):
+    """Existing manifests without provenance validate unchanged (additive-only)."""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":0,"t_ns":1000000}\n',
+        encoding="utf-8",
+    )
+    manifest = {
+        "episodeIndex": 0,
+        "frameCount": 1,
+        "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None,
+        "videoSizeBytes": 0,
+        "durationMs": 0,
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_example_manifests_pass_jsonschema_without_provenance():
+    """Every example manifest validates against the schema without provenance
+    (regression: additive-only means no existing manifest breaks)."""
+    for manifest_path in sorted(EXAMPLES_DIR.glob("*/manifest.json")):
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        # Verify no provenance key crept in
+        assert "provenance" not in manifest, f"{manifest_path} has provenance unexpectedly"

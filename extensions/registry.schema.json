@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mnesis.dev/schemas/extensions/registry.schema.json",
+  "title": "Extension Registry",
+  "description": "Schema for the vendor extension registry (extensions/registry.json). Each entry documents a vendor-specific extension field that uses the x-<vendor>. prefix namespace.",
+  "type": "object",
+  "required": ["extensions"],
+  "properties": {
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "owner_repo", "since", "description", "promotion_status"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^x-[a-z][a-z0-9-_]*\\.[a-z_][a-z0-9_]*$",
+            "description": "Full field name, e.g. x-iris.hand_left_kpts3d"
+          },
+          "owner_repo": {
+            "type": "string",
+            "description": "Repository that owns this extension, e.g. Mnesis-Labs/Mnesis-Iris"
+          },
+          "since": {
+            "type": "string",
+            "description": "Date when the extension was first introduced (YYYY-MM-DD)"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the extension field carries"
+          },
+          "promotion_status": {
+            "type": "string",
+            "enum": ["registered", "promoted", "deprecated"],
+            "description": "registered = still a vendor extension; promoted = promoted to a standard field; deprecated = being retired"
+          },
+          "promoted_to": {
+            "type": "string",
+            "description": "Standard field name if promotion_status is 'promoted'"
+          },
+          "promoted_in_issue": {
+            "type": "string",
+            "description": "Issue number or link that promoted this extension"
+          },
+          "type": {
+            "type": "string",
+            "description": "Expected JSON type of the field value, e.g. float[63], string"
+          }
+        }
+      }
+    }
+  }
+}

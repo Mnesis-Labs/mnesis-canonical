@@ -42,6 +42,7 @@ from .schema import (
     PROFILES,
     ROBOT_V2_VARIABLE_VECTORS,
     VECTOR_LENGTHS,
+    VENDOR_EXTENSION_PREFIX,
     required_keys_for_profile,
 )
 from .skeleton_registry import load_skeleton
@@ -394,11 +395,56 @@ def validate_frame(
     return errors
 
 
+def _warn_unknown_keys(frame: dict, warnings: list[str]) -> None:
+    """Emit a warning for each key that is not a known standard field or a
+    vendor extension (``x-<vendor>.`` prefix).
+
+    This is a separate pass so the caller can collect warnings independently
+    of frame-level errors (warnings never cause validation failure).
+    """
+    # Build the set of known standard keys.  This is the union of:
+    #   - all profile-specific required keys
+    #   - all optional keys explicitly defined in the schema
+    known_keys: set[str] = {
+        # Required keys (common to all profiles)
+        "index", "episode_index", "task_index", "frame_index",
+        "t_ns", "t_hw_ns", "timestamp",
+        "head_pose_SE3", "observation.state", "action",
+        "source.device", "source.modality", "tracking_state",
+        # ego_v1-specific required
+        "observation.images.ego",
+        # Optional keys (explicitly defined in the schema)
+        "profile", "embodiment_id", "spatial_anchor_id", "spatial_anchor_pose_SE3",
+        "observation.eef_pose.left", "observation.eef_pose.right",
+        "action.gripper",
+        "observation.gripper", "observation.gripper.left", "observation.gripper.right",
+        "observation.hand.left", "observation.hand.right",
+        "observation.hand.left.rot", "observation.hand.right.rot",
+        "observation.hand.layout", "observation.hand.frame", "observation.hand.source",
+    }
+
+    # Add observation.images.<cam> keys (open set — any key under this prefix is known)
+    known_prefixes: set[str] = {"observation.images."}
+
+    for key in frame:
+        if key in known_keys:
+            continue
+        if any(key.startswith(p) for p in known_prefixes):
+            continue
+        if key.startswith(VENDOR_EXTENSION_PREFIX):
+            continue
+        warnings.append(
+            f"unknown key: {key!r} (not a standard field; "
+            "use x-<vendor>. prefix for extensions)"
+        )
+
+
 @dataclass
 class ValidationReport:
     total: int = 0
     valid: int = 0
     errors: list[tuple[int, str]] = field(default_factory=list)  # (line_no, message)
+    warnings: list[tuple[int, str]] = field(default_factory=list)  # (line_no, message)
 
     @property
     def ok(self) -> bool:
@@ -455,6 +501,12 @@ def validate_frames(
     for i, frame in enumerate(frames):
         report.total += 1
         errs = validate_frame(frame, strict_vocab=strict_vocab, strict_stable=strict_stable)
+
+        # Collect unknown-key warnings (separate from errors — never invalidate).
+        frame_warnings: list[str] = []
+        _warn_unknown_keys(frame, frame_warnings)
+        for w in frame_warnings:
+            report.warnings.append((i, w))
 
         # Check for negative frame_index
         if not errs and "frame_index" in frame:

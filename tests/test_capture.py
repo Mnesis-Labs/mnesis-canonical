@@ -60,6 +60,21 @@ def test_all_embodiments_pass_schema_with_capture():
         assert not errs, f"{path.name}: {errs}"
 
 
+def test_camera_lens_and_fov_are_optional():
+    """cameras[].lens / fov_deg are additive-optional: absent must still validate."""
+    pytest.importorskip("jsonschema")
+    schema = load_schema()
+    cam_schema = schema["properties"]["capture"]["properties"]["cameras"]["items"]
+    assert "lens" not in cam_schema["required"]
+    assert "fov_deg" not in cam_schema["required"]
+    assert "lens" in cam_schema["properties"]
+    assert "fov_deg" in cam_schema["properties"]
+    # The two new fields must be declared in both root and package schema copies.
+    root = (_EMBODIMENTS_DIR / "embodiment.schema.json").read_bytes()
+    pkg = (_PKG_EMBODIMENTS_DIR / "embodiment.schema.json").read_bytes()
+    assert root == pkg, "embodiment.schema.json differs between root and package"
+
+
 # ── Two machines carry filled-in real values ────────────────────────────────────
 
 
@@ -78,6 +93,43 @@ def test_machine_has_capture_section(eid):
     assert set(cap["demonstration_modes"]) <= _DEMO_MODES
     assert cap["demonstration_modes"]  # non-empty
     assert isinstance(cap["calibration"]["hand_eye_required"], bool)
+
+
+# ── Head-mounted multi-camera ego device (issue #119) ───────────────────────────
+
+
+def test_ego_human_5cam_capture_section():
+    """ego_human_5cam_v1 declares a 5-camera ego rig with per-lens metadata."""
+    data = load_embodiment(_EMBODIMENTS_DIR / "ego_human_5cam_v1.json")
+    cap = data["capture"]
+    assert cap["default_fps"] == 30
+    assert "max_duration_s" in cap
+    assert cap["max_duration_s"] > 0
+    cams = cap["cameras"]
+    assert len(cams) == 5
+    names = [c["name"] for c in cams]
+    assert names == ["wide_l", "wide_r", "fisheye_l", "fisheye_c", "fisheye_r"]
+    for cam in cams:
+        assert cam["name"]
+        assert len(cam["resolution"]) == 2
+        assert all(px >= 1 for px in cam["resolution"])
+        assert cam["fps"] > 0
+        assert cam["lens"] in {"rectilinear", "fisheye"}
+        assert cam["fov_deg"] > 0
+    # Wide cams are rectilinear @60fps; fisheyes are fisheye @30fps.
+    assert cams[0]["lens"] == "rectilinear" and cams[0]["fps"] == 60
+    assert cams[1]["lens"] == "rectilinear" and cams[1]["fps"] == 60
+    for cam in cams[2:]:
+        assert cam["lens"] == "fisheye" and cam["fps"] == 30
+    assert cap["calibration"]["hand_eye_required"] is False
+
+
+def test_ego_human_5cam_no_gripper_or_demo_modes():
+    """A pure capture device omits gripper_capture/demonstration_modes (absent = none)."""
+    data = load_embodiment(_EMBODIMENTS_DIR / "ego_human_5cam_v1.json")
+    cap = data["capture"]
+    assert "gripper_capture" not in cap
+    assert "demonstration_modes" not in cap
 
 
 def test_so_arm101_is_leader_follower():
@@ -134,7 +186,6 @@ def test_schema_synced_root_and_package():
 
 def test_capture_present_in_package_copies():
     """Package-data copies must also carry the capture section."""
-    for eid in ("so_arm101", "airbot_play"):
+    for eid in ("so_arm101", "airbot_play", "ego_human_5cam_v1"):
         data = load_embodiment(_PKG_EMBODIMENTS_DIR / f"{eid}.json")
         assert "capture" in data
-        assert "capture_profiles" in data

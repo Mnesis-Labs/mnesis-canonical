@@ -1,4 +1,4 @@
-# Mnesis Canonical Schema — Specification (v0.2)
+# Mnesis Canonical Schema — Specification (SPEC_VERSION v0.2)
 
 > The open standard for **embodied spatial-action data** — one schema that every
 > capture surface (phone / glasses / Quest / robot / sim) emits and the Mnesis
@@ -129,6 +129,14 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
   provide it, **omit the key entirely**. Consumers MUST NOT substitute a default for
   a missing optional field. This rule is the common principle behind two prior
   rulings (see `CONTRACTS.md` C1):
+- **Vendor extension namespace**: keys starting with `x-<vendor>.` (e.g.
+  `x-iris.hand_left_kpts3d`) are **reserved for vendor-specific extensions**.
+  The schema explicitly acknowledges this prefix via `patternProperties` in the
+  JSON Schema, and the validator emits a **warning** (not an error) for any
+  unknown key that does **not** match this reserved prefix. Vendors register
+  their extensions in `extensions/registry.json` (see `CONTRACTS.md`). The
+  additive commitment is preserved: unknown keys never break validation, but
+  non-reserved unknown keys become visible.
   - 2026-07-21 · `action.gripper` absent ≠ `0.0` (source provides no gripper info);
   - 2026-07-27 · `spatial_anchor_pose_SE3` absent ⇒ skip the anchor consistency
     check, **do not fall back to `head_pose_SE3`**.
@@ -402,6 +410,26 @@ pointers (`videoPath`, `eventsPath`, `annotationsPath`) are **not** migrated int
 `sidecars[]` entries — they remain as top-level keys for backward compatibility.
 New side channels MUST use `sidecars[]` exclusively.
 
+### Manifest provenance (optional, additive, C1-vNext)
+
+The manifest may carry an optional `provenance` block that answers **who produced
+the data, with which build, and in which session** — the three questions that
+existing manifest fields (shape and size only) cannot answer:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schemaVersion` | string | Canonical schema version at production time (e.g. `"0.5.0"`). Consumers select the parsing path from this, not by field detection. |
+| `captureApp` | string | Capture surface identifier: `"iris"` / `"argus"` / … **Orthogonal to `source.device`** (which class of hardware) — the same `"phone"` can be driven by different capture apps. |
+| `appVersion` | string | Capture app version (semver). |
+| `gitSha` | string | Capture app build commit SHA. The one field that actually pins provenance: version numbers can be forgotten or un-bumped, SHAs cannot. |
+| `deviceId` | string | **Anonymised** device identifier: `hex(sha256(salt \|\| raw_id))[:16]`. The salt is held by the capture app and does not travel with the data. |
+| `sessionId` | string | Shared session identifier for multi-device co-recording. All devices in the same recording session use the same value, enabling post-hoc episode grouping by session. |
+
+All six fields are optional, and the `provenance` block itself is optional —
+existing manifests without it validate unchanged. Naming follows the manifest's
+camelCase convention (`schemaVersion`, `captureApp`, `appVersion`, `gitSha`,
+`deviceId`, `sessionId`), distinct from the frame schema's snake_case.
+
 ## Compatibility (must stay true — `4c` DATA5)
 - **LeRobot**: flat columns map 1:1 to LeRobot dataset features (`observation.state`, `action`, `timestamp`, `episode_index`, `frame_index`, `index`, `task_index`).
 - **Isaac / GR00T**: keep field names + units (SI metres, rad) compatible so episodes can feed NVIDIA physical-AI pipelines without re-labeling. Diff/decisions tracked here before any field is frozen.
@@ -486,7 +514,7 @@ Additive, so no forced migration; adopt lazily:
    "no presets — use `capture` defaults".
 
 ## Versioning
-- Spec is versioned (`v0.2`). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
+- Spec is versioned (SPEC_VERSION v0.2). Additive fields = minor; breaking field change = major + migration note. `__version__` in the package mirrors this.
 - **Field-level status.** Each field carries a status: one of
   `experimental`, `stable`, or `deprecated`. The authoritative value is the
   `x-status` key in `canonical_frame.schema.json` (mirrored as the `[experimental]`
