@@ -129,6 +129,17 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "description": "Per-camera frame rate if it differs from default_fps (optional)."
+              },
+              "lens": {
+                "type": "string",
+                "enum": ["rectilinear", "fisheye"],
+                "description": "Lens model for distortion correction. 'rectilinear' = standard pinhole/perspective, 'fisheye' = wide-angle with non-linear distortion. Optional, additive (v0.5+)."
+              },
+              "fov_deg": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 360,
+                "description": "Horizontal field of view in degrees. Optional, additive (v0.5+)."
               }
             },
             "required": ["name", "resolution"]
