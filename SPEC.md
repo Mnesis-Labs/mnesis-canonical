@@ -129,6 +129,14 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
   provide it, **omit the key entirely**. Consumers MUST NOT substitute a default for
   a missing optional field. This rule is the common principle behind two prior
   rulings (see `CONTRACTS.md` C1):
+- **Vendor extension namespace**: keys starting with `x-<vendor>.` (e.g.
+  `x-iris.hand_left_kpts3d`) are **reserved for vendor-specific extensions**.
+  The schema explicitly acknowledges this prefix via `patternProperties` in the
+  JSON Schema, and the validator emits a **warning** (not an error) for any
+  unknown key that does **not** match this reserved prefix. Vendors register
+  their extensions in `extensions/registry.json` (see `CONTRACTS.md`). The
+  additive commitment is preserved: unknown keys never break validation, but
+  non-reserved unknown keys become visible.
   - 2026-07-21 · `action.gripper` absent ≠ `0.0` (source provides no gripper info);
   - 2026-07-27 · `spatial_anchor_pose_SE3` absent ⇒ skip the anchor consistency
     check, **do not fall back to `head_pose_SE3`**.

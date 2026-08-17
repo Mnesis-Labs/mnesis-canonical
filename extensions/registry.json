@@ -1,0 +1,43 @@
+{
+  "extensions": [
+    {
+      "name": "x-iris.hand_left_kpts3d",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-06-01",
+      "description": "Left-hand joint positions (float[63], MediaPipe 21 landmarks) — pre-C11 Iris hand field.",
+      "promotion_status": "promoted",
+      "promoted_to": "observation.hand.left",
+      "promoted_in_issue": "mnesis-canonical#68",
+      "type": "float[63]"
+    },
+    {
+      "name": "x-iris.hand_right_kpts3d",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-06-01",
+      "description": "Right-hand joint positions (float[63], MediaPipe 21 landmarks) — pre-C11 Iris hand field.",
+      "promotion_status": "promoted",
+      "promoted_to": "observation.hand.right",
+      "promoted_in_issue": "mnesis-canonical#68",
+      "type": "float[63]"
+    },
+    {
+      "name": "x-iris.hand_kpts_source",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-06-01",
+      "description": "Provenance label for the hand keypoints — pre-C11 Iris hand field.",
+      "promotion_status": "promoted",
+      "promoted_to": "observation.hand.source",
+      "promoted_in_issue": "mnesis-canonical#68",
+      "type": "string"
+    },
+    {
+      "name": "x-iris.hand_pose",
+      "owner_repo": "Mnesis-Labs/Mnesis-Iris",
+      "since": "2026-06-01",
+      "description": "Derived hand pose (float[128]) — pre-C11 Iris hand field. Dropped, not promoted: it is a derived projection that encodes absence as in-band zeros.",
+      "promotion_status": "deprecated",
+      "promoted_in_issue": "mnesis-canonical#68",
+      "type": "float[128]"
+    }
+  ]
+}
