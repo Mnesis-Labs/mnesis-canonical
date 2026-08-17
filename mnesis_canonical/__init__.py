@@ -3,6 +3,9 @@
 The reference Python implementation of the Canonical Schema: typed frame,
 validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 """
+import importlib.metadata as _metadata
+from pathlib import Path as _Path
+
 from .embodiment_registry import list_embodiment_ids, list_embodiments, load_embodiment
 from .io import read_jsonl, write_jsonl
 from .isaac import (
@@ -91,7 +94,18 @@ from .validate import (
     validate_frames,
 )
 
+# ``__version__`` must match the installed dist — the #100 bug was that the
+# package reported 0.5.0 while ``pip install`` gave 0.2.0, sending downstream
+# debugging the wrong way. The literal below is the authoritative fallback for
+# running from a source checkout (not pip-installed); it is kept in sync with
+# ``pyproject.toml`` by ``scripts/version_check.py``. When pip-installed the
+# value is overridden from the wheel's own metadata so it can never disagree.
 __version__ = "0.5.0"
+if not (_Path(__file__).resolve().parent.parent / "pyproject.toml").exists():
+    try:
+        __version__ = _metadata.version("mnesis-canonical")
+    except _metadata.PackageNotFoundError:
+        pass
 
 __all__ = [
     "CanonicalFrame",

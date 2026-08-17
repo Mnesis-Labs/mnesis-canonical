@@ -22,7 +22,7 @@ _VERSION_RE = re.compile(r"/(v[\w.]+)\.json$")
 
 
 def get_schema_version() -> str:
-    """Extract the Canonical Schema version from the JSON Schema ``$id`` field.
+    """Extract the Canonical Schema version (SPEC_VERSION) from the JSON Schema ``$id`` field.
 
     Returns a string like ``"v0.2"``, or ``"unknown"`` if parsing fails.
     """
