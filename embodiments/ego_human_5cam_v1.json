@@ -47,6 +47,7 @@
       { "name": "fisheye_c","resolution": [1920, 1200], "fps": 30, "lens": "fisheye", "fov_deg": 200 },
       { "name": "fisheye_r","resolution": [1920, 1200], "fps": 30, "lens": "fisheye", "fov_deg": 200 }
     ],
+    "reference_camera": "fisheye_c",
     "calibration": {
       "hand_eye_required": false
     }

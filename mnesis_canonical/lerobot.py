@@ -9,6 +9,8 @@ round-trip is exact.
 """
 from __future__ import annotations
 
+import re
+
 # LeRobot-native features that map 1:1 onto canonical keys (no renaming).
 LEROBOT_FEATURES = (
     "observation.state",
@@ -45,7 +47,20 @@ def to_lerobot(frames: list[dict]) -> dict[str, list]:
     return {key: [frame.get(key) for frame in frames] for key in columns_present}
 
 
-def _non_nullable_keys() -> frozenset[str]:
+def _admits_null(spec: dict) -> bool:
+    """Whether a schema property spec accepts ``null`` as a value."""
+    t = spec.get("type")
+    if isinstance(t, list):
+        return "null" in t
+    if t == "null":
+        return True
+    for branch in ("anyOf", "oneOf"):
+        if branch in spec:
+            return any(_admits_null(x) for x in spec[branch])
+    return False
+
+
+def _non_nullable_declarations() -> tuple[frozenset[str], tuple[re.Pattern[str], ...]]:
     """Schema-declared keys whose type does **not** admit ``null`` as a value.
 
     This is the only thing that distinguishes the two kinds of "nothing" that the
@@ -53,22 +68,27 @@ def _non_nullable_keys() -> frozenset[str]:
     schema rather than hand-listed, so a future field that gains or loses
     ``"null"`` in its type is picked up automatically instead of silently
     diverging from a stale constant.
+
+    Two shapes of declaration, hence two return values: keys declared **by name**
+    (``properties``) and keys declared **by pattern** (``patternProperties``).  The
+    camera set ``observation.images.<camera_name>`` is the latter — a 5-camera ego
+    rig has no fixed key list — so a by-name set alone would let a dropped camera
+    come back as ``observation.images.<cam>: None``.  A pattern only counts when it
+    actually declares a ``type``: the vendor extension namespace declares none, and
+    an undeclared type is no basis for calling a producer's ``null`` illegitimate.
     """
     from .validate import load_json_schema
 
-    def _admits_null(spec: dict) -> bool:
-        t = spec.get("type")
-        if isinstance(t, list):
-            return "null" in t
-        if t == "null":
-            return True
-        for branch in ("anyOf", "oneOf"):
-            if branch in spec:
-                return any(_admits_null(x) for x in spec[branch])
-        return False
-
-    props = load_json_schema().get("properties", {})
-    return frozenset(k for k, v in props.items() if not _admits_null(v))
+    schema = load_json_schema()
+    named = frozenset(
+        k for k, v in schema.get("properties", {}).items() if not _admits_null(v)
+    )
+    patterns = tuple(
+        re.compile(p)
+        for p, spec in schema.get("patternProperties", {}).items()
+        if "type" in spec and not _admits_null(spec)
+    )
+    return named, patterns
 
 
 def from_lerobot(columns: dict[str, list]) -> list[dict]:
@@ -86,7 +106,9 @@ def from_lerobot(columns: dict[str, list]) -> list[dict]:
     the first kind: a frame that never had ``observation.hand.right`` came back
     carrying ``observation.hand.right: None``, which both breaks the round-trip
     and violates the very rule ``examples/episode_hands`` ships to demonstrate
-    (``tests/test_hand.py::test_example_omits_the_untracked_hand``).
+    (``tests/test_hand.py::test_example_omits_the_untracked_hand``).  The same
+    applies per camera under ``ego_multicam_v1``: a rig where one of five cameras
+    dropped a frame omits that key, and the round-trip must not resurrect it.
 
     The schema already records which keys legitimately hold ``null``, so that is
     what decides — and the rule is deliberately narrow: ``None`` is dropped only
@@ -97,7 +119,11 @@ def from_lerobot(columns: dict[str, list]) -> list[dict]:
     """
     keys = list(columns.keys())
     n = len(next(iter(columns.values()))) if columns else 0
-    drop_none_for = _non_nullable_keys()
+    named, patterns = _non_nullable_declarations()
+    drop_none_for = {
+        key for key in keys
+        if key in named or any(p.search(key) for p in patterns)
+    }
     return [
         {
             key: columns[key][i]

@@ -42,13 +42,49 @@ DEVICES = ("phone", "glasses", "quest", "pico", "robot", "sim")
 MODALITIES = ("ego_human", "teleop", "robot_replay", "sim")
 
 # Profile names (v0.2+).
-#   ego_v1   — original v0.1 frame (fixed-length vectors, obs.images.ego required)
-#   robot_v2 — robot-centric frame (variable-length state/action, open cameras, eef_pose)
-PROFILES = ("ego_v1", "robot_v2")
+#   ego_v1           — original v0.1 frame (fixed-length vectors, obs.images.ego required)
+#   ego_multicam_v1  — ego_v1 with a NAMED camera SET instead of the single ego key
+#   robot_v2         — robot-centric frame (variable-length state/action, open cameras, eef_pose)
+PROFILES = ("ego_v1", "ego_multicam_v1", "robot_v2")
 DEFAULT_PROFILE = "ego_v1"
 
 # When profile is "robot_v2", these fields are variable-length (no fixed-size check).
 ROBOT_V2_VARIABLE_VECTORS = ("observation.state", "action")
+
+# --- Camera key set (C1, ego_multicam_v1) ------------------------------------
+# Image references are flat dotted columns ``observation.images.<camera_name>``.
+# ``ego_v1`` fixes the set to the single name ``ego``; ``ego_multicam_v1`` opens
+# it to the NAMED set declared by the embodiment registry's
+# ``capture.cameras[].name`` (a 5-camera ego rig cannot be squeezed into one key,
+# and per-repo private key names would fork the standard — see SPEC §Profiles).
+IMAGE_KEY_PREFIX = "observation.images."
+
+# Camera names are registry identifiers, not free strings: lower snake_case, the
+# same shape the registry files already use (``wide_l``, ``fisheye_c``, ``ego``).
+CAMERA_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_]*$")
+
+
+def camera_name(key: str) -> str | None:
+    """Return the camera name of an ``observation.images.<name>`` key.
+
+    Returns ``None`` for keys that are not image references at all.  The name may
+    still be syntactically invalid (``""`` for a bare prefix) — validation of the
+    name itself is :func:`mnesis_canonical.validate.validate_frame`'s job.
+    """
+    if not key.startswith(IMAGE_KEY_PREFIX):
+        return None
+    return key[len(IMAGE_KEY_PREFIX):]
+
+
+def image_keys(frame: dict) -> list[str]:
+    """Return the frame's ``observation.images.<camera_name>`` keys, in frame order.
+
+    A camera that dropped the current frame has **no key at all** (absent means
+    unknown — never an in-band sentinel), so this is also the per-frame answer to
+    "which cameras actually delivered here".
+    """
+    return [k for k in frame if k.startswith(IMAGE_KEY_PREFIX)]
+
 
 # Gripper observation channel (additive, optional).  Continuous gripper
 # **closedness** as a first-class scalar in [0, 1] — direction identical to
@@ -161,6 +197,15 @@ _REQUIRED_KEYS_EGO_V1 = (
     "tracking_state",
 )
 
+# Required JSON keys for the ego_multicam_v1 profile.  Identical to ego_v1 except
+# that no single camera key is mandatory: the profile requires at least one
+# ``observation.images.<camera_name>`` (checked in validate.py, which is where the
+# registry cross-check lives).  ``observation.images.ego`` is not special here —
+# it is simply "the camera named ego", so ego_v1 data is a subset with no migration.
+_REQUIRED_KEYS_EGO_MULTICAM_V1 = tuple(
+    k for k in _REQUIRED_KEYS_EGO_V1 if k != "observation.images.ego"
+)
+
 # Required JSON keys for the robot_v2 profile (no fixed camera key, variable vectors).
 _REQUIRED_KEYS_ROBOT_V2 = (
     "index",
@@ -187,6 +232,8 @@ def required_keys_for_profile(profile: str | None) -> tuple[str, ...]:
     p = profile or DEFAULT_PROFILE
     if p == "robot_v2":
         return _REQUIRED_KEYS_ROBOT_V2
+    if p == "ego_multicam_v1":
+        return _REQUIRED_KEYS_EGO_MULTICAM_V1
     return _REQUIRED_KEYS_EGO_V1
 
 
@@ -313,6 +360,13 @@ class CanonicalFrame:
         }
         if self.profile is not None:
             d["profile"] = self.profile
+        # ``observation.images.ego`` is required by ego_v1 (where "" is the legal
+        # "no path yet" placeholder for its one camera).  Under a profile with an
+        # open camera set it is merely "the camera named ego" — so a rig that has
+        # no such camera must not be handed a blank one: that would fabricate the
+        # very in-band sentinel the standard forbids.
+        if not self.observation_images_ego and self.profile not in (None, "ego_v1"):
+            del d["observation.images.ego"]
         if self.embodiment_id is not None:
             d["embodiment_id"] = self.embodiment_id
         if self.observation_images is not None:

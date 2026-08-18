@@ -145,6 +145,10 @@
             "required": ["name", "resolution"]
           }
         },
+        "reference_camera": {
+          "type": "string",
+          "description": "Name of the camera that defines the per-frame data.jsonl row cadence (must be one of capture.cameras[].name). Needed when the rig mixes frame rates (e.g. 60 fps wide + 30 fps fisheye): the reference camera's fps is the row rate, every other camera declares its own fps here in capture.cameras[].fps and contributes only a path per row. Optional, additive (v0.5+); the ego_multicam_v1 frame profile requires it (SPEC §Profiles)."
+        },
         "gripper_capture": {
           "type": "object",
           "description": "How the gripper channel is sampled during capture.",
