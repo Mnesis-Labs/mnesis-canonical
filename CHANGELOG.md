@@ -314,7 +314,23 @@ are decoupled:
   / `write_manifest` accept a `provenance` kwarg), `SPEC.md` (§Manifest
   provenance), `tests/test_manifest.py` (provenance conformance tests) synced.
 
+- `scripts/version_check.py --expect <tag>`：把 release tag 作为第四个版本来源
+  加进 §1 比对。三个树内字符串互相一致，并不代表它们和 workflow 拿到的那个 tag
+  一致，而 PyPI 上传不可撤销 —— 发错的版本号只能 yank，永远不能覆盖重发。
+
 ### Fixed
+
+- **发布链路从未真正跑通**（#109）。`release.yml` 自 #98 落地起 30 天零执行
+  （`gh run list --workflow=release.yml` 返回空），PyPI 上 `mnesis-canonical`
+  仍是 404。三个原因都在 workflow 里：只有 `push: tags` 一个触发口（v0.5.0 的
+  tag 比 workflow 早两周，对它永远不触发）；跑在 Windows/macOS 自托管混池上却
+  写满 bash-ism；依赖一个从仓外看不见的 `PYPI_TOKEN` secret。
+  现在：补 `workflow_dispatch`（可对已存在的 tag 补发，带 `dry_run`）、挪到
+  `ubuntu-latest`（无状态作业，本仓公开托管免费）、改用 PyPI Trusted
+  Publishing (OIDC) 去掉 secret，并在发布前加版本守卫、`twine check --strict`、
+  干净 venv 装 wheel 跑 CLI 三道闸；GitHub Release 一步改为幂等（v0.5.0 的
+  Release 已存在，无脑 create 会把补发卡在倒数第二步）。
+  ⚠️ 首次发布仍需人工一次性在 pypi.org 建 pending publisher，见 `DEV_GUIDE.md` §5 §9。
 
 [0.5.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.4.0

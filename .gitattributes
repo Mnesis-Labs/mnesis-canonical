@@ -6,6 +6,12 @@
 *.py    text eol=lf
 *.md    text eol=lf
 *.toml  text eol=lf
+# .yml 不在原白名单里，但 workflow 的 `run:` 块是 bash 脚本，而发布跑在
+# ubuntu-latest 上：一旦某台 Windows 机器 core.autocrlf=false 把 CRLF 提进去，
+# 每一行末尾的 \r 都会进 shell（`$'\r': command not found`，或更阴的——变量值
+# 尾部带 \r，比如 tag 变成 "v0.5.0\r"，直接发出一个名字错的版本）。
+*.yml   text eol=lf
+*.yaml  text eol=lf
 
 # ── 整目录钉死 LF：门禁按 sha256 比字节，换行符必须与扩展名无关 ────────────────
 # 上面那组规则是按扩展名的白名单。contracts/ 与 skeletons/ 眼下恰好只有 .md/.json，

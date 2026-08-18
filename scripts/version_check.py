@@ -15,10 +15,17 @@ Deliberately a regex over file text rather than ``tomllib`` + ``import
 mnesis_canonical``: ``tomllib`` is 3.11+ (the package supports 3.10) and reading
 the strings means the check works on a tree that does not even import.
 
+``--expect`` adds a fourth source: the release tag.  The three in-tree strings
+agreeing with each other says nothing about whether they agree with the ``v*``
+tag the release workflow was handed, and PyPI uploads are **irreversible** — a
+version published from the wrong tree can never be replaced, only yanked.
+
     python scripts/version_check.py
+    python scripts/version_check.py --expect v0.5.0
 """
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -78,20 +85,40 @@ def read_changelog_version(path: Path = CHANGELOG) -> str:
                     f"**Package x.y.z** in {path.name}")
 
 
-def check() -> list[str]:
-    """Return one problem line per disagreeing source; empty list means consistent."""
+def check(expect: str | None = None) -> list[str]:
+    """Return one problem line per disagreeing source; empty list means consistent.
+
+    ``expect`` is a release tag (``v0.5.0``) or bare version (``0.5.0``); when
+    given it joins the comparison as a fourth source.
+    """
     found = {
         "pyproject.toml [project] version": read_pyproject_version(),
         "mnesis_canonical/__init__.py __version__": read_dunder_version(),
         "CHANGELOG.md **Package x.y.z**": read_changelog_version(),
     }
+    if expect is not None:
+        found[f"release tag {expect!r}"] = expect.removeprefix("v")
     if len(set(found.values())) == 1:
         return []
     return [f"{where} = {version!r}" for where, version in found.items()]
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python scripts/version_check.py",
+        description="§1 of the release checklist: one version number, three places.",
+    )
+    parser.add_argument(
+        "--expect", metavar="TAG",
+        help="Also require the release tag to agree, e.g. --expect v0.5.0 "
+             "(a leading 'v' is stripped).",
+    )
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
-    problems = check()
+    args = build_parser().parse_args(argv)
+    problems = check(expect=args.expect)
     if problems:
         print("VERSION MISMATCH — these must all be the same string:")
         for line in problems:

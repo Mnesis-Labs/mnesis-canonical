@@ -64,10 +64,21 @@ Manual (not machine-checkable):
 - [ ] Tag: `git tag -a v<version> -m "v<version>"`.
 - [ ] Push: `git push origin main --tags`.
 
-## 8. GitHub Release
+## 8. GitHub Release + PyPI
 
-- [ ] Create a Release from the tag with changelog notes.
-- [ ] Attach `sdist` / `wheel` (if publishing to PyPI).
+Automated by `.github/workflows/release.yml` — pushing the tag runs the version
+guard, §2–§6, the build, `twine check --strict`, a clean-venv install of the
+built wheel, then creates the Release and publishes to PyPI.
+
+- [ ] `release.yml` finished green for this tag.
+- [ ] `pip install mnesis-canonical==<version>` works from a clean environment.
+
+Re-publishing a tag that already exists (workflow landed after the tag):
+`gh workflow run release.yml -f tag=v<version> -f dry_run=true` first, then
+without `dry_run`. PyPI uploads cannot be overwritten, only yanked.
+
+One-time setup — PyPI Trusted Publishing, no `PYPI_TOKEN` secret: see
+`DEV_GUIDE.md` §5 §9.
 
 ---
 
