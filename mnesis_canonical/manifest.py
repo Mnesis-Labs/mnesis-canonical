@@ -20,6 +20,11 @@ between a manifest.json and its sibling data.jsonl (S2-5).
 Side channels that have no dedicated pointer (IMU, audio, logs, calibration, …)
 register via the generic ``sidecars[]`` array (SPEC §Episode layout). Each entry
 carries a controlled ``kind`` plus its on-disk ``path`` and optional metadata.
+
+An optional ``clock`` block records the measured cross-device clock offset (C6,
+additive-only):
+
+    {source, refDeviceId, offsetNs, estErrorNs}
 """
 from __future__ import annotations
 
@@ -36,6 +41,16 @@ with open(_SCHEMA_PATH, encoding="utf-8") as _f:
 # layout). New kinds are added here, never invented ad hoc by a producer.
 SIDECAR_KINDS = frozenset({"imu", "audio", "log", "calib"})
 
+# Controlled vocabulary for ``clock.source`` (SPEC §Clock synchronisation). PTP /
+# Wi-Fi TSF / NTP differ by two orders of magnitude in accuracy, so the consumer's
+# trust threshold has to be per-source. ``"none"`` = not synchronised, stated
+# explicitly rather than left blank.
+CLOCK_SOURCES = frozenset({"ptp", "tsf", "ntp", "none"})
+
+# Keys allowed inside the ``clock`` block (the block is a controlled structure,
+# not an open bag — same discipline as ``sidecars[]`` entries).
+_CLOCK_KEYS = frozenset({"source", "refDeviceId", "offsetNs", "estErrorNs"})
+
 # Default ``kind``/``format`` for sidecar files discovered under a well-known
 # subdirectory (used by :func:`manifest_for_episode` auto-discovery).
 _SIDECAR_DIR_DEFAULTS = {
@@ -44,6 +59,61 @@ _SIDECAR_DIR_DEFAULTS = {
     "logs": ("log", "jsonl"),
     "calib": ("calib", "json"),
 }
+
+
+def clock_errors(clock: object) -> list[str]:
+    """Return the list of rule violations in a ``clock`` block (empty = valid).
+
+    Checked without a JSON Schema backend so that the rules hold for every
+    consumer, not only those with ``jsonschema`` installed:
+
+    * ``source`` is required and drawn from :data:`CLOCK_SOURCES`;
+    * ``offsetNs`` and ``estErrorNs`` come as a pair — an offset without its
+      uncertainty cannot be judged for fusability, which is the whole point of
+      recording it;
+    * ``source == "none"`` (not synchronised) MUST NOT carry an offset;
+    * no keys outside :data:`_CLOCK_KEYS`.
+    """
+    errors: list[str] = []
+    if not isinstance(clock, dict):
+        return ["clock must be an object"]
+
+    unknown = sorted(set(clock) - _CLOCK_KEYS)
+    if unknown:
+        errors.append(f"clock has unknown keys: {unknown}")
+
+    if "source" not in clock:
+        errors.append("clock missing 'source'")
+    elif clock["source"] not in CLOCK_SOURCES:
+        errors.append(
+            f"unknown clock source {clock['source']!r}; "
+            f"expected one of {sorted(CLOCK_SOURCES)}"
+        )
+
+    ref = clock.get("refDeviceId")
+    if ref is not None and not isinstance(ref, str):
+        errors.append("clock.refDeviceId must be a string")
+
+    for key in ("offsetNs", "estErrorNs"):
+        if key in clock and (not isinstance(clock[key], int) or isinstance(clock[key], bool)):
+            errors.append(f"clock.{key} must be an integer (nanoseconds)")
+    if isinstance(clock.get("estErrorNs"), int) and not isinstance(clock["estErrorNs"], bool):
+        if clock["estErrorNs"] < 0:
+            errors.append("clock.estErrorNs must be >= 0")
+
+    if "offsetNs" in clock and "estErrorNs" not in clock:
+        errors.append("clock.offsetNs requires clock.estErrorNs (an offset without its "
+                      "uncertainty cannot be judged for fusability)")
+    if "estErrorNs" in clock and "offsetNs" not in clock:
+        errors.append("clock.estErrorNs requires clock.offsetNs")
+
+    if clock.get("source") == "none" and ("offsetNs" in clock or "estErrorNs" in clock):
+        errors.append(
+            "clock.source 'none' means not synchronised — omit offsetNs/estErrorNs "
+            "instead of writing a sentinel value"
+        )
+
+    return errors
 
 
 def build_manifest(
@@ -56,6 +126,7 @@ def build_manifest(
     annotations_path: str | None = None,
     sidecars: list[dict] | None = None,
     provenance: dict | None = None,
+    clock: dict | None = None,
 ) -> dict:
     """Build a manifest dict from in-memory frames (pure; no I/O).
 
@@ -69,6 +140,12 @@ def build_manifest(
     property in ``manifest.schema.json`` (C1-vNext, additive-only).  When
     provided, the entire block is added verbatim — no validation beyond type
     checking is performed here; the schema validator handles field-level checks.
+
+    ``clock`` is an optional cross-device clock synchronisation record (C6,
+    additive-only) with keys ``source`` / ``refDeviceId`` / ``offsetNs`` /
+    ``estErrorNs``. Unlike ``provenance`` it *is* checked here (see
+    :func:`clock_errors`) — a malformed offset silently written to disk is the
+    exact failure this block exists to prevent.
     """
     if not frames:
         raise ValueError("cannot build a manifest for an empty episode")
@@ -97,6 +174,11 @@ def build_manifest(
         result["sidecars"] = sidecars
     if provenance is not None:
         result["provenance"] = provenance
+    if clock is not None:
+        errs = clock_errors(clock)
+        if errs:
+            raise ValueError("; ".join(errs))
+        result["clock"] = clock
     return result
 
 
@@ -129,11 +211,18 @@ def _discover_sidecars(episode_dir: Path) -> list[dict]:
     return sidecars
 
 
-def manifest_for_episode(episode_dir: str | Path, *, provenance: dict | None = None) -> dict:
+def manifest_for_episode(
+    episode_dir: str | Path,
+    *,
+    provenance: dict | None = None,
+    clock: dict | None = None,
+) -> dict:
     """Read ``<episode_dir>/data.jsonl`` (and ``video.mp4`` / ``events.jsonl`` if present)
     and build the manifest, filling in real on-disk sizes.
 
-    ``provenance`` is forwarded to :func:`build_manifest` — see its docstring.
+    ``provenance`` and ``clock`` are forwarded to :func:`build_manifest` — see its
+    docstring. Neither can be discovered from disk: the clock offset is measured by
+    the capture end, not inferred by the writer.
     """
     episode_dir = Path(episode_dir)
     jsonl = episode_dir / "data.jsonl"
@@ -161,18 +250,24 @@ def manifest_for_episode(episode_dir: str | Path, *, provenance: dict | None = N
         annotations_path=annotations_path,
         sidecars=_discover_sidecars(episode_dir),
         provenance=provenance,
+        clock=clock,
     )
 
 
 def write_manifest(
-    episode_dir: str | Path, *, indent: int = 2, provenance: dict | None = None,
+    episode_dir: str | Path,
+    *,
+    indent: int = 2,
+    provenance: dict | None = None,
+    clock: dict | None = None,
 ) -> Path:
     """Compute and write ``<episode_dir>/manifest.json``; return its path.
 
-    ``provenance`` is forwarded to :func:`manifest_for_episode` — see its docstring.
+    ``provenance`` / ``clock`` are forwarded to :func:`manifest_for_episode` — see
+    its docstring.
     """
     episode_dir = Path(episode_dir)
-    manifest = manifest_for_episode(episode_dir, provenance=provenance)
+    manifest = manifest_for_episode(episode_dir, provenance=provenance, clock=clock)
     out = episode_dir / "manifest.json"
     out.write_text(json.dumps(manifest, indent=indent) + "\n", encoding="utf-8", newline="\n")
     return out
@@ -308,5 +403,9 @@ def validate_manifest(episode_dir: str | Path) -> dict:
                             )
                     except OSError as e:
                         errors.append(f"cannot stat sidecars[{i}].path '{sc_path}': {e}")
+
+    # --- clock block when present (C6) ---
+    if "clock" in manifest:
+        errors.extend(clock_errors(manifest["clock"]))
 
     return {"ok": len(errors) == 0, "errors": errors}

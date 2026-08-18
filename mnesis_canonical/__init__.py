@@ -16,8 +16,10 @@ from .isaac import (
 )
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
 from .manifest import (
+    CLOCK_SOURCES,
     SIDECAR_KINDS,
     build_manifest,
+    clock_errors,
     manifest_for_episode,
     validate_manifest,
     write_manifest,
@@ -161,6 +163,8 @@ __all__ = [
     "validate_manifest",
     "write_manifest",
     "SIDECAR_KINDS",
+    "CLOCK_SOURCES",
+    "clock_errors",
     "to_isaac",
     "from_isaac",
     "quat_xyzw_to_wxyz",

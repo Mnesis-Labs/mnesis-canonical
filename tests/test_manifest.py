@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 from mnesis_canonical import (
+    CLOCK_SOURCES,
     build_manifest,
+    clock_errors,
     manifest_for_episode,
     read_jsonl,
     write_manifest,
@@ -858,3 +860,287 @@ def test_example_manifests_pass_jsonschema_without_provenance():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         # Verify no provenance key crept in
         assert "provenance" not in manifest, f"{manifest_path} has provenance unexpectedly"
+
+
+# ── clock synchronisation (C6, additive-only) ─────────────────────────────────
+
+
+_CLOCK = {
+    "source": "ptp",
+    "refDeviceId": "9f21ab34cd56ef78",
+    "offsetNs": 123_456,
+    "estErrorNs": 500,
+}
+
+
+def _write_episode(tmp_path, name="ep", n=2, episode_index=0):
+    """Write a tiny episode dir and return (dir, data.jsonl path)."""
+    ep = tmp_path / name
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        "".join(
+            f'{{"episode_index":{episode_index},"t_ns":{(i + 1) * 1_000_000}}}\n'
+            for i in range(n)
+        ),
+        encoding="utf-8",
+    )
+    return ep, jsonl
+
+
+def test_clock_source_vocabulary_is_the_four_registered_values():
+    """The controlled vocabulary is exactly ptp | tsf | ntp | none."""
+    assert CLOCK_SOURCES == {"ptp", "tsf", "ntp", "none"}
+
+
+def test_manifest_build_with_clock():
+    """build_manifest includes clock verbatim when provided."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50, clock=_CLOCK)
+    assert m["clock"] == _CLOCK
+
+
+def test_manifest_build_without_clock():
+    """build_manifest omits clock when not provided (additive-only)."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    assert "clock" not in build_manifest(frames, jsonl_size_bytes=50)
+
+
+def test_manifest_build_rejects_unknown_clock_source():
+    """A source outside the controlled vocabulary is rejected."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="unknown clock source"):
+        build_manifest(
+            frames,
+            jsonl_size_bytes=50,
+            clock={"source": "gps", "offsetNs": 1, "estErrorNs": 1},
+        )
+
+
+def test_manifest_build_rejects_clock_without_source():
+    """source is required inside the block — the trust threshold is per-source."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="missing 'source'"):
+        build_manifest(
+            frames, jsonl_size_bytes=50, clock={"offsetNs": 1, "estErrorNs": 1}
+        )
+
+
+def test_manifest_build_rejects_offset_without_est_error():
+    """An offset without its uncertainty is not judgeable — reject it."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="requires clock.estErrorNs"):
+        build_manifest(
+            frames, jsonl_size_bytes=50, clock={"source": "ptp", "offsetNs": 123}
+        )
+
+
+def test_manifest_build_rejects_est_error_without_offset():
+    """An uncertainty with nothing to be uncertain about is rejected too."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="requires clock.offsetNs"):
+        build_manifest(
+            frames, jsonl_size_bytes=50, clock={"source": "ptp", "estErrorNs": 500}
+        )
+
+
+def test_manifest_build_rejects_offset_on_unsynchronised_clock():
+    """source 'none' + an offset is the banned in-band sentinel (§Conventions)."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="not synchronised"):
+        build_manifest(
+            frames,
+            jsonl_size_bytes=50,
+            clock={"source": "none", "offsetNs": 0, "estErrorNs": 0},
+        )
+
+
+def test_manifest_build_accepts_unsynchronised_clock():
+    """'not synchronised' is a legal, explicitly recorded state."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    m = build_manifest(frames, jsonl_size_bytes=50, clock={"source": "none"})
+    assert m["clock"] == {"source": "none"}
+
+
+def test_manifest_build_rejects_unknown_clock_key():
+    """The clock block is a controlled structure, not an open bag."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="unknown keys"):
+        build_manifest(
+            frames, jsonl_size_bytes=50, clock={"source": "ptp", "offsetMs": 1}
+        )
+
+
+def test_manifest_build_rejects_non_integer_offset():
+    """Offsets are integer nanoseconds — float seconds are a unit bug."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="clock.offsetNs must be an integer"):
+        build_manifest(
+            frames,
+            jsonl_size_bytes=50,
+            clock={"source": "ntp", "offsetNs": 0.000123, "estErrorNs": 500},
+        )
+
+
+def test_manifest_build_rejects_negative_est_error():
+    """A negative uncertainty is meaningless."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    with pytest.raises(ValueError, match="estErrorNs must be >= 0"):
+        build_manifest(
+            frames,
+            jsonl_size_bytes=50,
+            clock={"source": "tsf", "offsetNs": 10, "estErrorNs": -1},
+        )
+
+
+def test_clock_errors_reports_non_object():
+    assert clock_errors("ptp") == ["clock must be an object"]
+
+
+def test_negative_offset_is_legal():
+    """The offset is signed — this device can be ahead of the reference."""
+    frames = [{"episode_index": 1, "t_ns": 1_000_000}]
+    clock = {"source": "tsf", "offsetNs": -987_654, "estErrorNs": 1_000_000}
+    m = build_manifest(frames, jsonl_size_bytes=50, clock=clock)
+    assert m["clock"]["offsetNs"] == -987_654
+
+
+def test_manifest_for_episode_with_clock(tmp_path):
+    ep, _ = _write_episode(tmp_path)
+    m = manifest_for_episode(ep, clock=_CLOCK)
+    assert m["clock"] == _CLOCK
+    assert m["frameCount"] == 2
+
+
+def test_manifest_for_episode_without_clock(tmp_path):
+    """The writer never invents a clock block — the offset is measured, not derived."""
+    ep, _ = _write_episode(tmp_path)
+    assert "clock" not in manifest_for_episode(ep)
+
+
+def test_write_manifest_roundtrips_with_clock(tmp_path):
+    ep, _ = _write_episode(tmp_path, episode_index=3)
+    out = write_manifest(ep, clock=_CLOCK)
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["clock"] == _CLOCK
+
+
+def test_validate_manifest_with_clock(tmp_path):
+    """A manifest with a well-formed clock block passes validation."""
+    ep, jsonl = _write_episode(tmp_path)
+    manifest = build_manifest(
+        read_jsonl(jsonl), jsonl_size_bytes=jsonl.stat().st_size, clock=_CLOCK
+    )
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_validate_manifest_rejects_bad_clock(tmp_path):
+    """validate_manifest catches a hand-written offset with no uncertainty,
+    with or without a jsonschema backend installed."""
+    ep, jsonl = _write_episode(tmp_path, n=1)
+    manifest = {
+        "episodeIndex": 0,
+        "frameCount": 1,
+        "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None,
+        "videoSizeBytes": 0,
+        "durationMs": 0,
+        "clock": {"source": "ntp", "offsetNs": 4_000_000},
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is False
+    assert any("estErrorNs" in e for e in result["errors"])
+
+
+def test_clock_does_not_affect_existing_manifests(tmp_path):
+    """Existing manifests without clock validate unchanged (additive-only)."""
+    ep, jsonl = _write_episode(tmp_path, n=1)
+    manifest = {
+        "episodeIndex": 0,
+        "frameCount": 1,
+        "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None,
+        "videoSizeBytes": 0,
+        "durationMs": 0,
+    }
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+
+
+def test_clock_and_provenance_coexist(tmp_path):
+    """sessionId groups the devices, clock aligns them — both blocks together."""
+    ep, jsonl = _write_episode(tmp_path)
+    manifest = build_manifest(
+        read_jsonl(jsonl),
+        jsonl_size_bytes=jsonl.stat().st_size,
+        provenance=_PROVENANCE,
+        clock=_CLOCK,
+    )
+    (ep / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result["errors"]
+    assert manifest["provenance"]["sessionId"] == _PROVENANCE["sessionId"]
+    assert manifest["clock"]["refDeviceId"] == _CLOCK["refDeviceId"]
+
+
+def test_manifest_with_clock_passes_jsonschema():
+    """The JSON Schema accepts a full clock block (non-Python consumers)."""
+    import jsonschema
+
+    from mnesis_canonical.manifest import _MANIFEST_SCHEMA  # noqa: PLC270
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": 100,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+        "clock": _CLOCK,
+    }
+    jsonschema.validate(manifest, _MANIFEST_SCHEMA)
+
+
+@pytest.mark.parametrize(
+    "clock",
+    [
+        {"source": "gps", "offsetNs": 1, "estErrorNs": 1},   # off-vocabulary source
+        {"offsetNs": 1, "estErrorNs": 1},                    # no source
+        {"source": "ptp", "offsetNs": 1},                    # offset without error
+        {"source": "ptp", "estErrorNs": 1},                  # error without offset
+        {"source": "none", "offsetNs": 0, "estErrorNs": 0},  # sentinel offset
+        {"source": "ptp", "offsetNs": 1, "estErrorNs": -1},  # negative uncertainty
+        {"source": "ptp", "offsetMs": 1},                    # unknown key
+    ],
+    ids=["bad-source", "no-source", "lone-offset", "lone-error",
+         "none-with-offset", "negative-error", "unknown-key"],
+)
+def test_jsonschema_rejects_malformed_clock(clock):
+    """The JSON Schema enforces the same rules as the Python checker — the two
+    must not drift, or JS-side consumers validate more loosely than we do."""
+    import jsonschema
+
+    from mnesis_canonical.manifest import _MANIFEST_SCHEMA  # noqa: PLC270
+    manifest = {
+        "episodeIndex": 0, "frameCount": 1, "jsonlSizeBytes": 100,
+        "videoPath": None, "videoSizeBytes": 0, "durationMs": 0,
+        "clock": clock,
+    }
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(manifest, _MANIFEST_SCHEMA)
+    assert clock_errors(clock), "Python checker must reject what the schema rejects"
+
+
+def test_example_manifests_have_no_clock():
+    """No example manifest gained a clock block (additive-only regression)."""
+    for manifest_path in sorted(EXAMPLES_DIR.glob("*/manifest.json")):
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert "clock" not in manifest, f"{manifest_path} has clock unexpectedly"
+
+
+def test_spec_documents_the_clock_block():
+    """SPEC.md is the authoritative definition — contract before code."""
+    spec = (Path(__file__).resolve().parent.parent / "SPEC.md").read_text(encoding="utf-8")
+    assert "### Clock synchronisation" in spec
+    assert "t_reference = t_device + offsetNs" in spec
+    for source in sorted(CLOCK_SOURCES):
+        assert f"`{source}`" in spec, f"SPEC.md must document clock source {source}"

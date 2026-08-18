@@ -25,6 +25,7 @@
 | 铁律升格 · 缺失=未知禁带内哨兵 | `SPEC.md` §Conventions | #70 |
 | 字段级 status · `experimental`/`stable`/`deprecated` | `SPEC.md` §Versioning | #70 |
 | C12 双端语义契约 PS0 | `ObservationLabel` / `scene_graph` / 三个 8442 消息 + 分类登记表 | #77 |
+| C6 转正 · manifest `clock` 段 | `source` / `refDeviceId` / `offsetNs` / `estErrorNs`，实测偏移必须落盘 | #118 |
 | 版本号一致性门禁 | `scripts/version_check.py` 三处一致 | #82 |
 | T1 快路径试点 | 无状态检查挪到托管 runner | #101 |
 | T5-std 发布清单 | `RELEASE_CHECKLIST_v1.0.md` 推上 canonical main | #99 |
@@ -51,11 +52,12 @@ Quest→Canonical 导出器，补齐第三采集面。手部/头显位姿 → `h
 
 **状态**：草案，待 Muso 拍板字段定义。
 
-### P1 — C6 跨设备时间同步
+### ~~P1 — C6 跨设备时间同步~~（已落地 #118）
 
-每 session 记录 `clock_offset_ns`（设备 vs 参考钟）。做多设备融合 / 遥操作因果分析前必须。
+manifest 可选 `clock` 段：`source`（`ptp`/`tsf`/`ntp`/`none`）+ `refDeviceId` + `offsetNs` + `estErrorNs`。
+见 `SPEC.md` §Clock synchronisation。
 
-**状态**：草案，Owner 待定（本仓定义字段，各设备端各自测量）。
+**状态**：本仓字段已落地（#118）；剩余为各设备端测量并填写（Argus / 龙旗 DatCap 多机融合、Daedalus 机器人端）。
 
 ### P2 — C7 数据集导出格式契约
 
@@ -116,7 +118,7 @@ Eidolon MI-1 ✅ + Ambrosia S6（收 3 面 + robot 忠实回放 + LeRobot 导出
 |---|---|---|
 | C1 帧 schema 主体 + `canonical_frame.schema.json` | 全仓基石，Parthenon spine 中未单列 | 归属 `T2-comms` / `T4-contract` 底座，建议 F-T4-contract 下增设 `F-T4-contract-c1-schema` |
 | C1-vNext 溯源字段（manifest 层） | 草案待拍板 | 建议归属 `T4-contract` 或新开 `F-T3-canonical-traceability` |
-| C6 跨设备时间同步 | 草案待拍板 | 建议归属 `T2-comms`，`F-T2-comms-c6-timestamp` |
+| C6 跨设备时间同步 | 已落地（#118，manifest `clock` 段） | 建议归属 `T2-comms`，`F-T2-comms-c6-timestamp` |
 | C9 相机内参一等字段 | 草案待拍板 | 归属 `T2-comms`，`F-T2-comms-c9-intrinsics` |
 | 骨架登记表（`skeletons/`） | C11 结案配套 | 归属 `F-T2-percep-ps0` 或新开 `F-T2-comms-c11-skeleton-registry` |
 | LeRobot/Isaac 适配器 | `to_lerobot` / `to_isaac` | 归属 `T5-std` 底座，建议 `F-T5-std-adapters` |
