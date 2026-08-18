@@ -20,6 +20,11 @@ between a manifest.json and its sibling data.jsonl (S2-5).
 Side channels that have no dedicated pointer (IMU, audio, logs, calibration, …)
 register via the generic ``sidecars[]`` array (SPEC §Episode layout). Each entry
 carries a controlled ``kind`` plus its on-disk ``path`` and optional metadata.
+
+An optional ``cameraIntrinsics`` block carries first-class camera intrinsics keyed
+by camera name — model (controlled vocabulary), resolution and pinhole parameters
+(C9, additive-only). Device/calibration property, stored once per episode, never
+per frame.
 """
 from __future__ import annotations
 
@@ -35,6 +40,18 @@ with open(_SCHEMA_PATH, encoding="utf-8") as _f:
 # Controlled vocabulary for sidecar ``kind`` (additive registration, SPEC §Episode
 # layout). New kinds are added here, never invented ad hoc by a producer.
 SIDECAR_KINDS = frozenset({"imu", "audio", "log", "calib"})
+
+# Controlled distortion-model vocabulary for ``cameraIntrinsics`` (SPEC §Manifest
+# cameraIntrinsics, C9). The model is mandatory — the same coefficient vector means
+# completely different optics under different models. Additive registration only.
+CAMERA_MODELS = frozenset({"pinhole", "pinhole_radtan", "kannala_brandt", "double_sphere"})
+
+# Sub-keys allowed inside one ``cameraIntrinsics.<cam>`` entry (mirrors
+# ``manifest.schema.json``; used by the schema-independent checks).
+_INTRINSICS_KEYS = frozenset(
+    {"model", "width", "height", "fx", "fy", "cx", "cy", "distortion"}
+)
+_REQUIRED_INTRINSICS_KEYS = frozenset({"model", "width", "height", "fx", "fy", "cx", "cy"})
 
 # Default ``kind``/``format`` for sidecar files discovered under a well-known
 # subdirectory (used by :func:`manifest_for_episode` auto-discovery).
@@ -56,6 +73,7 @@ def build_manifest(
     annotations_path: str | None = None,
     sidecars: list[dict] | None = None,
     provenance: dict | None = None,
+    camera_intrinsics: dict | None = None,
 ) -> dict:
     """Build a manifest dict from in-memory frames (pure; no I/O).
 
@@ -69,6 +87,12 @@ def build_manifest(
     property in ``manifest.schema.json`` (C1-vNext, additive-only).  When
     provided, the entire block is added verbatim — no validation beyond type
     checking is performed here; the schema validator handles field-level checks.
+
+    ``camera_intrinsics`` is an optional dict keyed by camera name, each value a
+    `{model, width, height, fx, fy, cx, cy, distortion?}` entry (SPEC §Manifest
+    cameraIntrinsics, C9). ``model`` must be in the controlled vocabulary
+    :data:`CAMERA_MODELS` — intrinsics without a model are unusable (the same
+    coefficients mean different optics under different models).
     """
     if not frames:
         raise ValueError("cannot build a manifest for an empty episode")
@@ -97,6 +121,29 @@ def build_manifest(
         result["sidecars"] = sidecars
     if provenance is not None:
         result["provenance"] = provenance
+    if camera_intrinsics is not None:
+        if not isinstance(camera_intrinsics, dict) or not camera_intrinsics:
+            raise ValueError("camera_intrinsics must be a non-empty dict keyed by camera name")
+        for cam, entry in camera_intrinsics.items():
+            if not isinstance(entry, dict):
+                raise ValueError(f"camera_intrinsics[{cam!r}] must be an object")
+            missing = _REQUIRED_INTRINSICS_KEYS - entry.keys()
+            if missing:
+                raise ValueError(
+                    f"camera_intrinsics[{cam!r}] missing required keys: "
+                    f"{sorted(missing)}"
+                )
+            unknown = entry.keys() - _INTRINSICS_KEYS
+            if unknown:
+                raise ValueError(
+                    f"camera_intrinsics[{cam!r}] unknown keys: {sorted(unknown)}"
+                )
+            if entry["model"] not in CAMERA_MODELS:
+                raise ValueError(
+                    f"camera_intrinsics[{cam!r}].model {entry['model']!r} is not "
+                    f"in the controlled vocabulary: {sorted(CAMERA_MODELS)}"
+                )
+        result["cameraIntrinsics"] = camera_intrinsics
     return result
 
 
@@ -176,6 +223,67 @@ def write_manifest(
     out = episode_dir / "manifest.json"
     out.write_text(json.dumps(manifest, indent=indent) + "\n", encoding="utf-8", newline="\n")
     return out
+
+
+def _camera_intrinsics_errors(camera_intrinsics: object) -> list[str]:
+    """Schema-independent checks for a ``cameraIntrinsics`` block.
+
+    Returns a list of human-readable error strings (empty = valid). The JSON
+    Schema covers the shape; these checks run even when ``jsonschema`` is not
+    installed, and mirror what ``build_manifest`` enforces at build time.
+    """
+    errors: list[str] = []
+    if not isinstance(camera_intrinsics, dict) or not camera_intrinsics:
+        return ["cameraIntrinsics must be an object keyed by camera name"]
+    for cam, entry in camera_intrinsics.items():
+        if not isinstance(cam, str) or not cam:
+            errors.append("cameraIntrinsics camera names must be non-empty strings")
+            continue
+        if not isinstance(entry, dict):
+            errors.append(f"cameraIntrinsics[{cam!r}] must be an object")
+            continue
+        if "model" not in entry:
+            errors.append(f"cameraIntrinsics[{cam!r}] missing 'model' (mandatory — "
+                          "the same coefficients mean different optics under "
+                          "different models)")
+            continue
+        if entry["model"] not in CAMERA_MODELS:
+            errors.append(
+                f"cameraIntrinsics[{cam!r}].model {entry['model']!r} is not in "
+                f"the controlled vocabulary: {sorted(CAMERA_MODELS)}"
+            )
+        for req in ("width", "height", "fx", "fy", "cx", "cy", "model"):
+            if req not in entry:
+                errors.append(f"cameraIntrinsics[{cam!r}] missing '{req}'")
+        for num_key in ("fx", "fy", "cx", "cy"):
+            if num_key not in entry:
+                continue
+            value = entry[num_key]
+            if not isinstance(value, (int, float)) or not _is_finite(value):
+                errors.append(f"cameraIntrinsics[{cam!r}].{num_key} must be a finite number")
+        for dim_key in ("width", "height"):
+            value = entry.get(dim_key)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                errors.append(f"cameraIntrinsics[{cam!r}].{dim_key} must be a positive integer")
+        if "distortion" in entry:
+            distortion = entry["distortion"]
+            if not isinstance(distortion, list) or any(
+                not isinstance(d, (int, float)) or not _is_finite(d)
+                for d in distortion
+            ):
+                errors.append(
+                    f"cameraIntrinsics[{cam!r}].distortion must be an array of finite numbers"
+                )
+    return errors
+
+
+def _is_finite(value: object) -> bool:
+    try:
+        import math
+
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def validate_manifest(episode_dir: str | Path) -> dict:
