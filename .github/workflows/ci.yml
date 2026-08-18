@@ -86,7 +86,18 @@ jobs:
     name: Ruff · Pytest
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # ── 2026-08-18 #129: 自托管 runner 的 actions/checkout@v4 从 codeload.github.com
+      # 下载时被限频（429  Too Many Requests），表现为 Job 在 Set up job 阶段就挂掉。
+      # 改用 git fetch + GITHUB_TOKEN 直连 github.com（不走 codeload），
+      # 规避限频。详见 ci.yml 头部注释，commit 3a1c0bc 的 CI 从 2026-08-17 起恒红即此因。
+      - name: Checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --depth=1 origin ${{ github.sha }}
+          git checkout --detach ${{ github.sha }}
       - name: Toolchain
         run: uv --version
       - name: Venv + deps
@@ -99,7 +110,14 @@ jobs:
     name: Contracts integrity
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --depth=1 origin ${{ github.sha }}
+          git checkout --detach ${{ github.sha }}
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
@@ -109,7 +127,14 @@ jobs:
     name: Embodiment registry
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --depth=1 origin ${{ github.sha }}
+          git checkout --detach ${{ github.sha }}
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
@@ -119,7 +144,14 @@ jobs:
     name: Release checklist §2-§6
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --depth=1 origin ${{ github.sha }}
+          git checkout --detach ${{ github.sha }}
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
