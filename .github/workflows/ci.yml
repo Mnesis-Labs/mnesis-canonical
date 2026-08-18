@@ -81,12 +81,55 @@ env:
 # 仍然不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，在自托管
 # Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。uv 用机器上已有的
 # Python 建 venv，没有这个问题，且顺带把依赖装进项目级 venv 而不是污染全局环境。
+#
+# ── 自托管腿为什么手写 checkout 而不用 actions/checkout（2026-08-19，#126）─────
+# main 连续红 4 小时，四个 job 里三个**在 "Set up job" 就死了**，一行仓内代码都没跑：
+#
+#   Failed to download action
+#     'https://codeload.github.com/actions/checkout/zip/11d5960a…'
+#   Response status code does not indicate success: 429 (Too Many Requests).
+#   The SSL connection could not be established.   ← mac 腿是这条
+#
+# 即 run 32040618031。同一 run 里 `Ruff · Pytest` 是绿的 —— 代码没问题，
+# 挂的是 runner 取 action 那一步。这类红最坑的地方是**它长得像代码有问题**：
+# 默认分支红着，之后每个 PR 都继承这条失败，排查时每个 PR 都像自己有毛病。
+#
+# 为什么会 429：runner 每个 job 都会把 `_work/_actions/<owner>/<repo>/<ref>`
+# 删掉重下，不是下一次全仓复用。本仓 ci.yml 有 4 个 job，push 与 pull_request
+# 还双触发，一次推送就是 8 次 codeload 拉取；两台自托管 runner 又都在国内、
+# 经同一个代理出口访问 codeload —— 打到限流是迟早的事，不是偶发。
+# （同源病灶见本文件上面那段 pip 镜像注释 #103：国内出口 + 境外源 = 反复假红。）
+#
+# 手写 checkout 同时消掉症状与病因：这一步只用 runner 上已有的 git 打一次
+# `--depth=1` 取 `$GITHUB_SHA`，完全不碰 codeload，也就不再给限流添柴。
+# 代价是 4 个 job 各抄一遍这 10 行 —— 本地 composite action（`./.github/actions/*`）
+# 救不了这个场景，因为用它之前仓库必须已经 checkout 出来，正是先有鸡还是先有蛋。
+#
+# 只改自托管腿。ci-fast.yml 跑在 GitHub 托管 runner 上，取 action 走内网、
+# 从没因此红过，保持 actions/checkout 不动。
 jobs:
   test:
     name: Ruff · Pytest
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 上一版 actions/checkout 会把带 token 的 extraheader 写进 .git/config；
+          # 那个 token 早已过期，留着会让下面的 fetch 带着坏 Authorization 头去请求。
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Toolchain
         run: uv --version
       - name: Venv + deps
@@ -99,7 +142,22 @@ jobs:
     name: Contracts integrity
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
@@ -109,7 +167,22 @@ jobs:
     name: Embodiment registry
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
@@ -119,7 +192,22 @@ jobs:
     name: Release checklist §2-§6
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
