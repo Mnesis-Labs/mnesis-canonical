@@ -277,7 +277,7 @@ def _camera_intrinsics_errors(camera_intrinsics: object) -> list[str]:
     return errors
 
 
-def _is_finite(value: object) -> bool:
+def _is_finite(value: float) -> bool:
     try:
         import math
 
