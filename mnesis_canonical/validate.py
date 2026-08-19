@@ -305,6 +305,15 @@ def validate_frame(
         elif frame["spatial_anchor_id"] == "":
             errors.append("spatial_anchor_id must be a non-empty string or null")
 
+    # --- space_id validation (C8, additive, optional) ---
+    # Same shape as spatial_anchor_id: str | null, non-empty when present.
+    # Absent = space unknown (per the iron rule).
+    if "space_id" in frame and frame["space_id"] is not None:
+        if not isinstance(frame["space_id"], str):
+            errors.append("space_id must be a string or null")
+        elif frame["space_id"] == "":
+            errors.append("space_id must be a non-empty string or null")
+
     # --- embodiment_id validation ---
     if "embodiment_id" in frame and frame["embodiment_id"] is not None:
         if not isinstance(frame["embodiment_id"], str):
@@ -415,6 +424,7 @@ def _warn_unknown_keys(frame: dict, warnings: list[str]) -> None:
         "observation.images.ego",
         # Optional keys (explicitly defined in the schema)
         "profile", "embodiment_id", "spatial_anchor_id", "spatial_anchor_pose_SE3",
+        "space_id",
         "observation.eef_pose.left", "observation.eef_pose.right",
         "action.gripper",
         "observation.gripper", "observation.gripper.left", "observation.gripper.right",

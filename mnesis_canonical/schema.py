@@ -198,7 +198,7 @@ VECTOR_LENGTHS = {
 }
 
 INT_KEYS = ("index", "episode_index", "task_index", "frame_index", "t_ns", "t_hw_ns")
-NULLABLE_KEYS = ("spatial_anchor_id",)  # optional but recommended
+NULLABLE_KEYS = ("spatial_anchor_id", "space_id")  # optional but recommended
 
 # Events.jsonl type vocabulary (v0.2+).
 EVENT_TYPES = (
@@ -264,6 +264,7 @@ class CanonicalFrame:
     source_modality: str
     tracking_state: str
     spatial_anchor_id: str | None = None
+    space_id: str | None = None
     profile: str | None = None
     embodiment_id: str | None = None
     observation_images: dict[str, str] | None = None
@@ -307,6 +308,7 @@ class CanonicalFrame:
             "observation.images.ego": self.observation_images_ego,
             "action": list(self.action),
             "spatial_anchor_id": self.spatial_anchor_id,
+            "space_id": self.space_id,
             "source.device": self.source_device,
             "source.modality": self.source_modality,
             "tracking_state": self.tracking_state,
@@ -372,6 +374,7 @@ class CanonicalFrame:
             source_modality=d["source.modality"],
             tracking_state=d["tracking_state"],
             spatial_anchor_id=d.get("spatial_anchor_id"),
+            space_id=d.get("space_id"),
             profile=d.get("profile"),
             embodiment_id=d.get("embodiment_id"),
             observation_images=(

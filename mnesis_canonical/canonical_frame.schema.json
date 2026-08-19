@@ -93,6 +93,11 @@
       "x-status": "stable",
       "description": "The ANCHOR's own pose in the world frame [tx,ty,tz, qx,qy,qz,qw] (optional). This — not head_pose_SE3 — is what identifies an anchor. Supply it when the capture surface can localise the anchor; conflicting definitions of the same spatial_anchor_id are then detected against it. Omit when unavailable: the anchor id is still carried, only the consistency check is skipped."
     },
+    "space_id": {
+      "type": ["string", "null"],
+      "x-status": "stable",
+      "description": "Shared physical-space identifier (C8, additive). All devices in the same physical space use the same value, enabling cross-device episode merge/alignment. Orthogonal to spatial_anchor_id (per-engine anchor namespace). Absent = space unknown."
+    },
     "source.device": {
       "type": "string",
       "x-status": "stable",

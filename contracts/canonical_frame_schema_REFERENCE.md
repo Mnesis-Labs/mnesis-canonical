@@ -89,6 +89,7 @@ check-jsonschema --schemafile mnesis_canonical/canonical_frame.schema.json episo
 | `observation.hand.frame` | str | — | *all* opt | **[experimental]** `world` / `head_anchored` / `hand_local` —— 关键点所在参考系，**有关键点时必填**。`head_anchored` = 手内自洽、手相对世界的绝对位置**不可信** |
 | `observation.hand.source` | str | — | *all* opt | **[experimental]** 溯源标签（开放集），如 `mediapipe_world+arcore_pose`。**只管溯源**，几何语义在 `observation.hand.frame` |
 | `spatial_anchor_id` | str\|null | — | *all* | 空间锚点 ID |
+| `space_id` | str\|null | — | *all* opt | 物理空间共享标识（UUID 或共享 fiducial 原点 ID）；跨设备同空间 episode 合并用。与 `spatial_anchor_id` 正交——后者是各引擎私有的锚点命名空间（ARCore/OpenXR），`space_id` 是跨引擎共享的空间标识 |
 | `profile` | str | — | *all* opt | 可选; `ego_v1` (默认) / `robot_v2` |
 | `embodiment_id` | str\|null | — | *all* opt | 引用 embodiment registry |
 | `source.device` | str | — | *all* | 采集设备（phone/glasses/quest/pico/robot/sim） |

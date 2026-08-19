@@ -57,6 +57,26 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
   `observation.gripper` on the **same** `[0,1]` closedness scale. All gripper
   keys are **optional and additive** — frames without them validate unchanged.
 
+### Space identifier — `space_id` (C8, additive)
+
+A shared identifier for the **physical space** in which an episode was recorded, enabling
+multi-device same-space episode merge. Multiple devices in the same room use the same
+`space_id` value, making their episodes groupable by space without comparing per-device
+anchor IDs:
+
+- **`spatial_anchor_id`** is per-engine, per-device — an ARCore anchor id (phone) and an
+  OpenXR anchor id (Quest) are incomparable even when they refer to the same physical
+  point.
+- **`space_id`** is shared — if both devices record the same room UUID or scan the same
+  fiducial marker, they emit the same `space_id`. Downstream (Ambrosia) can then merge
+  or align the two episodes.
+
+The field is **optional and additive** — a frame without a `space_id` key is valid and
+means "space unknown". When present, it must be a non-empty string or `null` (null
+serves as explicit "this episode is in a space but the id is unset"). The relationship
+with `spatial_anchor_pose_SE3` is orthogonal: that field localises the anchor within the
+device's world frame; `space_id` identifies the space itself.
+
 ### Gripper channel (C8, additive)
 The gripper is a **continuous scalar in `[0.0, 1.0]`** (`0.0` = fully open, `1.0` = fully
 closed) carried as an optional first-class field — not folded into
@@ -107,6 +127,7 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
 | `observation.hand.source` | str | *all* optional | **[experimental]** Provenance label (open set), e.g. `mediapipe_world+arcore_pose`. Provenance **only** — geometry lives in `observation.hand.frame` | `experimental` |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) | `stable` |
 | `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. | `stable` |
+| `space_id` | str \| null | *all* optional | Shared physical-space identifier (UUID or shared fiducial origin id). All devices in the same physical space use the **same** value, enabling cross-device episode merge/alignment. **Orthogonal to `spatial_anchor_id`**: that field is a per-engine, per-device anchor namespace (ARCore / OpenXR), while `space_id` is a shared space identifier that bridges across engines. Absent = space unknown. | `stable` |
 | `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` | `stable` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) | `stable` |
 | `source.device` | str | *all* | one of `phone, glasses, quest, pico, robot, sim` (open set) | `stable` |
