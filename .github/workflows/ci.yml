@@ -112,13 +112,33 @@ jobs:
     name: Ruff · Pytest
     runs-on: [self-hosted]
     steps:
-      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
-      - name: Checkout
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）。
+      # 拆成两条 OS 分支：runner 服务进程的 PATH 上 C:\Windows\System32\bash.exe
+      # （WSL 转发桩）排在 Git 的 bash.exe 前面，`shell: bash` 在 Windows 腿上解析
+      # 到那个桩，脚本临时文件的 Windows 路径被当成 WSL 路径处理，报 "No such
+      # file or directory"，job 几秒内就死——比旧的 429 更隐蔽：不是每次必红，
+      # 落到 mac runner 的那一半照样绿，看起来像间歇性 flaky 而不是必现 bug。
+      - name: Checkout (Windows)
+        if: runner.os == 'Windows'
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
+      - name: Checkout (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          # 上一版 actions/checkout 会把带 token 的 extraheader 写进 .git/config；
-          # 那个 token 早已过期，留着会让下面的 fetch 带着坏 Authorization 头去请求。
           git init -q .
           git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
@@ -142,8 +162,25 @@ jobs:
     name: Contracts integrity
     runs-on: [self-hosted]
     steps:
-      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
-      - name: Checkout
+      # 手写 checkout：见「Ruff · Pytest」job 里同一步的注释（#126）
+      - name: Checkout (Windows)
+        if: runner.os == 'Windows'
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
+      - name: Checkout (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -167,8 +204,25 @@ jobs:
     name: Embodiment registry
     runs-on: [self-hosted]
     steps:
-      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
-      - name: Checkout
+      # 手写 checkout：见「Ruff · Pytest」job 里同一步的注释（#126）
+      - name: Checkout (Windows)
+        if: runner.os == 'Windows'
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
+      - name: Checkout (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -192,8 +246,25 @@ jobs:
     name: Release checklist §2-§6
     runs-on: [self-hosted]
     steps:
-      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
-      - name: Checkout
+      # 手写 checkout：见「Ruff · Pytest」job 里同一步的注释（#126）
+      - name: Checkout (Windows)
+        if: runner.os == 'Windows'
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
+      - name: Checkout (non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
