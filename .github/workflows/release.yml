@@ -26,7 +26,30 @@ jobs:
     name: Release checklist + publish
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 见 ci.yml 文件头「Windows 腿的 shell: bash 陷阱」（#126）
+      - name: Prepend Git Bash to PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
+      # 手写 checkout，不用 actions/checkout：自托管 runner 取 action 走 codeload，
+      # 国内出口打到 429 / SSL 失败会让 job 在 "Set up job" 就死掉，一行代码都没跑。
+      # 完整原委见 ci.yml 文件头「自托管腿为什么手写 checkout」（#126）。
+      # tag 名从 $GITHUB_REF_NAME 拿，不依赖 fetch 到 tag，所以 --no-tags 够用。
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
 
       - name: Toolchain
         run: uv --version

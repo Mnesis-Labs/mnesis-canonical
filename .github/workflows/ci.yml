@@ -81,12 +81,79 @@ env:
 # 仍然不用 actions/setup-python：它会往 runner 的 tool cache 重装 Python，在自托管
 # Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。uv 用机器上已有的
 # Python 建 venv，没有这个问题，且顺带把依赖装进项目级 venv 而不是污染全局环境。
+#
+# ── 自托管腿为什么手写 checkout 而不用 actions/checkout（2026-08-19，#126）─────
+# main 连续红 4 小时，四个 job 里三个**在 "Set up job" 就死了**，一行仓内代码都没跑：
+#
+#   Failed to download action
+#     'https://codeload.github.com/actions/checkout/zip/11d5960a…'
+#   Response status code does not indicate success: 429 (Too Many Requests).
+#   The SSL connection could not be established.   ← mac 腿是这条
+#
+# 即 run 32040618031。同一 run 里 `Ruff · Pytest` 是绿的 —— 代码没问题，
+# 挂的是 runner 取 action 那一步。这类红最坑的地方是**它长得像代码有问题**：
+# 默认分支红着，之后每个 PR 都继承这条失败，排查时每个 PR 都像自己有毛病。
+#
+# 为什么会 429：runner 每个 job 都会把 `_work/_actions/<owner>/<repo>/<ref>`
+# 删掉重下，不是下一次全仓复用。本仓 ci.yml 有 4 个 job，push 与 pull_request
+# 还双触发，一次推送就是 8 次 codeload 拉取；两台自托管 runner 又都在国内、
+# 经同一个代理出口访问 codeload —— 打到限流是迟早的事，不是偶发。
+# （同源病灶见本文件上面那段 pip 镜像注释 #103：国内出口 + 境外源 = 反复假红。）
+#
+# 手写 checkout 同时消掉症状与病因：这一步只用 runner 上已有的 git 打一次
+# `--depth=1` 取 `$GITHUB_SHA`，完全不碰 codeload，也就不再给限流添柴。
+# 代价是 4 个 job 各抄一遍这 10 行 —— 本地 composite action（`./.github/actions/*`）
+# 救不了这个场景，因为用它之前仓库必须已经 checkout 出来，正是先有鸡还是先有蛋。
+#
+# 只改自托管腿。ci-fast.yml 跑在 GitHub 托管 runner 上，取 action 走内网、
+# 从没因此红过，保持 actions/checkout 不动。
+#
+# ── Windows 腿的 `shell: bash` 陷阱（2026-08-19，#126 追）─────────────────────
+# 上面手写 checkout 首版直接用 `shell: bash`，在 GitHub 托管 runner / mac 自托管
+# runner 上没问题，但这台 Windows 自托管 runner 的 actions-runner 服务进程 PATH
+# 里 C:\Windows\System32\bash.exe（WSL 转发桩）排在 Git 的 bash.exe 前面 ——
+# 交互式用户会话看不到这个顺序，只有服务进程的 PATH 是这样。`shell: bash` 解析
+# 到那个桩，桩把 Actions 写的 Windows 风格脚本临时文件路径当 WSL 路径处理，
+# 报 "No such file or directory"，job 几秒内就死。比原来的 429 更隐蔽：不是
+# 每次必红，落到 mac runner 的一半照样绿，看起来像间歇性 flaky。
+#
+# 试过把 `shell:` 直接钉成 Git bash.exe 的绝对路径（'C:\Program Files\Git\bin\
+# bash.exe ... {0}'），撞上 actions/runner 已知问题：自定义 shell 命令里带盘符
+# 的绝对路径会让 runner 内部 Path.Combine 抛 "Second path fragment must not be
+# a drive or UNC name"，job 同样秒挂。
+#
+# 改用 $GITHUB_PATH：在 checkout 之前加一步只在 Windows 上跑、把 Git 的 bin 目录
+# 写进 $GITHUB_PATH，对本 job 剩余步骤生效的 PATH 前置一段——不碰 `shell:` 语法，
+# 不撞上面那个 runner bug，之后同一个 `shell: bash` 步骤在两种 OS 上都能正确解析
+# 到真正的 Git Bash，四个 job 也不用各抄一份 OS 分支的 checkout 脚本。
 jobs:
   test:
     name: Ruff · Pytest
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 见文件头「Windows 腿的 shell: bash 陷阱」（#126）
+      - name: Prepend Git Bash to PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 上一版 actions/checkout 会把带 token 的 extraheader 写进 .git/config；
+          # 那个 token 早已过期，留着会让下面的 fetch 带着坏 Authorization 头去请求。
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Toolchain
         run: uv --version
       - name: Venv + deps
@@ -99,7 +166,27 @@ jobs:
     name: Contracts integrity
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 见文件头「Windows 腿的 shell: bash 陷阱」（#126）
+      - name: Prepend Git Bash to PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
@@ -109,7 +196,27 @@ jobs:
     name: Embodiment registry
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 见文件头「Windows 腿的 shell: bash 陷阱」（#126）
+      - name: Prepend Git Bash to PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
@@ -119,7 +226,27 @@ jobs:
     name: Release checklist §2-§6
     runs-on: [self-hosted]
     steps:
-      - uses: actions/checkout@v4
+      # 见文件头「Windows 腿的 shell: bash 陷阱」（#126）
+      - name: Prepend Git Bash to PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
+      # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
+      - name: Checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
+            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          for n in 1 2 3; do
+            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
+            sleep $((n * 10))
+          done
+          [ "${ok:-}" = 1 ]
+          git checkout -q --detach FETCH_HEAD
+          git clean -qffdx
       - name: Venv + deps
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
