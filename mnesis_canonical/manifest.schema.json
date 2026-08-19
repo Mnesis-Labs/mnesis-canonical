@@ -78,6 +78,52 @@
         "additionalProperties": false
       }
     },
+    "clock": {
+      "type": "object",
+      "description": "Optional cross-device clock synchronisation record (C6, additive-only). States how this device's clock relates to a reference clock and how well that relation is known. A datasheet promise (\"synchronised <1ms\") is not a measurement: clocks drift, re-sync, and lose lock, so downstream fusion needs the offset actually measured for this session plus its uncertainty to decide whether a segment can be fused at all.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["ptp", "tsf", "ntp", "none"],
+          "description": "Where the synchronisation came from. PTP / Wi-Fi TSF / NTP differ by two orders of magnitude in accuracy, so a consumer's trust threshold must be per-source. \"none\" = not synchronised; writing it explicitly is far better than leaving the block out and letting a consumer assume synchronisation happened."
+        },
+        "refDeviceId": {
+          "type": "string",
+          "description": "Identifier of the device holding the reference clock in a multi-device session, same namespace as provenance.deviceId. Omit when the reference is not one of the recording devices (e.g. a PTP grandmaster)."
+        },
+        "offsetNs": {
+          "type": "integer",
+          "description": "Signed offset of this device's clock relative to the reference clock, in nanoseconds: t_reference = t_device + offsetNs. Omit when unmeasured — never write 0 to mean \"unknown\" (SPEC §Conventions)."
+        },
+        "estErrorNs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Estimated error (1 sigma) of offsetNs, in nanoseconds. Mandatory alongside offsetNs: \"123 us +/- 0.5 ms\" and \"123 us +/- 50 ms\" are two entirely different kinds of data, and without the uncertainty a consumer still cannot judge fusability."
+        }
+      },
+      "required": ["source"],
+      "dependentRequired": {
+        "offsetNs": ["estErrorNs"],
+        "estErrorNs": ["offsetNs"]
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"source": {"const": "none"}},
+            "required": ["source"]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {"required": ["offsetNs"]},
+                {"required": ["estErrorNs"]}
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
     "provenance": {
       "type": "object",
       "description": "Optional provenance metadata identifying who produced the data, with which build, and in which session (C1-vNext, additive-only).",

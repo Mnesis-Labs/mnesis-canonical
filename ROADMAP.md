@@ -52,7 +52,9 @@ Quest→Canonical 导出器，补齐第三采集面。手部/头显位姿 → `h
 
 ### P1 — C6 跨设备时间同步
 
-每 session 记录 `clock_offset_ns`（设备 vs 参考钟）。做多设备融合 / 遥操作因果分析前必须。
+每 session 记录一次实测时钟偏移（设备 vs 参考钟）。做多设备融合 / 遥操作因果分析前必须。
+落地形态为 manifest 可选 `clock` 段：`source`（`ptp`/`tsf`/`ntp`/`none`）+ `refDeviceId` +
+`offsetNs` + `estErrorNs`（草案原文的 `clock_offset_ns` 不进 wire），见 `SPEC.md` §Clock synchronisation。
 
 **状态**：实现已在 [PR#131](https://github.com/Mnesis-Labs/mnesis-canonical/pull/131)，CI 绿，待 Muso 拍板合并（`needs:muso-decision`）。
 

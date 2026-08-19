@@ -491,6 +491,52 @@ existing manifests without it validate unchanged. Naming follows the manifest's
 camelCase convention (`schemaVersion`, `captureApp`, `appVersion`, `gitSha`,
 `deviceId`, `sessionId`), distinct from the frame schema's snake_case.
 
+### Clock synchronisation (`clock`, optional, additive, C6)
+
+`t_hw_ns` is the join key between pose, video, and other devices — but phone,
+robot, and headset clocks do not agree with each other. A datasheet line
+("wireless multi-device sync <1 ms") is a **factory promise, not a measurement**:
+in the field clocks drift, re-synchronise, and lose lock under weak signal. A
+consumer that only has the promise can do nothing but trust or distrust a whole
+recording. The optional `clock` block records what was actually measured for
+this session, so that a consumer can decide per segment:
+
+```jsonc
+"clock": {
+  "source": "ptp",              // ptp | tsf | ntp | none
+  "refDeviceId": "9f21ab34cd56",// which device holds the reference clock
+  "offsetNs": 123456,           // signed: t_reference = t_device + offsetNs
+  "estErrorNs": 500             // 1σ uncertainty of offsetNs
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `source` | string | **Required inside the block.** Controlled vocabulary: `ptp` \| `tsf` (Wi-Fi TSF) \| `ntp` \| `none`. PTP / TSF / NTP differ by two orders of magnitude in accuracy, so trust thresholds MUST be set per source rather than on the offset alone. `none` = not synchronised — an explicit `none` is far better than an absent block that a consumer reads as "presumably synced". |
+| `refDeviceId` | string | Which device holds the reference clock in a multi-device session — same namespace as `provenance.deviceId`. Omit when the reference is not one of the recording devices (e.g. a PTP grandmaster). |
+| `offsetNs` | integer | Signed offset of this device's clock against the reference, in nanoseconds, defined as **`t_reference = t_device + offsetNs`**. |
+| `estErrorNs` | integer ≥ 0 | Estimated 1σ error of `offsetNs`, in nanoseconds. |
+
+**`offsetNs` and `estErrorNs` are a pair — neither may appear alone.** "Offset
+123 µs ± 0.5 ms" and "offset 123 µs ± 50 ms" are two entirely different kinds of
+data; an offset without its uncertainty leaves the consumer exactly where it
+started, unable to judge whether this segment can be fused with another device's.
+
+**`source: "none"` MUST NOT carry `offsetNs` / `estErrorNs`.** Unsynchronised is
+a real state, and `0` is a real offset — encoding the former as the latter is
+precisely the in-band sentinel banned by §Conventions. Omit the pair instead.
+
+**Multi-device sessions.** `clock` pairs with `provenance.sessionId`: devices
+co-recording one session share the `sessionId` to group their episodes, and each
+carries its own `clock` to correct onto a common timeline. Either one alone is
+insufficient — grouping without offsets cannot align, offsets without grouping
+cannot find their peers.
+
+**Backward compatibility.** The whole block is optional and every consumer that
+ignores it behaves exactly as before; existing manifests validate unchanged.
+Absence of `clock` means the offset was never recorded — it does **not** mean
+zero offset, and consumers MUST NOT assume synchronisation from its absence.
+
 ## Compatibility (must stay true — `4c` DATA5)
 - **LeRobot**: flat columns map 1:1 to LeRobot dataset features (`observation.state`, `action`, `timestamp`, `episode_index`, `frame_index`, `index`, `task_index`).
 - **Isaac / GR00T**: keep field names + units (SI metres, rad) compatible so episodes can feed NVIDIA physical-AI pipelines without re-labeling. Diff/decisions tracked here before any field is frozen.

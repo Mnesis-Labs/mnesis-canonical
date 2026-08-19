@@ -314,6 +314,41 @@ are decoupled:
   / `write_manifest` accept a `provenance` kwarg), `SPEC.md` (§Manifest
   provenance), `tests/test_manifest.py` (provenance conformance tests) synced.
 
+- **C6 promoted from draft — Manifest clock synchronisation block (issue #118,
+  additive-only).** "Synchronised <1 ms" on a datasheet is a factory promise, not
+  a measurement: clocks drift, re-synchronise, and lose lock in the field. The
+  episode manifest now carries an optional `clock` block holding what was actually
+  measured for the session, so a consumer can judge fusability per segment instead
+  of trusting or distrusting a whole recording:
+
+  - `source` — **required inside the block**; controlled vocabulary
+    `ptp` | `tsf` | `ntp` | `none`. The three mechanisms differ by two orders of
+    magnitude in accuracy, so trust thresholds are per-source. `none` = not
+    synchronised, stated explicitly rather than left blank.
+  - `refDeviceId` — which device holds the reference clock in a multi-device
+    session (same namespace as `provenance.deviceId`).
+  - `offsetNs` — signed offset against the reference:
+    `t_reference = t_device + offsetNs`.
+  - `estErrorNs` — 1σ uncertainty of `offsetNs`, in nanoseconds.
+
+  **`offsetNs` and `estErrorNs` must appear together** — "123 µs ± 0.5 ms" and
+  "123 µs ± 50 ms" are different data, and an offset alone leaves the consumer
+  unable to decide anything. **`source: "none"` must not carry an offset**: that
+  would be the in-band sentinel banned by SPEC §Conventions. The rules are pinned
+  twice — in Python (`clock_errors`, so they hold without a `jsonschema` backend)
+  and in the JSON Schema (`required` / `dependentRequired` / `if-then`) — with a
+  test forbidding the two from drifting apart.
+
+  Pairs with `provenance.sessionId` (#113): the session id groups co-recording
+  devices, the clock block aligns them onto one timeline. The whole block is
+  optional — existing manifests validate unchanged, and **its absence means the
+  offset was never recorded, not that it is zero**.
+
+  `manifest.schema.json`, `manifest.py` (`clock` kwarg on `build_manifest` /
+  `manifest_for_episode` / `write_manifest`, new `CLOCK_SOURCES` +
+  `clock_errors`), `SPEC.md` (§Clock synchronisation), `CONTRACTS.md` (C6 moved
+  from draft to in-force), `tests/test_manifest.py` synced.
+
 ### Fixed
 
 [0.5.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.5.0
