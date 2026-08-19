@@ -1,16 +1,30 @@
 # ── Release workflow ──────────────────────────────────────────────────────────
 # Triggered by pushing a version tag matching `v<major>.<minor>.<patch>`.
-# 1. Build sdist + wheel.
-# 2. Run the full release checklist (§2–§6).
-# 3. Create a GitHub Release with changelog notes.
+# 1. Preflight: the PyPI credential must exist *before* anything irreversible.
+# 2. Build sdist + wheel.
+# 3. Run the full release checklist (§2–§6) + `twine check`.
 # 4. Publish to PyPI.
+# 5. Create a GitHub Release with changelog notes.
 #
 # PyPI trust: publishing is gated on a passing release check AND a signed tag.
 # The PYPI_TOKEN secret must be set in the repo or org.
 #
 # §7 (git tag) and §8 (GitHub Release + PyPI) of RELEASE_CHECKLIST_v1.0.md.
-# ──────────────────────────────────────────────────────────────────────────────
-
+#
+# ── 这条 workflow 到 #109 为止一次都没跑过（2026-08-19）────────────────────────
+# `gh run list --workflow=release.yml` 是空的。原因是它由推 tag 触发，而本仓唯一
+# 的 tag `v0.5.0` 指向 3ee640c（07-28），**早于本文件落地（#98，08-09）**——
+# 已存在的 tag 再推是 no-op，触发不了任何东西。于是 PyPI 上至今没有这个包
+# （`https://pypi.org/pypi/mnesis-canonical/json` → 404），而 GitHub Release
+# v0.5.0 是当时手工 `gh release create` 建的，不是这条链路的产物。
+#
+# 「一次没跑过」的直接后果是**这里的每一行都是零证据的**，下面三处修复都属于
+# 「首次真跑必死」而不是「偶发」：
+#   1. `shell: bash` —— 见下面 Windows 腿那段注释（#126 同款）。
+#   2. `PIP_INDEX_URL` —— 见下面镜像那段（#103 同款）。
+#   3. 先发 PyPI 再建 Release —— 见下面步骤顺序那段。
+# 首次真发布前请把这三条当成未验证假设看待，而不是既成事实。
+#
 name: release
 
 on:
@@ -21,11 +35,44 @@ on:
 permissions:
   contents: write  # needed for creating GitHub Releases
 
+# ── pip 索引：与 ci.yml 同源（2026-08-09，#103）───────────────────────────────
+# 必须在这里也设一份：本 job 会跑 `scripts/release_check.py` → `pytest -q` →
+# `tests/test_wheel_install.py` 的 `python -m pip wheel`，那行**不带 --index-url**，
+# 走 runner 机器的全局 pip 配置，而那份配置指向清华；清华自 2026-08-08 起按 IP
+# 封禁本编排机，症状是 `from versions: none`。ci.yml 在 workflow 级 env 里覆盖了
+# 它，本文件此前没有——**同一病灶的第二条代码路径**，正是 #103 漏掉的那种漏法。
+# 完整原委见 ci.yml 文件头同名段落。
+env:
+  PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
+  PIP_EXTRA_INDEX_URL: https://mirrors.cloud.tencent.com/pypi/simple/
+  PIP_RETRIES: "5"
+  PIP_TIMEOUT: "60"
+
 jobs:
   check-and-publish:
     name: Release checklist + publish
     runs-on: [self-hosted]
     steps:
+      # ── 为什么这一步排在 checkout 之前 ────────────────────────────────────
+      # PyPI 上传是**不可逆**的：一个版本号传上去就再也不能重传，即使删掉也不能
+      # 复用。所以整条 job 里唯一该「早死」的失败是「凭据根本不存在」——它跟仓库
+      # 内容无关，没必要先 checkout + 装依赖 + 跑完 500 个测试才发现。
+      # secrets 在 step 级 `if:` 里的可见性依赖 runner 版本，所以走 env + shell 判断，
+      # 这个写法在哪个版本上都成立。
+      - name: Preflight — PyPI credential must exist
+        shell: bash
+        env:
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TWINE_PASSWORD:-}" ]; then
+            echo "::error::PYPI_TOKEN secret is empty or unset — refusing to start." >&2
+            echo "Set it at Settings → Secrets and variables → Actions (repo or org)." >&2
+            echo "See docs/RELEASE_CHECKLIST_v1.0.md §8 for the one-time PyPI setup." >&2
+            exit 1
+          fi
+          echo "PYPI_TOKEN present (${#TWINE_PASSWORD} chars)."
+
       # 见 ci.yml 文件头「Windows 腿的 shell: bash 陷阱」（#126）
       - name: Prepend Git Bash to PATH (Windows)
         if: runner.os == 'Windows'
@@ -52,48 +99,95 @@ jobs:
           git clean -qffdx
 
       - name: Toolchain
+        shell: bash
         run: uv --version
 
       - name: Venv + deps
+        shell: bash
         run: uv venv --seed
 
       - name: Install
+        shell: bash
         run: uv pip install -e ".[dev]"
 
-      # ── §2–§6: release checklist (contracts, embodiments, lint, tests, smoke) ──
-      - name: Release checklist §2–§6
+      # ── §1–§6: release checklist (version, contracts, embodiments, lint, tests, smoke) ──
+      - name: Release checklist §1–§6
+        shell: bash
         run: uv run python scripts/release_check.py
+
+      # ── §7: the tag must name the version the tree actually builds ──
+      # 没有这一条的话，`git tag v0.9.9` 打在一棵 version=0.6.0 的树上会一路绿灯跑到
+      # PyPI，传上去一个 0.6.0 —— 而 GitHub Release 叫 v0.9.9。两个产物从此对不上，
+      # 且因为 PyPI 版本不可重传，这个错配是**永久**的。scripts/version_check.py 只
+      # 保证仓内三处字符串彼此一致，管不到 tag，所以这里补上第四处比对。
+      - name: Tag matches package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(uv run python -c 'import mnesis_canonical; print(mnesis_canonical.__version__)')"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} says ${TAG_VERSION}, package says ${PKG_VERSION}" >&2
+            exit 1
+          fi
+          echo "tag and package agree: ${PKG_VERSION}"
 
       # ── Build sdist + wheel ──
       - name: Build
+        shell: bash
         run: uv run python -m build
 
+      # ── PyPI rejects bad long_description metadata *at upload time* ──
+      # 在上传前问一遍，免得「Release 建好了、PyPI 却退回来」。
+      - name: Twine check
+        shell: bash
+        run: uv run twine check dist/*
+
+      # ── PyPI publish ──
+      # ── 为什么 PyPI 在 GitHub Release 之前（顺序是修过的）────────────────────
+      # 原版是「先建 Release 再传 PyPI」。那个顺序下，凭据/元数据出任何问题都会留下
+      # 一个「宣布 vX 已发布」但 PyPI 上没有 vX 的 Release —— 恰好就是本卡哨兵抓的
+      # 那类假象（v0.5.0 的 Release 存在、包不存在）。而且重试需要人工先去删 Release。
+      # 反过来排：包真的上了 PyPI 才对外宣布，Release 这一步就算挂了也能手工补，
+      # 不会产生「文档说做完了、产物不在」的状态。
+      # --skip-existing：上传 sdist 成功、wheel 那半失败时，重跑不会卡在 400 already exists。
+      - name: Publish to PyPI
+        shell: bash
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: uv run twine upload --skip-existing dist/*
+
       # ── §8: GitHub Release ──
+      # 幂等：release 已存在就补传附件，不因 `already exists` 把整条 job 打红。
       - name: GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          # Extract the changelog section for this version
+          # Extract the changelog section for this version.
+          # 用 index(...)==1 做「行首字面量前缀」匹配，不用正则：标题行长成
+          # `## [0.5.0] — 2026-07-30`（版本号后面还挂着日期），而版本号里的 `.`
+          # 在正则里是通配符。原版把 $VERSION 直接插进正则，两个毛病都占。
           CHANGELOG_SECTION=$(awk -v ver="$VERSION" '
-            /^## \[/ { if (found) { exit } }
-            /^## \['"$VERSION"'\]/ { found=1; next }
-            found { print }
+            index($0, "## [" ver "]") == 1 { found=1; next }
+            found && /^## \[/              { exit }
+            found                          { print }
           ' CHANGELOG.md)
           if [ -z "$CHANGELOG_SECTION" ]; then
             NOTES="Release ${TAG}"
           else
             NOTES="${CHANGELOG_SECTION}"
           fi
-          gh release create "$TAG" \
-            --title "mnesis-canonical ${TAG}" \
-            --notes "$NOTES" \
-            dist/*.tar.gz dist/*.whl
-
-      # ── PyPI publish ──
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: uv run twine upload dist/*
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — uploading artifacts only"
+            gh release upload "$TAG" dist/*.tar.gz dist/*.whl --clobber
+          else
+            gh release create "$TAG" \
+              --title "mnesis-canonical ${TAG}" \
+              --notes "$NOTES" \
+              dist/*.tar.gz dist/*.whl
+          fi
