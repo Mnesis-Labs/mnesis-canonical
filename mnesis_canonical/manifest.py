@@ -25,6 +25,7 @@ An optional ``clock`` block records the measured cross-device clock offset (C6,
 additive-only):
 
     {source, refDeviceId, offsetNs, estErrorNs}
+
 An optional ``cameraIntrinsics`` block carries first-class camera intrinsics keyed
 by camera name — model (controlled vocabulary), resolution and pinhole parameters
 (C9, additive-only). Device/calibration property, stored once per episode, never
@@ -54,6 +55,7 @@ CLOCK_SOURCES = frozenset({"ptp", "tsf", "ntp", "none"})
 # Keys allowed inside the ``clock`` block (the block is a controlled structure,
 # not an open bag — same discipline as ``sidecars[]`` entries).
 _CLOCK_KEYS = frozenset({"source", "refDeviceId", "offsetNs", "estErrorNs"})
+
 # Controlled distortion-model vocabulary for ``cameraIntrinsics`` (SPEC §Manifest
 # cameraIntrinsics, C9). The model is mandatory — the same coefficient vector means
 # completely different optics under different models. Additive registration only.
@@ -162,6 +164,7 @@ def build_manifest(
     ``estErrorNs``. Unlike ``provenance`` it *is* checked here (see
     :func:`clock_errors`) — a malformed offset silently written to disk is the
     exact failure this block exists to prevent.
+
     ``camera_intrinsics`` is an optional dict keyed by camera name, each value a
     `{model, width, height, fx, fy, cx, cy, distortion?}` entry (SPEC §Manifest
     cameraIntrinsics, C9). ``model`` must be in the controlled vocabulary

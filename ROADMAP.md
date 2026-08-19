@@ -25,7 +25,6 @@
 | 铁律升格 · 缺失=未知禁带内哨兵 | `SPEC.md` §Conventions | #70 |
 | 字段级 status · `experimental`/`stable`/`deprecated` | `SPEC.md` §Versioning | #70 |
 | C12 双端语义契约 PS0 | `ObservationLabel` / `scene_graph` / 三个 8442 消息 + 分类登记表 | #77 |
-| C6 转正 · manifest `clock` 段 | `source` / `refDeviceId` / `offsetNs` / `estErrorNs`，实测偏移必须落盘 | #118 |
 | 版本号一致性门禁 | `scripts/version_check.py` 三处一致 | #82 |
 | T1 快路径试点 | 无状态检查挪到托管 runner | #101 |
 | T5-std 发布清单 | `RELEASE_CHECKLIST_v1.0.md` 推上 canonical main | #99 |
@@ -51,30 +50,25 @@ Quest→Canonical 导出器，补齐第三采集面。手部/头显位姿 → `h
 
 **依赖**：Iris / Eidolon 采集端支持。
 
-### P1 — C1-vNext 溯源字段（manifest 层）
+### P1 — C6 跨设备时间同步
 
-`schema_version` / `capture_app` / `app_version` / `git_sha` / `device_id` / `session_id` / `calibration_ref`。为"可售数据"打底。
+每 session 记录一次实测时钟偏移（设备 vs 参考钟）。做多设备融合 / 遥操作因果分析前必须。
+落地形态为 manifest 可选 `clock` 段：`source`（`ptp`/`tsf`/`ntp`/`none`）+ `refDeviceId` +
+`offsetNs` + `estErrorNs`（草案原文的 `clock_offset_ns` 不进 wire），见 `SPEC.md` §Clock synchronisation。
 
-**状态**：草案，待 Muso 拍板字段定义。
-
-### ~~P1 — C6 跨设备时间同步~~（已落地 #118）
-
-manifest 可选 `clock` 段：`source`（`ptp`/`tsf`/`ntp`/`none`）+ `refDeviceId` + `offsetNs` + `estErrorNs`。
-见 `SPEC.md` §Clock synchronisation。
-
-**状态**：本仓字段已落地（#118 / PR#131，2026-08-19 合并）；剩余为各设备端测量并填写（Argus / 龙旗 DatCap 多机融合、Daedalus 机器人端）。
+**状态**：实现已在 [PR#131](https://github.com/Mnesis-Labs/mnesis-canonical/pull/131)，CI 绿，待 Muso 拍板合并（`needs:muso-decision`）。
 
 ### P1 — C9 相机内参一等字段
 
 `camera_intrinsics`（fx/fy/cx/cy/畸变模型/分辨率）成为 canonical 一等字段。
 
-**状态**：已落地（#117 / PR#127，2026-08-19 合并）。
+**状态**：实现已在 [PR#127](https://github.com/Mnesis-Labs/mnesis-canonical/pull/127)，CI 绿，待 Muso 拍板合并（`needs:muso-decision`）。
 
 ### P1 — C1 ego_multicam_v1 · 多相机 ego 图像键集
 
 单键 `observation.images.ego` 装不下 5 路相机，新增 profile 支持多路。
 
-**状态**：已落地（#115 / PR#128，2026-08-19 合并）。
+**状态**：实现已在 [PR#128](https://github.com/Mnesis-Labs/mnesis-canonical/pull/128)，CI 绿，待 Muso 拍板合并（`needs:muso-decision`）。
 
 ### P1 — canonical 发 PyPI + 语义化版本
 
@@ -143,12 +137,9 @@ Eidolon MI-1 ✅ + Ambrosia S6（收 3 面 + robot 忠实回放 + LeRobot 导出
 | 本仓工作 | 说明 | 建议 Feature |
 |---|---|---|
 | C1 帧 schema 主体 + `canonical_frame.schema.json` | 全仓基石，Parthenon spine 中未单列 | 归属 `T2-comms` / `T4-contract` 底座，建议 F-T4-contract 下增设 `F-T4-contract-c1-schema` |
-| C1-vNext 溯源字段（manifest 层） | 草案待拍板 | 建议归属 `T4-contract` 或新开 `F-T3-canonical-traceability` |
-| C6 跨设备时间同步 | 已落地（#118，manifest `clock` 段） | 建议归属 `T2-comms`，`F-T2-comms-c6-timestamp` |
-| C9 相机内参一等字段 | 草案待拍板 | 归属 `T2-comms`，`F-T2-comms-c9-intrinsics` |
 | 骨架登记表（`skeletons/`） | C11 结案配套 | 归属 `F-T2-percep-ps0` 或新开 `F-T2-comms-c11-skeleton-registry` |
 | LeRobot/Isaac 适配器 | `to_lerobot` / `to_isaac` | 归属 `T5-std` 底座，建议 `F-T5-std-adapters` |
 | Device Adapter SDK | `mnesis_canonical.sdk` | 归属 `T2-comms`，建议 `F-T2-comms-adapter-sdk` |
 | 文档大赦（ROADMAP/PRD/DEV_GUIDE 收敛） | 本卡 #102 | 归属 `F-T4-roadmap-amnesty` |
 
-**已并入 `F-T4-contract-canonical-schema-expansion`（Parthenon spine 已登记，见上表）**：C1-vNext manifest 溯源段（#113，已合并，另见 `F-T4-contract-canonical-provenance`）、C6 clock（PR#131，2026-08-19 合并）、C9 camera_intrinsics（PR#127，2026-08-19 合并）、C2 media.tar/sidecars（#116，已合并）。C8 space_id 此前在这四项里唯一没有本仓实现卡，2026-08-19 补开 #135。
+**已并入 `F-T4-contract-canonical-schema-expansion`（Parthenon spine 已登记，见上表）**：C1-vNext manifest 溯源段（#113，已合并，另见 `F-T4-contract-canonical-provenance`）、C6 clock（PR#131 待合并）、C9 camera_intrinsics（PR#127 待合并）、C2 media.tar/sidecars（#116，已合并）。C8 space_id 此前在这四项里唯一没有本仓实现卡，2026-08-19 补开 #135。
