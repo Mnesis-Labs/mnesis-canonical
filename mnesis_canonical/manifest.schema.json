@@ -107,6 +107,60 @@
           "description": "Shared session identifier for multi-device co-recording. All devices in the same recording session use the same value, enabling post-hoc episode grouping."
         }
       }
+    },
+    "cameraIntrinsics": {
+      "type": "object",
+      "description": "Optional first-class camera intrinsics keyed by camera name (C9, additive-only). Camera names match the episode's observation.images.<cam> keys and/or the calibration rig in the embodiment registry. The model field is mandatory — the same coefficient vector means completely different optics under different models. Intrinsics are a device/calibration property, stored once here, never per frame.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_.-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "enum": ["pinhole", "pinhole_radtan", "kannala_brandt", "double_sphere"],
+            "description": "Controlled distortion model vocabulary. pinhole = no distortion; pinhole_radtan = Brown-Conrady / OpenCV pinhole [k1,k2,p1,p2,(k3)]; kannala_brandt = fisheye (OpenCV fisheye, H/D≈200° expressible) [k1,k2,k3,k4]; double_sphere = fisheye/ultra-wide [xi, alpha]. Additive registration only (SPEC §Manifest cameraIntrinsics)."
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Image width in pixels the intrinsics apply to."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Image height in pixels the intrinsics apply to."
+          },
+          "fx": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Focal length in pixels, x axis."
+          },
+          "fy": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Focal length in pixels, y axis."
+          },
+          "cx": {
+            "type": "number",
+            "description": "Principal point x in pixels."
+          },
+          "cy": {
+            "type": "number",
+            "description": "Principal point y in pixels."
+          },
+          "distortion": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Distortion coefficients; element semantics and count are defined by the model (SPEC §Manifest cameraIntrinsics): pinhole_radtan -> [k1,k2,p1,p2,(k3)], kannala_brandt -> [k1,k2,k3,k4], double_sphere -> [xi, alpha], pinhole -> must be omitted."
+          }
+        },
+        "required": ["model", "width", "height", "fx", "fy", "cx", "cy"],
+        "additionalProperties": false
+      }
     }
   },
   "required": ["episodeIndex", "frameCount", "jsonlSizeBytes", "durationMs"],
