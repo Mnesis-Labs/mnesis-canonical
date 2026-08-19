@@ -6,6 +6,9 @@ episode sidecar. Used by Mnesis Ambrosia's ingest gate and by capture-surface CI
 
 Profile-aware validation (v0.2+):
   - ``ego_v1`` (default when absent): fixed-length vectors, ``observation.images.ego`` required.
+  - ``ego_multicam_v1``: ``ego_v1`` with a named camera SET — at least one
+    ``observation.images.<camera_name>``, names checked against the embodiment
+    registry's ``capture.cameras[].name`` when ``embodiment_id`` resolves.
   - ``robot_v2``: variable-length ``observation.state`` and ``action``, open camera-key set,
     optional ``observation.eef_pose.{left,right}``.
 """
@@ -15,10 +18,12 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .embodiment_registry import list_camera_names
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
     ANNOTATION_VISIBILITIES,
+    CAMERA_NAME_RE,
     DEFAULT_PROFILE,
     DEPRECATED_KEYS,
     DEVICES,
@@ -43,6 +48,8 @@ from .schema import (
     ROBOT_V2_VARIABLE_VECTORS,
     VECTOR_LENGTHS,
     VENDOR_EXTENSION_PREFIX,
+    camera_name,
+    image_keys,
     required_keys_for_profile,
 )
 from .skeleton_registry import load_skeleton
@@ -124,6 +131,70 @@ def _numeric_vector_errors(key: str, val: object) -> list[str]:
         if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
             return [f"{key}[{i}] must be a finite number, got {x!r}"]
     return []
+
+
+def _validate_multicam_images(frame: dict, errors: list[str]) -> None:
+    """Validate the ``ego_multicam_v1`` camera key set.
+
+    A multi-camera ego rig carries one ``observation.images.<camera_name>`` per
+    camera that delivered this frame.  Three rules make that a schema rather than
+    a convention:
+
+    1. **At least one camera.**  A frame with no image reference at all is not an
+       ego capture frame.
+    2. **Names are registry identifiers, not free strings.**  When the frame names
+       an ``embodiment_id`` that resolves to a registry entry declaring cameras,
+       every camera name must be one of that entry's ``capture.cameras[].name`` —
+       so a typo (``wide_left`` for ``wide_l``) fails here instead of silently
+       becoming a sixth camera nobody can join against.  An absent or unregistered
+       ``embodiment_id`` leaves the name domain unknown, so only syntax is checked.
+    3. **A dropped camera omits its key.**  Nothing requires the full camera set —
+       but a key that IS present must carry a real path, because the iron rule
+       ("absent means unknown, no in-band sentinel") makes ``""`` the wrong way to
+       say "this camera had no frame here".  (``ego_v1`` still accepts ``""`` for
+       its single key; this is a new profile, so it starts strict.)
+    """
+    img_keys = image_keys(frame)
+    if not img_keys:
+        errors.append(
+            "ego_multicam_v1 profile requires at least one "
+            "observation.images.<camera_name> key"
+        )
+        return
+
+    names: list[str] = []
+    for key in img_keys:
+        if not isinstance(frame[key], str):
+            errors.append(f"{key} must be a string (file reference)")
+        elif not frame[key]:
+            errors.append(
+                f"{key} must be a non-empty file reference — a camera with no frame "
+                f"here omits its key entirely (SPEC §Conventions: absent means unknown)"
+            )
+        name = camera_name(key)
+        if name is None or not CAMERA_NAME_RE.match(name):
+            errors.append(
+                f"{key}: camera name {name!r} is not a valid registry camera name "
+                f"(lower snake_case, e.g. 'ego', 'wide_l')"
+            )
+        else:
+            names.append(name)
+
+    eid = frame.get("embodiment_id")
+    if not names or not isinstance(eid, str) or not eid:
+        return
+    try:
+        declared = list_camera_names(eid)
+    except LookupError:
+        return  # unregistered embodiment — name domain unknown, nothing to check
+    if not declared:
+        return  # registry entry declares no cameras — likewise nothing to check
+    for name in names:
+        if name not in declared:
+            errors.append(
+                f"observation.images.{name}: camera '{name}' is not declared by "
+                f"embodiment '{eid}' (declared: {sorted(declared)})"
+            )
 
 
 def _validate_hand_block(frame: dict, errors: list[str]) -> None:
@@ -283,7 +354,7 @@ def validate_frame(
     # --- observation.images validation (profile-aware) ---
     if profile == "robot_v2":
         # robot_v2: at least one observation.images.<cam> must exist
-        img_keys = [k for k in frame if k.startswith("observation.images.")]
+        img_keys = image_keys(frame)
         if not img_keys:
             errors.append(
                 "robot_v2 profile requires at least one observation.images.<cam> key"
@@ -291,6 +362,8 @@ def validate_frame(
         for k in img_keys:
             if not isinstance(frame[k], str):
                 errors.append(f"{k} must be a string (file reference, '' allowed)")
+    elif profile == "ego_multicam_v1":
+        _validate_multicam_images(frame, errors)
     else:
         # ego_v1: observation.images.ego is required (already checked above)
         if not isinstance(frame["observation.images.ego"], str):

@@ -28,11 +28,71 @@ defaults to `ego_v1` (identical to the v0.1 schema — full backward compatibili
 | Profile | Description | Key differences |
 |---|---|---|
 | `ego_v1` | Original v0.1 frame (default) | Fixed-length vectors, `observation.images.ego` required |
+| `ego_multicam_v1` | Multi-camera ego rig | `ego_v1` in every respect **except** the image keys: a registry-declared camera **set** instead of the single `ego` key |
 | `robot_v2` | Robot-centric frame | Variable-length `observation.state`/`action`, open camera keys, optional `eef_pose` |
 
 ### `ego_v1` profile
 The original v0.1 frame. Fields are identical to the table below; no change in
 wire format. All existing data and examples validate without modification.
+
+### `ego_multicam_v1` profile
+For ego rigs that carry more than one camera (e.g. the 5-camera Argus headband:
+2× wide 1920×1200@60 + 3× fisheye 1920×1200@30, all on one FSYNC trigger). One
+`observation.images.ego` key cannot hold five streams, and the three workarounds
+are all wrong: keeping one stream throws away 80% of the sensors; letting each
+repo invent its own `observation.images.wide_l` forks the standard (exactly the
+failure the reserved `x-<vendor>.*` namespace exists to contain — two capture
+surfaces would produce two incompatible key sets); and one episode per camera
+destroys "one capture = one episode" and erases the synchronisation relationship
+between streams that share one FSYNC trigger.
+
+Everything is identical to `ego_v1` — fixed-length `head_pose_SE3` `float[7]`,
+`observation.state` `float[7]`, `action` `float[6]` — with **one** difference:
+
+- `observation.images.<camera_name>` is a **named set**, at least one key required.
+  `camera_name` is **not a free string**: it must be one of the frame's
+  `embodiment_id` registry entry's `capture.cameras[].name`, so a typo
+  (`wide_left` for `wide_l`) is a validation error rather than a silent sixth
+  camera. Syntax is lower snake_case (`^[a-z0-9][a-z0-9_]*$`). When
+  `embodiment_id` is absent or names an unregistered embodiment the value domain
+  is unknown, so only the syntax rule applies.
+- **`ego_v1` is a strict subset.** `observation.images.ego` under this profile is
+  just "the camera named `ego`". Phone-side (`ego_v1`) data needs **zero**
+  changes and **zero** migration; `ego_v1` itself is untouched.
+- **A camera that dropped this frame omits its key entirely** — the iron rule
+  ("absent means unknown") applies unchanged: never `""`, never a placeholder path.
+  The set of image keys present in a row therefore *is* the answer to "which
+  cameras delivered here". A present key must carry a **non-empty** reference;
+  `""` is rejected under this profile (`ego_v1` keeps accepting it for its single
+  key — that is back-compat, not a licence to use it in new data).
+
+#### Ruling 1 — camera names are unique **within an embodiment**, not globally
+The embodiment registry is the single source of truth, and it is per-embodiment;
+requiring a global camera namespace would make every new rig a cross-repo naming
+negotiation. Consequently `wide_l` on two different rigs is **two different
+cameras**: a consumer mixing embodiments in one training set MUST qualify the
+camera by `embodiment_id` (`(embodiment_id, camera_name)` is the unique key).
+`camera_name` alone is never a valid join key across embodiments.
+
+#### Ruling 2 — mixed frame rates: the reference camera defines the row cadence
+A rig whose cameras run at different rates (60 fps wide + 30 fps fisheye) still
+produces **one** `data.jsonl` row sequence, timed by exactly one camera:
+
+1. The embodiment registry declares which one — `capture.reference_camera` (must
+   be one of `capture.cameras[].name`). An embodiment captured under
+   `ego_multicam_v1` MUST declare it; converters MUST NOT pick a default.
+2. Each camera's own rate is declared once, in `capture.cameras[].fps` — **not**
+   per frame, and not duplicated per row.
+3. One row per reference-camera frame. Every other camera contributes **only a
+   path** for that row: the frame of that camera nearest in time to the row's
+   `t_hw_ns` and not later than it. Frames of a faster camera that no row points
+   at are not lost — they stay addressable in that camera's own video timebase
+   via `t_hw_ns`; the JSONL simply does not index them.
+4. If a camera has no frame to reference at a given row (drop, late start, shut
+   off), that row **omits** the key (rule above). It is never `""`.
+
+This is fixed by the standard precisely so two converters cannot each invent
+their own answer.
 
 ### `robot_v2` profile
 Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
@@ -89,8 +149,9 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
 | `timestamp` | str | *all* | ISO-8601 wall clock (e.g. `2026-06-26T00:00:00.000Z`) | `stable` |
 | `head_pose_SE3` | float[7] | *all* | `[tx,ty,tz, qx,qy,qz,qw]` metres + quaternion **{x,y,z,w}**, right-handed | `stable` |
 | `observation.state` | float[7] or float[N] | *all* | 7-DoF state (`ego_v1`) or variable-length N (`robot_v2`, per registry `joint_names`) | `stable` |
-| `observation.images.ego` | str | `ego_v1` only | File reference to the ego video frame (`""` allowed) | `stable` |
+| `observation.images.ego` | str | `ego_v1` required | File reference to the ego video frame (`""` allowed). Under `ego_multicam_v1` it is not special — just the camera named `ego` | `stable` |
 | `observation.images.<cam>` | str | `robot_v2` | Open camera key set — at least one required (`wrist_left`, `wrist_right`, `head`, etc.) | `stable` |
+| `observation.images.<camera_name>` | str | `ego_multicam_v1` | Registry-declared camera set — at least one required; `camera_name` ∈ the `embodiment_id` entry's `capture.cameras[].name` (typo = error). A camera that dropped this frame **omits** its key | `stable` |
 | `action` | float[6] or float[N] | *all* | Relative delta `[tx,ty,tz, rx,ry,rz]` (`ego_v1`, 6) or variable-length N (`robot_v2`) | `stable` |
 | `observation.eef_pose.left` | float[7] | `robot_v2` optional | Left end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` | `stable` |
 | `observation.eef_pose.right` | float[7] | `robot_v2` optional | Right end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` | `stable` |
@@ -107,7 +168,7 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
 | `observation.hand.source` | str | *all* optional | **[experimental]** Provenance label (open set), e.g. `mediapipe_world+arcore_pose`. Provenance **only** — geometry lives in `observation.hand.frame` | `experimental` |
 | `spatial_anchor_id` | str \| null | *all* | ARCore Anchor id (optional, recommended) | `stable` |
 | `spatial_anchor_pose_SE3` | list \| null | *all* optional | The **anchor's own** world-frame pose `[tx,ty,tz, qx,qy,qz,qw]`. This — not `head_pose_SE3` — is what identifies an anchor; supply it when the capture surface can localise the anchor, and conflicting definitions of the same `spatial_anchor_id` are checked against it. Omit when unavailable: the id still travels, only the consistency check is skipped. | `stable` |
-| `profile` | str | *all* optional | One of `ego_v1` (default) or `robot_v2` | `stable` |
+| `profile` | str | *all* optional | One of `ego_v1` (default), `ego_multicam_v1` or `robot_v2` | `stable` |
 | `embodiment_id` | str \| null | *all* optional | Reference to embodiment registry entry (e.g. `"dual_airbot_v1"`) | `stable` |
 | `source.device` | str | *all* | one of `phone, glasses, quest, pico, robot, sim` (open set) | `stable` |
 | `source.modality` | str | *all* | one of `ego_human, teleop, robot_replay, sim` (open set) | `stable` |
@@ -480,6 +541,7 @@ zero offset, and consumers MUST NOT assume synchronisation from its absence.
 - **LeRobot**: flat columns map 1:1 to LeRobot dataset features (`observation.state`, `action`, `timestamp`, `episode_index`, `frame_index`, `index`, `task_index`).
 - **Isaac / GR00T**: keep field names + units (SI metres, rad) compatible so episodes can feed NVIDIA physical-AI pipelines without re-labeling. Diff/decisions tracked here before any field is frozen.
 - **Profile backward compatibility**: v0.1 frames (no `profile` field) are treated as `ego_v1` and pass all validation unchanged.
+- **`ego_multicam_v1` (additive-only)**: a new profile, not a change to an existing one. `ego_v1` and `robot_v2` are untouched, so existing data and existing readers are unaffected; an `ego_v1` frame is a valid `ego_multicam_v1` frame (its one camera happens to be named `ego`), which is why phone-side data needs no migration. A reader that does not know the profile still sees ordinary `observation.images.<cam>` string columns.
 - **`action.gripper` (v0.4+, additive-only)**: old data without this field is **valid** — consumers MUST treat a missing `action.gripper` as "no gripper info" and MUST NOT default it to `0.0` (open) or any other value. When present it is a normalized `float` in `[0.0, 1.0]`; out-of-range or non-numeric values are rejected. The `action` vector length is unchanged (`ego_v1` = 6, `robot_v2` = N); the gripper is an **independent optional field**, not a widened `action`.
 - **`observation.hand.*` (C11, additive-only, `experimental`)**: old data without these keys is **valid**. Consumers MUST treat a missing hand key as "no hand data" and MUST NOT substitute zeros. The vector length is not fixed by the schema — resolve `observation.hand.layout` through the skeleton registry before reading. See §Hand keypoints.
 - **`observation.gripper[.left|.right]` (additive-only)**: the observation-side gripper closedness. **Same direction as `action.gripper`** — `0.0` = fully open, `1.0` = fully closed — so within one frame `action.gripper` and `observation.gripper` share a single, unambiguous scale (both `0.3` = the same "mostly open" state). Absence means no gripper observation (NOT `0.0`). Optional across all profiles; `.left` / `.right` are for bimanual `robot_v2`.
@@ -529,7 +591,8 @@ without each consumer hard-coding them.
 |---|---|---|
 | `default_fps` | number > 0 | Default recording frame rate (fps). |
 | `max_duration_s` | number > 0 | Recommended per-episode duration cap (seconds). |
-| `cameras` | array | Default camera rig: each `{ name, resolution:[w,h], fps? }`. `name` matches `observation.images.<cam>`. |
+| `cameras` | array | Default camera rig: each `{ name, resolution:[w,h], fps?, lens?, fov_deg? }`. `name` matches `observation.images.<cam>` and is the authoritative value domain for the `ego_multicam_v1` camera key set. |
+| `reference_camera` | string | Name of the camera that defines the `data.jsonl` row cadence when the rig mixes frame rates (must be one of `cameras[].name`). Required for embodiments captured under `ego_multicam_v1` — see §Profiles Ruling 2. |
 | `gripper_capture` | object | `{ mode: "continuous"\|"binary"\|"none", normalized_range?:[0,1] }`. Physical stroke stays in `gripper_range`, not here. |
 | `demonstration_modes` | array | Supported teaching modes — subset of `kinesthetic`, `leader_follower`, `teleop_only`. Consumers switch capture UI on this. |
 | `calibration` | object | `{ hand_eye_required: bool }` — whether camera↔arm extrinsic calibration is required before a valid session. |

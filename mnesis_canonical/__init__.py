@@ -6,7 +6,13 @@ validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 import importlib.metadata as _metadata
 from pathlib import Path as _Path
 
-from .embodiment_registry import list_embodiment_ids, list_embodiments, load_embodiment
+from .embodiment_registry import (
+    list_camera_names,
+    list_embodiment_ids,
+    list_embodiments,
+    load_embodiment,
+    reference_camera,
+)
 from .io import read_jsonl, write_jsonl
 from .isaac import (
     from_isaac,
@@ -29,6 +35,7 @@ from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
     ANNOTATION_VISIBILITIES,
+    CAMERA_NAME_RE,
     DEFAULT_PROFILE,
     DEVICES,
     EVENT_TYPES,
@@ -45,6 +52,7 @@ from .schema import (
     HAND_ROT_KEYS,
     HAND_SIDES,
     HAND_SOURCE_KEY,
+    IMAGE_KEY_PREFIX,
     MANIPULATION_ACTIONS,
     MODALITIES,
     PROFILES,
@@ -53,7 +61,9 @@ from .schema import (
     VECTOR_LENGTHS,
     VENDOR_EXTENSION_PREFIX,
     CanonicalFrame,
+    camera_name,
     get_schema_version,
+    image_keys,
     required_keys_for_profile,
 )
 from .semantic import (
@@ -127,6 +137,10 @@ __all__ = [
     "ANNOTATION_VISIBILITIES",
     "ANNOTATION_SOURCES",
     "PROFILES",
+    "IMAGE_KEY_PREFIX",
+    "CAMERA_NAME_RE",
+    "camera_name",
+    "image_keys",
     "REQUIRED_KEYS",
     "ROBOT_V2_VARIABLE_VECTORS",
     "VECTOR_LENGTHS",
@@ -172,6 +186,8 @@ __all__ = [
     "list_embodiments",
     "list_embodiment_ids",
     "load_embodiment",
+    "list_camera_names",
+    "reference_camera",
     "list_skeletons",
     "list_skeleton_ids",
     "load_skeleton",
