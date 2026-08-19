@@ -111,3 +111,35 @@ def load_embodiment(embodiment_id: str, *, validate: bool = False) -> dict:
 def list_embodiment_ids() -> list[str]:
     """Return the sorted list of registered embodiment IDs."""
     return sorted(data["id"] for data in list_embodiments())
+
+
+def list_camera_names(embodiment_id: str) -> list[str]:
+    """Return the camera names declared by an embodiment's ``capture.cameras[]``.
+
+    This is the authoritative value domain for ``observation.images.<camera_name>``
+    keys under the ``ego_multicam_v1`` profile (SPEC §Profiles): a name that is not
+    in this list is a typo, not a new camera.  Names are unique **within** the
+    embodiment only — see SPEC for the cross-embodiment rule.
+
+    Returns an empty list when the embodiment declares no cameras (older registry
+    entries have no ``capture`` section at all).
+
+    Raises:
+        LookupError: If no embodiment with the given ``id`` is found.
+    """
+    cameras = load_embodiment(embodiment_id).get("capture", {}).get("cameras", [])
+    return [c["name"] for c in cameras if "name" in c]
+
+
+def reference_camera(embodiment_id: str) -> str | None:
+    """Return the embodiment's reference camera name, or ``None`` if undeclared.
+
+    The reference camera is the one whose frame rate defines the ``data.jsonl`` row
+    cadence when a rig mixes frame rates (e.g. 60 fps wide + 30 fps fisheye); the
+    other cameras declare their own ``fps`` in ``capture.cameras[]`` and contribute
+    only a path per row.  See SPEC §Profiles → ``ego_multicam_v1``.
+
+    Raises:
+        LookupError: If no embodiment with the given ``id`` is found.
+    """
+    return load_embodiment(embodiment_id).get("capture", {}).get("reference_camera")

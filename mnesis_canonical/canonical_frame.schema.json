@@ -74,7 +74,7 @@
     "observation.images.ego": {
       "type": "string",
       "x-status": "stable",
-      "description": "File reference to the ego video frame ('' allowed). Required for ego_v1 profile."
+      "description": "File reference to the ego video frame ('' allowed). Required for ego_v1 profile; under ego_multicam_v1 it is simply the camera named 'ego' (one member of the registry-declared camera set)."
     },
     "action": {
       "type": "array",
@@ -110,7 +110,7 @@
     },
     "profile": {
       "type": "string",
-      "enum": ["ego_v1", "robot_v2"],
+      "enum": ["ego_v1", "ego_multicam_v1", "robot_v2"],
       "x-status": "stable",
       "description": "Frame profile (v0.2+). When absent, defaults to ego_v1 (backward-compatible)."
     },
@@ -218,6 +218,10 @@
   "patternProperties": {
     "^x-[a-z][a-z0-9-_]*\\.": {
       "description": "Vendor extension namespace (x-<vendor>.<field>). Reserved for vendor-specific extensions. See extensions/registry.json and SPEC.md §Conventions."
+    },
+    "^observation\\.images\\.": {
+      "type": "string",
+      "description": "Camera key set observation.images.<camera_name> — a file reference per camera ('' allowed). ego_v1 fixes the set to the single name 'ego'; ego_multicam_v1 and robot_v2 open it. Under ego_multicam_v1 the name must be one of the embodiment registry's capture.cameras[].name (cross-checked by validate_frame); a camera that dropped this frame omits its key entirely."
     }
   },
   "allOf": [
@@ -225,7 +229,7 @@
       "if": {
         "not": {
           "required": ["profile"],
-          "properties": { "profile": { "const": "robot_v2" } }
+          "properties": { "profile": { "enum": ["ego_multicam_v1", "robot_v2"] } }
         }
       },
       "then": {
@@ -238,6 +242,31 @@
           "action": {
             "minItems": 6,
             "maxItems": 6
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["profile"],
+        "properties": { "profile": { "const": "ego_multicam_v1" } }
+      },
+      "then": {
+        "properties": {
+          "observation.state": {
+            "minItems": 7,
+            "maxItems": 7
+          },
+          "action": {
+            "minItems": 6,
+            "maxItems": 6
+          }
+        },
+        "patternProperties": {
+          "^observation\\.images\\.": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Under ego_multicam_v1 a present camera key carries a real path: a camera that had no frame here omits its key entirely rather than sending '' (SPEC §Conventions, absent means unknown)."
           }
         }
       }
