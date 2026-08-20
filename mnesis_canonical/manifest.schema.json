@@ -124,6 +124,11 @@
       ],
       "additionalProperties": false
     },
+    "spaceId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque identifier of the physical capture space (C8, additive-only). Two episodes carrying the same value were recorded in the same physical space and are candidates for post-hoc merge; different values are never merge candidates. Consumers MUST NOT parse it (UUIDv4 recommended, not required) and MUST treat absence as \"not declared\" -- never as \"single-device space\", which would fabricate merge candidates. Orthogonal to provenance.sessionId, which groups by time-bounded recording session rather than by place. Carries identity only, no geometry: group by spaceId, then align by shared spatial_anchor_id (SPEC §Physical space)."
+    },
     "provenance": {
       "type": "object",
       "description": "Optional provenance metadata identifying who produced the data, with which build, and in which session (C1-vNext, additive-only).",

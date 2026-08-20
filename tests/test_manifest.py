@@ -1144,3 +1144,70 @@ def test_spec_documents_the_clock_block():
     assert "t_reference = t_device + offsetNs" in spec
     for source in sorted(CLOCK_SOURCES):
         assert f"`{source}`" in spec, f"SPEC.md must document clock source {source}"
+
+
+# ── spaceId：物理空间标识（C8，additive-only）──────────────────────────────────
+#
+# 2026-08-20 过站会：PR#140 原本只改 SPEC.md、零 schema —— 那样 SPEC 里写的
+# `string (non-empty)` 和几条 MUST 就没有任何东西保证，生产端写 `123` 或空串
+# 照样过。它的两个同胞（#127 C9 cameraIntrinsics、#138 C6 clock）都在同一个 PR
+# 里落了 schema，#138 的标题就叫「『已同步』不能只是承诺」。这几条测试是让
+# 「声明」和「保证」在本仓不再分家。
+
+
+def _minimal_episode(tmp_path, **manifest_extra):
+    """写一个最小合法 episode，manifest 可加字段。"""
+    ep = tmp_path / "ep"
+    ep.mkdir()
+    jsonl = ep / "data.jsonl"
+    jsonl.write_text(
+        '{"episode_index":1,"t_ns":1000000}\n{"episode_index":1,"t_ns":2000000}\n',
+        encoding="utf-8",
+    )
+    base = {
+        "episodeIndex": 1,
+        "frameCount": 2,
+        "jsonlSizeBytes": jsonl.stat().st_size,
+        "videoPath": None,
+        "videoSizeBytes": 0,
+        "durationMs": 1,
+    }
+    base.update(manifest_extra)
+    (ep / "manifest.json").write_text(json.dumps(base), encoding="utf-8")
+    return ep
+
+
+def test_space_id_is_declared_in_the_schema():
+    """SPEC 说它是 non-empty string —— schema 必须真的这么写。"""
+    schema = json.loads(
+        (Path(__file__).resolve().parents[1] / "mnesis_canonical" / "manifest.schema.json")
+        .read_text(encoding="utf-8")
+    )
+    prop = schema["properties"].get("spaceId")
+    assert prop is not None, "spaceId 不在 manifest.schema.json 里 —— SPEC 声明了但没人保证"
+    assert prop["type"] == "string"
+    assert prop.get("minLength") == 1, "spaceId 必须非空 —— 空串等于没声明，却会被当成已声明"
+
+
+def test_space_id_accepted(tmp_path):
+    ep = _minimal_episode(tmp_path, spaceId="a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+    result = validate_manifest(ep)
+    assert result["ok"] is True, result.get("errors")
+
+
+def test_space_id_is_optional(tmp_path):
+    """additive-only：不带 spaceId 的 manifest 必须原样通过（无 schema 版本跳变）。"""
+    result = validate_manifest(_minimal_episode(tmp_path))
+    assert result["ok"] is True, result.get("errors")
+
+
+def test_space_id_rejects_empty_string(tmp_path):
+    """空串是「声明了一个不存在的空间」，比不声明更坏 —— 必须拒收。"""
+    result = validate_manifest(_minimal_episode(tmp_path, spaceId=""))
+    assert result["ok"] is False, "空 spaceId 被放行了"
+
+
+def test_space_id_rejects_non_string(tmp_path):
+    """opaque 不等于随便什么类型：消费者按字符串比对，数字会静默不匹配。"""
+    result = validate_manifest(_minimal_episode(tmp_path, spaceId=12345))
+    assert result["ok"] is False, "非字符串 spaceId 被放行了"
