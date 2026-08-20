@@ -202,20 +202,15 @@ def test_release_is_not_triggered_by_pushing_a_tag():
     只看 `on:` 块，不搜全文：文件头的历史注记里合法地提到 `push`/`tags` 这些词，
     整篇搜会误报。
     """
-    text = _RELEASE.read_text(encoding="utf-8")
-    start = text.index("\non:\n")
-    rest = text[start + 1 :]
-    # `on:` 块到下一个顶格键为止。
-    end = len(rest)
-    for i, line in enumerate(rest.splitlines(keepends=True)):
-        if i == 0:
-            offset = len(line)
-            continue
-        if line[:1] not in (" ", "\t", "\n", "#"):
-            end = offset
+    lines = _RELEASE.read_text(encoding="utf-8").splitlines()
+    start = next(i for i, ln in enumerate(lines) if ln.rstrip() == "on:")
+    # `on:` 块到下一个顶格键为止（缩进行、空行、注释行都还算块内）。
+    block: list[str] = []
+    for ln in lines[start + 1 :]:
+        if ln.strip() and not ln[:1].isspace() and not ln.lstrip().startswith("#"):
             break
-        offset += len(line)
-    on_block = rest[:end]
+        block.append(ln)
+    on_block = chr(10).join(block)
     assert "push:" not in on_block, (
         f"release.yml 的 on: 块里出现了 push 触发 —— 推 tag 会自动发 PyPI，"
         f"与 2026-08-20 的冷冻决定冲突。实际 on 块：\n{on_block}"
