@@ -1,5 +1,15 @@
 # ── Release workflow ──────────────────────────────────────────────────────────
-# Triggered by pushing a version tag matching `v<major>.<minor>.<patch>`.
+# **手动触发**（2026-08-20，过站会）：`gh workflow run release.yml --ref v<x.y.z>`。
+# 派发时必须用 `--ref` 指向要发的那个 tag —— 本文件三处取版本号的地方都读
+# `$GITHUB_REF_NAME`，指向 tag 时它就是 tag 名、`$GITHUB_SHA` 就是该 tag 的提交。
+# 误指到分支（如 `--ref main`）会在下面「Tag matches package version」当场判死。
+#
+# ⚠️ 为什么不再由推 tag 触发（Muso 2026-08-20 决定「PyPI 直接冷冻，现阶段都不考虑发布」）：
+#   自动触发意味着任何人推一个 `v1.2.3` 形状的 tag 就会走完整条发布链，与冷冻决定冲突。
+#   改成手动后，不按就永远不会发。**解冻时无需改本文件**，按一次即可。
+#   顺带修正一处长期错误的口径：此前 pending.json / DECISIONS.md 都写着本文件
+#   「已补 workflow_dispatch 触发口」、发版靠 `gh workflow run` —— 那是错的，
+#   在今天之前本文件**从来没有** workflow_dispatch，`gh workflow run` 根本起不来。
 # 1. Preflight: the PyPI credential must exist *before* anything irreversible.
 # 2. Build sdist + wheel.
 # 3. Run the full release checklist (§2–§6) + `twine check`.
@@ -28,9 +38,7 @@
 name: release
 
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
 
 permissions:
   contents: write  # needed for creating GitHub Releases
@@ -114,6 +122,28 @@ jobs:
       - name: Release checklist §1–§6
         shell: bash
         run: uv run python scripts/release_check.py
+
+      # ── 派发目标必须是一个版本 tag（2026-08-20）─────────────────────────
+      # `on: push: tags:` 原本自带 `v[0-9]+.[0-9]+.[0-9]+` 的模式过滤，改成手动
+      # 触发后那道过滤没了 —— 派发时选错 ref（分支、或随手打的 `release-1` 之类）
+      # 就会一路跑下去。这一步把它补回来，且排在 build/upload 之前：PyPI 上传
+      # 不可逆，任何「目标不对」都必须在动到 dist/ 之前死。
+      #
+      # 注意这不能替代下面的 §7：本步只管**名字长得像不像版本 tag**，§7 管
+      # **名字与树里的版本号一致不一致**。两条都要。
+      - name: Dispatch target must be a version tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
+            echo "::error::release 必须派发到一个 tag 上：gh workflow run release.yml --ref v<x.y.z>（当前 ref_type=${GITHUB_REF_TYPE:-unset}, ref_name=${GITHUB_REF_NAME:-unset}）" >&2
+            exit 1
+          fi
+          case "${GITHUB_REF_NAME}" in
+            v[0-9]*.[0-9]*.[0-9]*) : ;;
+            *) echo "::error::tag ${GITHUB_REF_NAME} 不符合 v<major>.<minor>.<patch>" >&2; exit 1 ;;
+          esac
+          echo "dispatch target ok: ${GITHUB_REF_NAME}"
 
       # ── §7: the tag must name the version the tree actually builds ──
       # 没有这一条的话，`git tag v0.9.9` 打在一棵 version=0.6.0 的树上会一路绿灯跑到

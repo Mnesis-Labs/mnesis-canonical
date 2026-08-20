@@ -73,20 +73,29 @@ Manual (not machine-checkable):
 
 ## 7. Git & tag
 
-> ⚠️ **一个版本号只有一次机会**。`release.yml` 由推 tag 触发，而**已存在的 tag
-> 再推是 no-op**——这正是 v0.5.0 的处境：它打在 07-28 的提交上，早于 workflow
-> 本身落地（#98，08-09），所以那条链路一次都没跑过，v0.5.0 永远发不出去了。
-> PyPI 侧同理：一个版本号传上去就不能重传，删掉也不能复用。
+> 🧊 **2026-08-20：PyPI 发布已冷冻**（Muso 原话「PyPI直接冷冻，现阶段都不考虑发布」）。
+> 本节与 §8 描述的是**解冻后**的流程，现阶段不要执行。
+>
+> ⚠️ **一个版本号只有一次机会**。PyPI 上一个版本号传上去就不能重传，删掉也不能复用。
 > **要发布就发一个新版本号**，别试图复活旧 tag。
+>
+> 历史注记：v0.5.0 的 tag 打在 07-28 的提交上，早于 workflow 本身落地（#98，08-09）；
+> 当时 `release.yml` 由推 tag 触发而**已存在的 tag 再推是 no-op**，所以那条链路一次
+> 都没跑过。**2026-08-20 起触发方式已改为手动**（见下），旧 tag 的这个限制不再适用，
+> 但「版本号不可重传」依旧成立。
 
 - [ ] All changes committed on `main`.
 - [ ] Tag: `git tag -a v<version> -m "v<version>"` —— 版本号必须与 §1 的三处字符串
       一致，workflow 的 `Tag matches package version` 一步会当场比对。
 - [ ] Push: `git push origin main --tags`.
+- [ ] **推 tag 不会自动发布**（2026-08-20 起）。发布要显式派发：
+      `gh workflow run release.yml --ref v<version>` —— `--ref` 必须指向那个 tag，
+      workflow 第一步 `Dispatch target must be a version tag` 会校验 ref 类型与命名，
+      随后 `Tag matches package version` 再比对 tag 名与树里的版本号。
 
 ## 8. GitHub Release + PyPI
 
-`release.yml` 在 tag 推上去后自动做完本节，顺序是**先 PyPI 后 Release**：
+`release.yml` 被**手动派发**后做完本节（2026-08-20 起不再由推 tag 自动触发），顺序是**先 PyPI 后 Release**：
 包真的能装了才对外宣布，避免再次产生「ROADMAP 说发了、产物不在」的假象。
 
 - [ ] `twine check` + `twine upload` → 包出现在 https://pypi.org/project/mnesis-canonical/。

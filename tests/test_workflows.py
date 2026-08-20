@@ -174,3 +174,64 @@ def test_release_gates_tag_against_package_version():
     text = _RELEASE.read_text(encoding="utf-8")
     assert "GITHUB_REF_NAME#v" in text
     assert "mnesis_canonical.__version__" in text
+
+
+# ── release.yml 的触发口：手动，且**只能**手动（2026-08-20）───────────────────
+#
+# 2026-08-20 过站会拍板「PyPI 直接冷冻，现阶段都不考虑发布」。冷冻要成立，
+# 前提是这条链路不会被人无意中触发 —— 而在那天之前它是 `on: push: tags:`，
+# 任何人推一个 `v1.2.3` 形状的 tag 就会走完整条发布链。
+#
+# 同时修正一处长期错误的口径：pending.json / DECISIONS.md 从 08-19 起就写着本文件
+# 「已补 workflow_dispatch 触发口」、发版靠 `gh workflow run` —— 那是错的，在
+# 08-20 之前本文件从来没有 workflow_dispatch，那条命令根本起不来。文档说了两天
+# 的事情，直到有人去读 `on:` 块才发现是假的。这两条断言就是为了让它不能再变假。
+
+
+def test_release_is_manual_dispatch_only():
+    """release.yml 只能手动派发 —— 冷冻决定依赖这一点。"""
+    text = _RELEASE.read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in text, (
+        "release.yml 缺 workflow_dispatch —— 那样它既不能手动发，也说明触发口被改了"
+    )
+
+
+def test_release_is_not_triggered_by_pushing_a_tag():
+    """推 tag 不得自动发布（2026-08-20 冷冻决定）。
+
+    只看 `on:` 块，不搜全文：文件头的历史注记里合法地提到 `push`/`tags` 这些词，
+    整篇搜会误报。
+    """
+    text = _RELEASE.read_text(encoding="utf-8")
+    start = text.index("\non:\n")
+    rest = text[start + 1 :]
+    # `on:` 块到下一个顶格键为止。
+    end = len(rest)
+    for i, line in enumerate(rest.splitlines(keepends=True)):
+        if i == 0:
+            offset = len(line)
+            continue
+        if line[:1] not in (" ", "\t", "\n", "#"):
+            end = offset
+            break
+        offset += len(line)
+    on_block = rest[:end]
+    assert "push:" not in on_block, (
+        f"release.yml 的 on: 块里出现了 push 触发 —— 推 tag 会自动发 PyPI，"
+        f"与 2026-08-20 的冷冻决定冲突。实际 on 块：\n{on_block}"
+    )
+
+
+def test_release_guards_the_dispatch_target():
+    """手动触发丢掉了 `on: push: tags:` 自带的模式过滤，必须显式补回来。
+
+    且这道闸要排在 build/upload 之前 —— PyPI 上传不可逆，「目标不对」必须在
+    动到 dist/ 之前死。
+    """
+    text = _RELEASE.read_text(encoding="utf-8")
+    assert "- name: Dispatch target must be a version tag" in text, (
+        "release.yml 没有校验派发目标 —— 派发到分支或随手打的 tag 上会一路跑下去"
+    )
+    guard = text.index("- name: Dispatch target must be a version tag")
+    build = text.index("- name: Build")
+    assert guard < build, "派发目标校验排在 Build 之后 —— 必须在动到 dist/ 之前"
