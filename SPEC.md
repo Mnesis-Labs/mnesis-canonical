@@ -537,6 +537,92 @@ ignores it behaves exactly as before; existing manifests validate unchanged.
 Absence of `clock` means the offset was never recorded — it does **not** mean
 zero offset, and consumers MUST NOT assume synchronisation from its absence.
 
+### Physical space (`spaceId`, optional, additive, C8)
+
+Multi-device capture (two or more DatCap glasses in the same room, a phone and a
+robot observing the same workspace) produces episodes that describe the **same
+physical space** but are recorded by **different devices**. Post-hoc merge and
+timeline rendering need a field that answers "do these episodes share the same
+room?" without a consumer having to inspect the frame-level anchor data.
+
+`spaceId` is that field: an **opaque string** carried once in the episode
+manifest, identifying the physical capture space.
+
+```jsonc
+{
+  "episodeIndex": 0,
+  "frameCount": 1200,
+  "jsonlSizeBytes": 234567,
+  "videoPath": "video.mp4",
+  "videoSizeBytes": 9876543,
+  "durationMs": 30000,
+  "spaceId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",   // ← C8, additive
+  "provenance": { "sessionId": "sess-001", ... },
+  "clock": { "source": "ptp", ... }
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `spaceId` | string (non-empty) | Opaque identifier of the physical capture space. UUIDv4 recommended but not required; consumers MUST NOT parse it. |
+
+**What it groups — and what it doesn't.** A consumer discovers peers for merge
+by filtering on `spaceId`. Two episodes with the same `spaceId` are
+*recorded in the same physical space* and are candidates for post-hoc merge /
+alignment. Two episodes with different `spaceId` (or one absent, one present)
+are **not** merge candidates — no amount of clock offset can make a workshop
+episode into a lab episode.
+
+**Relationship to `provenance.sessionId`.** `sessionId` groups by
+*time-bounded recording session* (a co-recording event); `spaceId` groups by
+*physical place*, which persists across sessions. They are **orthogonal** — the
+same room (`spaceId`) can host many sessions (`sessionId`); a session can
+span multiple rooms (different `spaceId` per episode). Both together answer
+"which device, when, where":
+
+| `sessionId` | `spaceId` | Interpretation |
+|---|---|---|
+| same | same | Same room, same recording event — immediate merge candidate. |
+| same | different | Impossible in practice (one session, one space) — a producer bug. |
+| different | same | Same room, different recording events — merge candidate after clock alignment. |
+| different | different | Different rooms, different events — not mergeable. |
+| absent | present | Space declared, session not — merge candidate when a peer also carries the same `spaceId`. |
+| present | absent | Session declared, space not — `spaceId` absent means "not declared", **not** "single-device space". Consumers MUST NOT infer anything from its absence. |
+| absent | absent | Neither declared — a valid single-device episode. Mergeability is unknown. |
+
+**Relationship to `spatial_anchor_id` / `spatial_anchor_pose_SE3`.**
+`spaceId` and the anchor fields serve **different levels of the same problem**:
+
+- `spaceId` is the **episode-level declaration** "this episode happened in this
+  space". It is the **first filter** in the merge pipeline — cheap, deterministic,
+  and requires no geometry. Two episodes in different spaces never get to the
+  geometry stage.
+- `spatial_anchor_id` / `spatial_anchor_pose_SE3` are the **frame-level
+  alignment mechanism**: once two episodes share a `spaceId`, they find shared
+  anchors to compute the transform that makes their world frames agree.
+- `spaceId` does **not** carry geometry; it carries only identity. Anchors
+  do **not** carry space membership; they carry only coordinates. Together they
+  form "group by `spaceId`, then align by shared `spatial_anchor_id`".
+
+A producer that can declare the space (e.g. the room has a known id) should
+carry `spaceId` even when no shared anchors have been set yet — the field
+enables the *discovery* step of merge. Anchors enable the *execution* step.
+
+**Consistency.** The `spaceId` is **opaque**: the same physical space
+MUST use the same string value; different spaces MUST use different values.
+The value carries no encoding of the space's name, location, or geometry —
+it is a stable identifier only. This mirrors `provenance.deviceId`: both are
+opaque tokens that the capture surface holds the authority to issue, and the
+schema refuses to define a value domain that a device cannot reliably
+generate.
+
+**Backward compatibility.** `spaceId` is a single optional field. Manifests
+without it validate unchanged — additive-only, no schema version bump. Absence
+means the capture surface did not declare a space; it does **not** mean
+"single device" or "no space". Consumers MUST treat absence as "unknown" and
+MUST NOT default to a per-device space (which would fabricate merge candidates
+that should not exist).
+
 ## Compatibility (must stay true — `4c` DATA5)
 - **LeRobot**: flat columns map 1:1 to LeRobot dataset features (`observation.state`, `action`, `timestamp`, `episode_index`, `frame_index`, `index`, `task_index`).
 - **Isaac / GR00T**: keep field names + units (SI metres, rad) compatible so episodes can feed NVIDIA physical-AI pipelines without re-labeling. Diff/decisions tracked here before any field is frozen.
