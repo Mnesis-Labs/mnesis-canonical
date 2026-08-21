@@ -12,6 +12,7 @@
 | C4 | **Robot-Bridge API**（平台↔真机：关节读写/示教/安全），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **草案 TBD** | Daedalus（待定义） | Ambrosia（`bridge/hw_bridge.py` 现状=临时直连，待迁移到本契约） | 待建 |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
 | C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b |
+| C13 | **objects.jsonl 侧信道**（frames_dir 旁路文件，非 episode `sidecars[]`：`header` + 逐帧 `object` 观测；核心是 `pose_dof` 诚实字段——单视角 2D 框+深度只观测得到位置，`pose_dof:3` ⟺ `quat_wxyz:null`，禁止用占位四元数假装 6-DoF；`quat_wxyz` 为 `[w,x,y,z]` 标量在前，与本仓 C12 `pose.q` 标量在后刻意不同——两个生产方各自的既有约定，如实记录分歧而非悄悄改历史；`class_id` 开放词表，暂不对齐 `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §objects.jsonl side channel + `mnesis_canonical/objects_jsonl.schema.json`） | Daedalus（`scene/object_track.py` 生产者）·Ambrosia（`real2sim/augment.py` S32 消费，在途） | canonical `tests/test_objects_jsonl.py` · Daedalus `tests/scene/test_object_track.py`（Parthenon#764 / Daedalus#443） |
 
 ## 扩展登记表（Extension Registry）
 
@@ -89,6 +90,26 @@
 - **Eidolon（PS2b 头显消费，C12 消费方）**：vendor `mnesis_canonical/semantic.schema.json` 走 JS 侧 Draft 2020-12 校验；下行按 `scene_graph.revision` 判断是否重绘（不变则不重绘）；共定位健康度只读 `colocalization.state`；头显侧标注上行走 `semantic_label`（`source: "headset"`，人裁决 `source: "human"`），发前先用 `T_map_headset` 变换到 `map`。**头显侧识别（PS4）落地时不需要改契约**——枚举已就位。
 - **两端共用**：`examples/semantic/` 四个 golden 样本（含 `disputed` / `stale` / `source:"headset"` 三个边界样本）直接当 fixture 用。
 - **未动 `contracts/`**：PS 消息不改 C1 帧、不改 C3 既有消息，故 `contracts/*.md` 与 `contracts.lock` 本次零改动（本仓契约只读纪律）。C3 侧若要把这三个消息一并镜像进 `XR_ROBOT_CONTRACT.md`，属 Daedalus（C3 Owner）的独立卡。
+
+## C13 objects.jsonl 侧信道（Video2Robo 轨迹侧 · canonical 定义，Daedalus 生产）
+
+> 来源：Parthenon research/31 §2.1（Video2Robo 复现）· CODE-DISPATCH-2026-08-19 D-26② · Daedalus#443（`scene/object_track.py`，PR#453）· 登记单 Parthenon#764。
+> **边界**：`frames_dir` 的旁路文件，**不是** `episodes/ep_<n>/` 的 `sidecars[]`——没有 `t_hw_ns` 对齐字段，按 `frames_dir` 帧号索引，产在导出 LeRobotDataset **之前**。additive-only：不知道本文件的消费方原样读 `frames_dir`，行为不变。
+
+**定稿件**：`SPEC.md` §objects.jsonl side channel（权威定义）· `mnesis_canonical/objects_jsonl.schema.json`（JSON Schema）· `mnesis_canonical/objects_jsonl.py`（参考校验器：`validate_header` / `validate_object_record` / `validate_objects_jsonl_stream` / `validate_line_jsonschema`）· `tests/test_objects_jsonl.py`（本侧测试）。
+
+**这张契约唯一要守住的东西**：`pose_dof`。单视角 2-D 框 + 深度反投影**结构上只观测得到位置**（3 自由度），观测不到朝向。`pose_dof: 3` ⟺ `quat_wxyz: null`——严格双向：3 配非 null 是「用占位四元数假装 6-DoF」，本契约把这个组合钉成非法而非仅仅不鼓励（与 C12 `ObservationLabel` 拒收非 `map` 帧、`colocalization.state:"lost"` 时禁带外参同一条纪律）。真有朝向估计器产出时才允许 `pose_dof: 6` + 单位四元数。
+
+**两处刻意的不统一，如实记录**：
+1. **`quat_wxyz` 是 `[w,x,y,z]`（标量在前）**，与本仓 C12 `pose.q`（标量在后 `[x,y,z,w]`）方向相反——跟随 Daedalus 自己 `scene/types.py` 的 MuJoCo 惯例。两个生产方在这条侧信道登记前各自已有内部一致的约定，如实记两套比悄悄定一个赢家、让 Daedalus 重发历史数据更诚实。
+2. **`class_id` 开放词表，不对齐 `taxonomies/object_class_v1.json`**（C12）——来自可换后端的 2-D 检测器（`lerobot.perception.detector.Detector`），两套词表暂不假定一致；未来对齐是自然的后续工作，不是 v1 要求。
+
+**跨行不变量**（单行 JSON Schema 表达不了，`validate_objects_jsonl_stream` 兜底）：唯一一条 `header` 且在开头；每条 `object` 的 `pose_dof` 与 header 一致；`frame` 全文件非递减；`track_id` 去重计数 == `header.num_tracks`。
+
+**消费方**：
+- **Daedalus（生产者）**：`scene/object_track.py` 已实现并合并（PR#453）；产物按本契约校验，`pip` 升 `mnesis-canonical` 后可用 `mnesis_canonical.objects_jsonl.validate_objects_jsonl_stream` 做落盘前自检。
+- **Ambrosia（`real2sim/augment.py`，S32 位姿维增强，在途）**：读 `objects.jsonl` 取物体位置做高斯子集裁剪与重渲染；`pose_dof` 恒 3 意味着 v1 只能做位置维增强，朝向维增强要等 6-DoF 记录出现。
+- **未动 `contracts/`**：本次不改 C1 帧、不改 C3/C12 既有消息，`contracts/*.md` 与 `contracts.lock` 零改动。
 
 ## C2 幂等语义（重复上传去重）
 

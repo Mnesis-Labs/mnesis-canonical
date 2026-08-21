@@ -414,6 +414,58 @@ authoritative side.
 boundary cases the consumers asked for: `disputed`, `stale`, and
 `source: "headset"`.
 
+## objects.jsonl side channel (C13)
+
+A capture pipeline that also runs 2-D object detection over its frames (the
+Video2Robo trajectory work, Mnesis-Daedalus `scene/object_track.py`) may emit an
+`objects.jsonl` file **alongside** a scan's `frames_dir` (the pre-export capture
+directory — `NNNNNN_rgb.npy` / `NNNNNN_pose.npy` / `intrinsics.npy`, not yet a
+LeRobotDataset episode). This is a **file-level side channel**, not an
+`episodes/ep_<n>/` sidecar registered via `sidecars[]`: it has no `t_hw_ns`
+alignment field, is keyed by `frames_dir` frame index instead, and exists
+upstream of the canonical export step. Additive-only: a consumer that has never
+heard of `objects.jsonl` reads `frames_dir` exactly as before.
+
+**Line format.** The first line is a `header` object; every subsequent line is
+an `object` observation — one per detected object per frame.
+
+```jsonc
+{"type":"header","version":1,"source":"lerobot.scene.object_track","frame_dialect":"mono","detector_backend":"onnx_cpu","pose_frame":"map","pose_dof":3,"num_frames":20,"num_tracks":1}
+{"type":"object","frame":0,"track_id":"obj-0001","class_id":"cup","confidence":0.9,"pose_dof":3,"position_m":[1.8,0.0,1.09],"quat_wxyz":null,"depth_m":1.8,"box_xyxy":[155.0,115.0,165.0,125.0],"width_m":0.1125,"height_m":0.1125}
+```
+
+**`pose_dof` is the honesty field this contract exists to enforce.** A single
+camera view's 2-D box + depth back-projection structurally observes **position
+only** — it cannot observe orientation. A record MUST say `pose_dof: 3` with
+`quat_wxyz: null` unless a real orientation estimator produced it, in which case
+`pose_dof: 6` with a populated unit quaternion is required instead. Publishing a
+placeholder quaternion under `pose_dof: 3` to make a position-only observation
+look like a full pose is exactly the failure mode this field exists to make
+invalid, not merely discouraged — same discipline as C12's `ObservationLabel`
+refusing a non-`map` `frame_id`.
+
+**`quat_wxyz` is `[w, x, y, z]` — scalar FIRST**, matching Mnesis-Daedalus's own
+`scene/types.py` (MuJoCo convention). This is a deliberate departure from this
+spec's own `pose.q` (C12), which is scalar-**last** `[x, y, z, w]`: two
+producers picked two different, both internally-consistent conventions before
+this side channel was registered, and recording the divergence is more honest
+than quietly picking a winner and asking Daedalus to re-emit history.
+
+**`class_id` is open-vocabulary**, whatever the 2-D detector backend calls it
+(`lerobot.perception.detector.Detector` is backend-swappable) — it is **not**
+drawn from `taxonomies/object_class_v1.json` (C12). Harmonising the two
+vocabularies is a natural follow-up, not a v1 requirement.
+
+**Cross-line invariants** (checked by `validate_objects_jsonl_stream`, not
+expressible in the per-line JSON Schema): exactly one `header` line, at the
+start; every `object` record's `pose_dof` equals the header's; `frame` is
+non-decreasing across the file; the count of distinct `track_id` values equals
+`header.num_tracks`.
+
+Reference implementation: `mnesis_canonical.objects_jsonl` (schema +
+`validate_header` / `validate_object_record` / `validate_objects_jsonl_stream` /
+jsonschema variant). See CONTRACTS.md C13.
+
 ## Episode layout (on disk / upload)
 ```
 episodes/ep_<n>/
