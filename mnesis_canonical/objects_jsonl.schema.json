@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mnesis.dev/schemas/objects_jsonl/v1.json",
+  "title": "Mnesis objects.jsonl object-track side channel (C13)",
+  "description": "One line of the objects.jsonl side channel produced alongside a capture's frame-level JSONL (Video2Robo trajectory pipeline, Mnesis-Daedalus scene/object_track.py). The file is additive-only: it never modifies the frame-level JSONL, and a consumer that does not know about it can ignore it entirely. The first line is a 'header' object; every subsequent line is an 'object' observation. This schema validates ONE line at a time — the cross-line invariants (frame line's header.pose_dof matching every object row, frame numbers non-decreasing, distinct track_id count matching header.num_tracks) are NOT expressible per-line and are enforced by mnesis_canonical.objects_jsonl.validate_objects_jsonl_stream instead. Authority: CONTRACTS.md C13. Keep in lock-step with mnesis_canonical/objects_jsonl.py.",
+  "oneOf": [
+    { "$ref": "#/$defs/header" },
+    { "$ref": "#/$defs/object_record" }
+  ],
+  "$defs": {
+    "header": {
+      "type": "object",
+      "title": "objects.jsonl header (first line)",
+      "required": ["type", "version", "source", "frame_dialect", "pose_frame", "pose_dof", "num_frames", "num_tracks"],
+      "properties": {
+        "type": { "const": "header" },
+        "version": {
+          "type": "integer",
+          "const": 1,
+          "description": "Schema version of this file. Only 1 is currently defined."
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Producing module, e.g. 'lerobot.scene.object_track'. Provenance, not a contract switch."
+        },
+        "frame_dialect": {
+          "type": "string",
+          "enum": ["mono", "iris"],
+          "description": "Which frames_dir layout the tracks were extracted from — 'mono' (scene/capture.py, shared intrinsics.npy) or 'iris' (scene/iris_bridge.py, per-frame depth/intrinsics). Informational: does not change how objects.jsonl itself is read."
+        },
+        "detector_backend": {
+          "type": "string",
+          "minLength": 1,
+          "description": "2-D detector backend that produced the boxes (e.g. 'onnx_cpu', 'remote', or a test stub name). Open value set — detector backends are swappable by design (lerobot.perception.detector.Detector)."
+        },
+        "pose_frame": {
+          "type": "string",
+          "const": "map",
+          "description": "Frame every object_record.position_m is expressed in. Only 'map' is defined today — a record in a sensor- or headset-local frame is not fusable, same discipline as C12's ObservationLabel.frame_id."
+        },
+        "pose_dof": {
+          "type": "integer",
+          "enum": [3, 6],
+          "description": "Degrees of freedom this file's records actually carry. MUST equal every object_record.pose_dof in the file — a per-record override is a producer bug, not a per-object feature. See object_record.pose_dof for the honesty rule this field exists to enforce."
+        },
+        "num_frames": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of frames_dir frames the extraction walked."
+        },
+        "num_tracks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of distinct track_id values that appear anywhere in this file's object records."
+        }
+      }
+    },
+    "object_record": {
+      "type": "object",
+      "title": "objects.jsonl object observation (every line after the header)",
+      "required": ["type", "frame", "track_id", "class_id", "confidence", "pose_dof", "position_m", "quat_wxyz", "depth_m", "box_xyxy", "width_m", "height_m"],
+      "properties": {
+        "type": { "const": "object" },
+        "frame": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index into the source frames_dir this observation came from."
+        },
+        "track_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Cross-frame track identifier assigned by the extractor's associator. Stable across frames for the same physical object within one file; not a canonical taxonomy value."
+        },
+        "class_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Open-vocabulary object class label straight from the 2-D detector backend. NOT drawn from taxonomies/object_class_v1.json (C12) — this side channel predates and does not yet require that harmonisation. Do not assume the two vocabularies agree."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Detector confidence for the 2-D box this observation was back-projected from."
+        },
+        "pose_dof": {
+          "type": "integer",
+          "enum": [3, 6],
+          "description": "Honesty field, not a preference: a single-view 2-D box + depth back-projection structurally observes POSITION ONLY (3 DoF) — it cannot observe orientation. pose_dof MUST be 3 with quat_wxyz null unless a real orientation estimator produced this record, in which case pose_dof MUST be 6 with quat_wxyz populated. Never emit a placeholder quaternion to make a 3-DoF observation look like 6-DoF — that is exactly the failure mode this field exists to make impossible to hide."
+        },
+        "position_m": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "[x, y, z] in metres, in the pose_frame (map)."
+        },
+        "quat_wxyz": {
+          "description": "Orientation as [w, x, y, z] (scalar FIRST — matches Mnesis-Daedalus's own MuJoCo/scene.types.py quaternion convention; this is a deliberate departure from C12 pose.q's scalar-LAST [x,y,z,w], not an inconsistency to be quietly reconciled). MUST be null when pose_dof is 3. MUST be a unit quaternion (4 finite numbers, |q| = 1 within tolerance) when pose_dof is 6.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 4,
+              "maxItems": 4
+            }
+          ]
+        },
+        "depth_m": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "description": "Depth used for the back-projection, metres, along the optical axis (not radial). Diagnostic — kept for provenance, not for re-deriving position_m."
+        },
+        "box_xyxy": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "[x1, y1, x2, y2] source-frame pixel box the observation was measured from. x1 < x2 and y1 < y2 (Detection2D convention)."
+        },
+        "width_m": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "description": "Metric extent of the box in the image plane AT depth_m — one of two honest 2-D measurements, not a fitted 3-D bounding box (same discipline as perception.detector.MapDetection.width_m)."
+        },
+        "height_m": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "description": "Metric extent of the box in the image plane at depth_m — see width_m."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "pose_dof": { "const": 3 } }, "required": ["pose_dof"] },
+          "then": { "properties": { "quat_wxyz": { "const": null } } }
+        },
+        {
+          "if": { "properties": { "pose_dof": { "const": 6 } }, "required": ["pose_dof"] },
+          "then": {
+            "properties": {
+              "quat_wxyz": {
+                "type": "array",
+                "items": { "type": "number" },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

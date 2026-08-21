@@ -3,6 +3,7 @@
 The reference Python implementation of the Canonical Schema: typed frame,
 validation, and JSONL I/O. Apache-2.0. See SPEC.md for the authoritative spec.
 """
+
 import importlib.metadata as _metadata
 from pathlib import Path as _Path
 
@@ -31,6 +32,20 @@ from .manifest import (
     write_manifest,
 )
 from .migrate import migrate_hand_v0, migrate_hand_v0_frames
+from .objects_jsonl import (
+    FRAME_DIALECTS,
+    POSE_DOFS,
+    POSE_FRAME,
+    load_objects_jsonl_schema,
+    validate_object_record,
+    validate_objects_jsonl_stream,
+)
+from .objects_jsonl import (
+    validate_header as validate_objects_jsonl_header,
+)
+from .objects_jsonl import (
+    validate_line_jsonschema as validate_objects_jsonl_line_jsonschema,
+)
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -119,7 +134,7 @@ from .validate import (
 # running from a source checkout (not pip-installed); it is kept in sync with
 # ``pyproject.toml`` by ``scripts/version_check.py``. When pip-installed the
 # value is overridden from the wheel's own metadata so it can never disagree.
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 if not (_Path(__file__).resolve().parent.parent / "pyproject.toml").exists():
     try:
         __version__ = _metadata.version("mnesis-canonical")
@@ -222,5 +237,13 @@ __all__ = [
     "load_semantic_schema",
     "migrate_hand_v0",
     "migrate_hand_v0_frames",
+    "FRAME_DIALECTS",
+    "POSE_DOFS",
+    "POSE_FRAME",
+    "load_objects_jsonl_schema",
+    "validate_objects_jsonl_header",
+    "validate_objects_jsonl_line_jsonschema",
+    "validate_object_record",
+    "validate_objects_jsonl_stream",
     "__version__",
 ]

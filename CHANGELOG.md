@@ -7,7 +7,7 @@ and this project adheres to [SemVer-of-the-schema](README.md#compatibility-commi
 — the **package version** (this changelog) and the **schema version** (SPEC.md §Versioning)
 are decoupled:
 
-> **Package 0.5.0** is the current version — the same string as
+> **Package 0.6.0** is the current version — the same string as
 > `mnesis_canonical.__version__` and `pyproject.toml` `[project] version`, kept in
 > lockstep by `scripts/version_check.py`.
 >
@@ -15,6 +15,36 @@ are decoupled:
 > **0.3.0**: `ego_v1` = v0.1 backward-compatible default; `robot_v2` adds
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
+
+## [0.6.0] — 2026-08-21
+
+### Added
+
+- **objects.jsonl 侧信道 C13（Parthenon research/31 §2.1 · CODE-DISPATCH-2026-08-19
+  D-26② · Daedalus#443/PR#453 · 登记单 Parthenon#764）**。Video2Robo 轨迹复现的
+  物体级运动提取产物：`scene/object_track.py`（Daedalus）为一次 `frames_dir`
+  扫描输出的旁路文件，**不是** `episodes/ep_<n>/` 的 `sidecars[]`（无 `t_hw_ns`
+  对齐、按 `frames_dir` 帧号索引、产在导出 LeRobotDataset 之前）。additive-only：
+  不知道本文件的消费方原样读 `frames_dir`。
+
+  - `header` 行 + 逐 `object` 观测行；`mnesis_canonical/objects_jsonl.schema.json`
+    （JSON Schema）+ `mnesis_canonical/objects_jsonl.py`（参考校验器：
+    `validate_header` / `validate_object_record` /
+    `validate_objects_jsonl_stream` / `validate_line_jsonschema`）。
+  - **`pose_dof` 诚实字段**（本契约唯一要守住的东西）：单视角 2-D 框 + 深度反投影
+    结构上只观测得到位置，`pose_dof: 3` ⟺ `quat_wxyz: null` 严格双向——3 配非
+    null 是「用占位四元数假装 6-DoF」，本契约把这个组合钉成非法。真有朝向估计器
+    产出时才允许 `pose_dof: 6` + 单位四元数。
+  - **`quat_wxyz` 是 `[w,x,y,z]`（标量在前）**，与 C12 `pose.q`（标量在后）方向
+    相反——跟随 Daedalus 自己 `scene/types.py` 的 MuJoCo 惯例。两个生产方各自
+    已有内部一致的约定，如实记录分歧，不悄悄定赢家逼 Daedalus 重发历史数据。
+  - `class_id` 开放词表，暂不对齐 `taxonomies/object_class_v1.json`（C12）——来自
+    可换后端的 2-D 检测器，两套词表暂不假定一致。
+  - 跨行不变量（单行 JSON Schema 表达不了）：唯一 `header` 且在开头；每条
+    `object.pose_dof` 与 header 一致；`frame` 全文件非递减；`track_id` 去重计数
+    == `header.num_tracks`。
+  - `tests/test_objects_jsonl.py`（36 例）。**未动 `contracts/`**：不改 C1 帧、
+    不改 C3/C12 既有消息，`contracts/*.md` 与 `contracts.lock` 零改动。
 
 ## [0.5.0] — 2026-07-30
 

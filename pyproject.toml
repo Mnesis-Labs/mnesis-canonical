@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mnesis-canonical"
-version = "0.5.0"
+version = "0.6.0"
 description = "Mnesis Canonical Schema — open standard for embodied spatial-action data (the 'USB-C' for robot-trainable data)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,7 +25,7 @@ mnesis-import = "mnesis_canonical.importers.__main__:main"
 include = ["mnesis_canonical*"]
 
 [tool.setuptools.package-data]
-mnesis_canonical = ["canonical_frame.schema.json", "manifest.schema.json", "semantic.schema.json", "py.typed", "embodiments/*.json", "skeletons/*.json", "taxonomies/*.json"]
+mnesis_canonical = ["canonical_frame.schema.json", "manifest.schema.json", "semantic.schema.json", "objects_jsonl.schema.json", "py.typed", "embodiments/*.json", "skeletons/*.json", "taxonomies/*.json"]
 
 [tool.ruff]
 line-length = 100
