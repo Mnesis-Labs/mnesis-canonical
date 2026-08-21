@@ -24,7 +24,7 @@ jobs:
       - name: reviewer (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: pwsh -File D:\Github\_ops\orchestration\run-review.ps1 -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
+        run: pwsh -File D:\Github\Parthenon\cockpit\worker\run-review.ps1 -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
       - name: reviewer (macOS)
         if: runner.os == 'macOS'
         shell: bash
