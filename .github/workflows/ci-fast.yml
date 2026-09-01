@@ -5,6 +5,11 @@ name: CI-Fast (T1)
 #
 # 这条腿存在的理由不是省钱（Actions 额度一直没在用），是**容量**：
 # 每仓只有两台 self-hosted runner，它们同时还在跑 lane，CI 排队是最实在的瓶颈
+# （⚠️ 2026-08-19 订正，见 Parthenon#808：现在是**每仓 1 台 Windows**。mac 侧
+#  lane + 6 个 runner 已摘除，lane 本身也已退役 —— 所以"两台"和"还在跑 lane"
+#  两个前提都过期了，但这条腿存在的理由**更成立了**：容量直接砍半。
+#  那 6 条 macOS runner 注册已于 2026-09-01 经 Muso 批准后删除，六仓复核
+#  `gh api .../actions/runners` 均为 total_count=1。）
 # （实测 Parthenon 一个 PR 排 20 分钟没轮上；canonical 一度 6 个 run 排队、
 # 最老的等 50 分钟）。把无状态的那部分挪到别人的机器上，本机就腾给真正只有
 # 它能干的活。顺带消掉 CI 与 worker 抢同一份文件的冲突（uv.exe 被占那一类）。
