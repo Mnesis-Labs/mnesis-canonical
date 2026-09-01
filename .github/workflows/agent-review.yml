@@ -14,6 +14,28 @@ jobs:
     # 评审排队 20 分钟）——派活的瓶颈被搬到了评审。
     # 每仓恰好两台 runner（Windows + macOS），只共享 self-hosted 标签，故用它。
     #
+    # ── ⚠️ 2026-08-19 起上面这段的前提已不成立（订正见 Parthenon#808）──────────
+    # 「每仓恰好两台 runner」是 07-28 的事实，**今天不是**。跨机编排已取消、Cockpit
+    # 完全本地化，mac 侧（lane + 6 个 runner）已摘除：runner 经 launchctl
+    # bootout+disable，plist 移入 mac 的 ~/LaunchAgents-disabled-20260819（可逆）。
+    # 决策链：Parthenon commit 7b3d9122（08-22 落地「六仓全部钉给本机内核」）
+    #   → Mnesis-Daedalus#460「CI 全收本机 + mac 腿关闭」，Muso 08-25 逐文件核过
+    #     diff 后批准、08-26 合并。
+    # 收尾：六仓那 6 条 macOS runner 注册已于 2026-09-01 经 Muso 批准后删除
+    # （删除后六仓复核 `gh api .../actions/runners` 均为 total_count=1）。在此之前
+    # 它们以 offline 状态留在列表里，把每仓的容量虚报了一倍。
+    # 现在 `runs-on: [self-hosted]` **唯一**能匹配到本仓那台 Windows runner，
+    # 等价于钉死 Windows；下面 `runner.os == 'macOS'` 那一段是**当前不可达的死代码**。
+    #
+    # 死代码刻意保留、不在本次订正里删，两条理由：
+    #   ① 恢复 mac 跨机是 OPERATIONS-GUIDE §5 的恢复开关（plist 移回 + launchctl
+    #      enable/bootstrap），需 Muso 批准；一旦恢复，这一段要原样回到岗位。
+    #   ② Parthenon 的 tests/test_review_entrypoint_consistency.py::test_both_legs_exist
+    #      对裸 `[self-hosted]` 硬要求 windows/mac **双腿齐备**。删掉 mac 腿会让本仓
+    #      main 变红 —— Daedalus 钉死 Windows 后正是这样撞红的（Parthenon#797 正在
+    #      为此加 WINDOWS_ONLY 登记表）。
+    # （那 6 条 macOS 注册已如上删除；删下面的 macOS 分支仍是**单独的决定**，不在本卡范围。）
+    #
     # SECURITY：本 job 在自托管 runner 上直接执行本机脚本。fork PR 必须挡住，
     # 否则任何人开个 fork PR 就能触发本机执行（自托管 runner 经典事故形态）。
     if: github.event.pull_request.head.repo.full_name == github.repository
@@ -21,10 +43,14 @@ jobs:
     steps:
       # 两台机器的评审脚本路径与解释器不同，按 runner.os 分派。
       # 参数签名一致（-Pr / -Repo），行为由各自脚本保证一致。
+      # ⚠️ 2026-08-19 起实际只剩 Windows 一台在接活（见文件头订正块），
+      # 所以这里的"分派"当前恒定走 Windows 腿。
       - name: reviewer (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: pwsh -File D:\Github\Parthenon\cockpit\worker\run-review.ps1 -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
+      # ⚠️ 死代码（2026-08-19 起）：mac 腿已摘除，本 step 的 `if` 恒为 false。
+      # 保留不删的理由见文件头 08-19 订正块。
       - name: reviewer (macOS)
         if: runner.os == 'macOS'
         shell: bash
