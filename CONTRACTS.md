@@ -14,6 +14,51 @@
 | C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b |
 | C13 | **objects.jsonl 侧信道**（frames_dir 旁路文件，非 episode `sidecars[]`：`header` + 逐帧 `object` 观测；核心是 `pose_dof` 诚实字段——单视角 2D 框+深度只观测得到位置，`pose_dof:3` ⟺ `quat_wxyz:null`，禁止用占位四元数假装 6-DoF；`quat_wxyz` 为 `[w,x,y,z]` 标量在前，与本仓 C12 `pose.q` 标量在后刻意不同——两个生产方各自的既有约定，如实记录分歧而非悄悄改历史；`class_id` 开放词表，暂不对齐 `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §objects.jsonl side channel + `mnesis_canonical/objects_jsonl.schema.json`） | Daedalus（`scene/object_track.py` 生产者）·Ambrosia（`real2sim/augment.py` S32 消费，在途） | canonical `tests/test_objects_jsonl.py` · Daedalus `tests/scene/test_object_track.py`（Parthenon#764 / Daedalus#443） |
 
+## 消费方怎么装 / 升 `mnesis-canonical`（装法唯一真值）
+
+> ⚠️ **`pip install mnesis-canonical` 会 404。本包不在 PyPI 上，一次都没发过。**
+> 本节以下各契约段（C1 / C12 / C13 …）里说的「升 `mnesis-canonical`」，指的**全部**是本节这一种装法，
+> 不是 `pip install mnesis-canonical`、也不是 `pip install -U mnesis-canonical`。
+
+**为什么不在 PyPI**：不是漏发，是明确拍板的状态。
+
+- **2026-07-04**：owner 定「发 PyPI 暂不发」（Parthenon `departments/4-rnd/4a-logos-software.md`）。
+- **2026-08-20**：Muso 原话「PyPI直接冷冻，现阶段都不考虑发布」——见 `docs/RELEASE_CHECKLIST_v1.0.md` §7 的冷冻批注。
+  该文件 §0 还列着首发所需的三项**仓外人工前置**（占名、`PYPI_TOKEN`、runner 出口），至今一项未做。
+
+**当前唯一可用的装法 —— git+https 钉 40 位 commit sha**：
+
+```
+# requirements.txt / requirements-dev.txt
+mnesis-canonical @ git+https://github.com/Mnesis-Labs/mnesis-canonical@<40位commit sha>
+```
+
+```
+# 本地开发（同级目录检出时）
+pip install -e ../mnesis-canonical
+```
+
+**为什么钉 sha，而不是 `@main`**：浮在 `@main` 上等于每次 canonical 合并都在**静默重定义**消费方的契约。
+2026-07-27（T4 契约收权）实测过一次：canonical #47/#55（`spatial_anchor_id` 唯一性）合入后，
+`mnesis-ambrosia` 自己一行没改，`tests/test_s6fix_review2.py` 直接红。升版从此是**刻意动作**：
+① 改 sha → ② 重装依赖 → ③ 重算 `contracts.lock`（`python -m mnesis_canonical.contracts_check --generate`，
+ambrosia 侧是 `python scripts/update_contracts_lock.py`）→ ④ 两者一起提交，CI 的 `verify_contracts_lock` 会比对。
+现行样板见 `mnesis-ambrosia/requirements.txt`。
+
+**为什么现在别钉 tag**：仓里目前只有 **`v0.5.0`** 一个版本 tag（打在 2026-07-28 的提交上），
+而它**早于 C13**——`v0.5.0` 的树里根本没有 `mnesis_canonical/objects_jsonl.py`。
+也就是说，钉 `@v0.5.0` 的 C13 消费方会拿到一个 `import mnesis_canonical.objects_jsonl` 直接 ImportError 的包。
+在下一个 tag 打出来之前，**sha 是唯一能拿到本登记簿所述契约的钉法**。
+
+**将来解冻后怎么切回版本钉**：按 `docs/RELEASE_CHECKLIST_v1.0.md` §0/§7/§8 走完首发（需 Muso 拍板解冻 + 有 PyPI 账号权限的人做仓外那步），
+包真的能 `pip install mnesis-canonical==<version>` 装上之后，消费方再把上面那行整体换成：
+
+```
+mnesis-canonical==X.Y.Z
+```
+
+切换那一刻请一并回来把本节改掉 —— 本节说的是**当下真实可执行**的装法，不是理想状态。
+
 ## 扩展登记表（Extension Registry）
 
 > **问题**：Iris 的四个手部字段能在库里躺半个月没人发现，根因是「扩展的成本高于隐瞒的成本」。
@@ -86,7 +131,7 @@
 
 ### 消费方解阻塞（PS0 已定稿，以下可开工）
 
-- **Daedalus（PS1 机器人端识别 / PS2a 融合 / PS3 桥接，C12 消费方 + ADR-004 Owner）**：`pip` 升 `mnesis-canonical` 后 `from mnesis_canonical import validate_observation_label, validate_scene_graph, validate_ps_message`；识别输出按 `ObservationLabel` 发，融合产物按 `scene_graph` 发（`revision` 每次变更递增），`class_id` 只用本仓分类表。8442 上按 `type` 分派三个新消息，与既有 `C3_*` 消息同信封共存。
+- **Daedalus（PS1 机器人端识别 / PS2a 融合 / PS3 桥接，C12 消费方 + ADR-004 Owner）**：把 `mnesis-canonical` 的 sha 钉推进到含本契约的提交（装法见上文「消费方怎么装 / 升 `mnesis-canonical`」——**不是** `pip install mnesis-canonical`，该包不在 PyPI），随后 `from mnesis_canonical import validate_observation_label, validate_scene_graph, validate_ps_message`；识别输出按 `ObservationLabel` 发，融合产物按 `scene_graph` 发（`revision` 每次变更递增），`class_id` 只用本仓分类表。8442 上按 `type` 分派三个新消息，与既有 `C3_*` 消息同信封共存。
 - **Eidolon（PS2b 头显消费，C12 消费方）**：vendor `mnesis_canonical/semantic.schema.json` 走 JS 侧 Draft 2020-12 校验；下行按 `scene_graph.revision` 判断是否重绘（不变则不重绘）；共定位健康度只读 `colocalization.state`；头显侧标注上行走 `semantic_label`（`source: "headset"`，人裁决 `source: "human"`），发前先用 `T_map_headset` 变换到 `map`。**头显侧识别（PS4）落地时不需要改契约**——枚举已就位。
 - **两端共用**：`examples/semantic/` 四个 golden 样本（含 `disputed` / `stale` / `source:"headset"` 三个边界样本）直接当 fixture 用。
 - **未动 `contracts/`**：PS 消息不改 C1 帧、不改 C3 既有消息，故 `contracts/*.md` 与 `contracts.lock` 本次零改动（本仓契约只读纪律）。C3 侧若要把这三个消息一并镜像进 `XR_ROBOT_CONTRACT.md`，属 Daedalus（C3 Owner）的独立卡。
@@ -107,7 +152,7 @@
 **跨行不变量**（单行 JSON Schema 表达不了，`validate_objects_jsonl_stream` 兜底）：唯一一条 `header` 且在开头；每条 `object` 的 `pose_dof` 与 header 一致；`frame` 全文件非递减；`track_id` 去重计数 == `header.num_tracks`。
 
 **消费方**：
-- **Daedalus（生产者）**：`scene/object_track.py` 已实现并合并（PR#453）；产物按本契约校验，`pip` 升 `mnesis-canonical` 后可用 `mnesis_canonical.objects_jsonl.validate_objects_jsonl_stream` 做落盘前自检。
+- **Daedalus（生产者）**：`scene/object_track.py` 已实现并合并（PR#453）；产物按本契约校验，把 `mnesis-canonical` 的 sha 钉推进到含 C13 的提交后（装法见上文「消费方怎么装 / 升 `mnesis-canonical`」；**特别注意本条**：现存唯一 tag `v0.5.0` 早于 C13，钉它会 `ImportError`）可用 `mnesis_canonical.objects_jsonl.validate_objects_jsonl_stream` 做落盘前自检。
 - **Ambrosia（`real2sim/augment.py`，S32 位姿维增强，在途）**：读 `objects.jsonl` 取物体位置做高斯子集裁剪与重渲染；`pose_dof` 恒 3 意味着 v1 只能做位置维增强，朝向维增强要等 6-DoF 记录出现。
 - **未动 `contracts/`**：本次不改 C1 帧、不改 C3/C12 既有消息，`contracts/*.md` 与 `contracts.lock` 零改动。
 
@@ -142,8 +187,8 @@ canonical 侧 `contracts/contracts.lock` 已随本次改动重算（`XR_ROBOT_CO
 
 - **Daedalus**（C3 Owner，xr_bridge 服务端）：将 `docs/integration/XR_ROBOT_CONTRACT.md` 镜像同步到 v1.6；在 `C3_Info` 增发 `video_capabilities`；实现 `C3_CameraControl` 接收 + `C3_CameraStatus` 应答（clamp 到硬件能力）。harness 增加相机协商用例。**旧客户端零改动**：未实现方忽略新消息即可。
 - **Eidolon**（C3 消费方，Quest 前端）：升到 v1.6 后可读 `video_capabilities` 选择视频线、下发 `C3_CameraControl`；未升版时忽略新消息，遥操作核心不受影响。采 gripper 时按 `observation.gripper*` 写入 canonical 帧。
-- **airbot 仓 / Daedalus（C1 消费方，机器人采集面）**：`observation.gripper*` 为可选 additive——升 `mnesis-canonical` 版本后即可产出/校验带夹爪的帧；不升版的旧数据仍全绿。
-- **Ambrosia**（C1 消费方，ingest）：升 `mnesis-canonical` 依赖版本，ingest 校验自动接受 `observation.gripper*`（可选，范围 `[0,1]`）；无需改 schema 门。WebRTC 线 YC 后按 `video_capabilities` 接入。
+- **airbot 仓 / Daedalus（C1 消费方，机器人采集面）**：`observation.gripper*` 为可选 additive——把 `mnesis-canonical` 的 sha 钉推进后（装法见上文「消费方怎么装 / 升 `mnesis-canonical`」）即可产出/校验带夹爪的帧；不升版的旧数据仍全绿。
+- **Ambrosia**（C1 消费方，ingest）：把 `requirements.txt` 里 `mnesis-canonical` 的 sha 钉推进（装法见上文「消费方怎么装 / 升 `mnesis-canonical`」），ingest 校验自动接受 `observation.gripper*`（可选，范围 `[0,1]`）；无需改 schema 门。WebRTC 线 YC 后按 `video_capabilities` 接入。
 
 ### 消费端升版路径（C3 v1.7 · WebRTC 信令三消息，issue #60）
 
