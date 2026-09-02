@@ -253,13 +253,15 @@ def main() -> int:
     # ── 前置体检（OPERATIONS-GUIDE「派活前置体检」）─────────────────────────
     if not (GATEWAY_URL_FILE.exists() and GATEWAY_KEY_FILE.exists()):
         write_result(ok=False, stage="preflight", error="网关钥匙缺失（console.url/console.key）")
-        note("网关钥匙缺失，拒绝启动"); return 2
+        note("网关钥匙缺失，拒绝启动")
+        return 2
 
     iv = sh(["gh", "issue", "view", str(n), "--repo", REPO,
              "--json", "number,title,body,state"], cwd=REPO_ROOT)
     if iv.returncode != 0:
         write_result(ok=False, stage="preflight", error=f"读卡失败：{iv.stderr[-500:]}")
-        note(f"#{n} 读卡失败"); return 3
+        note(f"#{n} 读卡失败")
+        return 3
     issue = json.loads(iv.stdout)
     if issue["state"] != "OPEN":
         write_result(ok=False, stage="preflight", skipped=True,
