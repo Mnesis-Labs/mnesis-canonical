@@ -54,10 +54,13 @@ python -m mnesis_canonical validate episodes/ep_0/data.jsonl
 ### 通用（任意语言，使用 JSON Schema 文件）
 
 ```bash
-# 使用 jsonschema CLI（需安装）
-pip install "mnesis-canonical[jsonschema]"
 check-jsonschema --schemafile mnesis_canonical/canonical_frame.schema.json episodes/ep_0/data.jsonl
 ```
+
+> `check-jsonschema` 为本机独立工具（非 `mnesis-canonical` 的可选依赖）。
+> 本文件不承载 `mnesis-canonical` 的装法指引：装法/升法唯一真值在
+> `CONTRACTS.md` §「消费方怎么装 / 升 `mnesis-canonical`」。
+> **不要照字面跑 `pip install mnesis-canonical…`** —— 该包不在 PyPI（2026-08-20 冷冻），命令会 404。
 
 ## 字段一览
 

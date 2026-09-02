@@ -56,7 +56,11 @@ columns = to_lerobot(read_jsonl("episodes/ep_0/data.jsonl"))
 frames = from_lerobot(columns)
 ```
 
-可选 JSON Schema 后端：`pip install "mnesis-canonical[jsonschema]"`，`validate_frame_jsonschema(frame)`。
+可选 JSON Schema 后端：`validate_frame_jsonschema(frame)`（任意语言也可直接用打包好的 `mnesis_canonical/canonical_frame.schema.json`）。
+
+> 装法/升法走 `CONTRACTS.md` §「消费方怎么装 / 升 `mnesis-canonical`（装法唯一真值）」，不要自己复述一遍。
+> **不要跑 `pip install mnesis-canonical…`** —— 该包不在 PyPI（PyPI 2026-08-20 已冷冻），该命令 404。
+> 按该节的 `git+https …@<40 位 sha>` 路径装。
 
 ---
 
