@@ -38,9 +38,15 @@ from mnesis_canonical import to_lerobot, from_lerobot
 columns = to_lerobot(read_jsonl("episodes/ep_0/data.jsonl"))
 frames = from_lerobot(columns)
 ```
-Optional strict JSON-Schema backend: `pip install "mnesis-canonical[jsonschema]"`,
-then `validate_frame_jsonschema(frame)` (or use the bundled
-`mnesis_canonical/canonical_frame.schema.json` from any language).
+Optional strict JSON-Schema backend: `validate_frame_jsonschema(frame)`
+(also available from any language via the bundled
+`mnesis_canonical/canonical_frame.schema.json`).
+
+> Install/upgrade path for this and any optional extra lives in one place —
+> `CONTRACTS.md` §「消费方怎么装 / 升 `mnesis-canonical`（装法唯一真值）」.
+> **Do not run `pip install mnesis-canonical…`**: the package is not on PyPI
+> (PyPI frozen 2026-08-20) and that command 404s. Follow the git+sha path in
+> that section.
 
 ## Device Adapter SDK
 
