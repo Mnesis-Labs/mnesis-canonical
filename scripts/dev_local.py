@@ -70,6 +70,31 @@ def is_transport_error(out: str) -> bool:
     return any(sig in out for sig in _TRANSPORT_ERRORS)
 
 
+# 2026-09-06：`auto` 路由在**真实负载**下会间歇性变得不可用，CLI 直接回这一句：
+#     There's an issue with the selected model (auto). It may not exist or you may not have access to it.
+# 实测边界（这条边界很重要，别照抄结论）：
+#   · 一句话 prompt：6 次 1 败
+#   · 中等 prompt（一段说明文）：三种配置各 1 次，全通
+#   · **真活（#835，长正文+评论+多轮工具调用）：两轮尝试全灭**
+# 也就是说「冒烟通过」完全不能代表「真活跑得动」—— 同 #832 那次「拿最小探针
+# 代替真实路径」的教训。
+_MODEL_UNAVAILABLE_MARKERS = (
+    "issue with the selected model",
+    "It may not exist or you may not have access to it",
+)
+
+# `auto` 不可用时的退路。**网关侧没给 auto 配降级组**（实测报错原文
+# `Available Model Group Fallbacks=None`），所以这条链必须由执行器提供。
+# kimi-k3 是全舰队长期实跑的模型，且它在网关侧自带
+# glm-5.2 → deepseek-pro → deepseek → … 的降级链。
+FALLBACK_MODEL = "kimi-k3"
+
+
+def is_model_unavailable(out: str) -> bool:
+    """CLI 说「这个模型用不了」—— 不是工人的错，也不是网络抖动。"""
+    return any(sig in out for sig in _MODEL_UNAVAILABLE_MARKERS)
+
+
 def _main_repo_root() -> pathlib.Path:
     """主检出根目录。脚本可能从任意 worktree 被调用，直接取 parent 会把新
     worktree 套进当前 worktree。git-common-dir 指主仓 .git。"""
@@ -305,6 +330,8 @@ def main() -> int:
         note(f"#{n} 带上 {comments.count('### 评论 ·')} 条评论一起喂给工人")
     prompt = build_prompt(n, issue["title"], issue["body"] or "", comments)
     transport_retries = 0
+    active_model = args.model          # 实际在用的模型（可能因不可用而回退）
+    model_fallback_from = None         # 若发生回退，记下原本要用的是哪个
     # ⚠️ 用 while + 手动计数，**不能用 `for attempt in range(...)` + continue**。
     # 2026-09-02 实测（#818）：那样写时，网关抖动分支里的 `continue` 会推进 for 的
     # 计数器 —— 日志打着「不计入尝试」，实际每次抖动都吃掉一次尝试。#818 那轮
@@ -315,8 +342,19 @@ def main() -> int:
     attempt = 0
     while attempt < args.max_attempts:
         note(f"#{n} 第 {attempt + 1}/{args.max_attempts} 次尝试"
-             f"（model={args.model}，已容忍抖动 {transport_retries} 次）")
-        rc, out = run_claude(prompt, args.model, str(wt), timeout=args.timeout)
+             f"（model={active_model}，已容忍抖动 {transport_retries} 次）")
+        rc, out = run_claude(prompt, active_model, str(wt), timeout=args.timeout)
+
+        # 模型不可用 → 大声换一次退路模型，**绝不静默**。
+        # 「绝不静默换引擎」是本管线的硬规矩（#234）：静默换会让「引擎不可用」
+        # 与「做不出来」在结果里同形。这里换是有理由的（auto 在网关侧没有降级组，
+        # 退路只能由执行器给），但必须让人看见换了、换成了什么、为什么。
+        if is_model_unavailable(out) and active_model != FALLBACK_MODEL:
+            note(f"#{n} ⚠ 模型 {active_model} 不可用（CLI 原话：模型可能不存在或无权访问）"
+                 f" → 换 {FALLBACK_MODEL} 重跑，不计入尝试（attempt 仍为 {attempt}）")
+            model_fallback_from = active_model
+            active_model = FALLBACK_MODEL
+            continue
 
         if is_transport_error(out) and transport_retries < MAX_TRANSPORT_RETRIES:
             transport_retries += 1
