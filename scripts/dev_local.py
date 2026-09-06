@@ -42,12 +42,26 @@ _TRANSPORT_ERRORS = (
     "socket hang up",
     "502 Bad Gateway",
     "503 Service Unavailable",
+    # 2026-09-05：model=auto 专属。CLI 有时发超限的思考预算，被上游 400 拒：
+    #   field Thinking.BudgetTokens invalid, should be at most 1024
+    # 而网关**没给 auto 配降级组**（报错原文 `Available Model Group Fallbacks=None`），
+    # 主路一错就没退路 —— kimi-k3 有一整条 glm-5.2→deepseek-pro→… 的链，auto 没有。
+    # 实测失败率：裸 auto 4 次 2 败；加 MAX_THINKING_TOKENS=1024 后 6 次 1 败。
+    # 这是**基础设施故障不是工人的错**，归进传输层桶 = 重试且不消耗尝试次数。
+    "Thinking.BudgetTokens invalid",
+    "No fallback model group found",
 )
 
 GATEWAY_URL_FILE = pathlib.Path("D:/Github/_ops/secrets/console.url")
 GATEWAY_KEY_FILE = pathlib.Path("D:/Github/_ops/secrets/console.key")
 WORKER_HOME = "D:/Github/_ops/claude-worker-home"
-DEFAULT_MODEL = "kimi-k3"
+# 2026-09-05 Muso 指示：开发/调研一律走 CLI，模型用 `auto`（网关侧自动路由）。
+# 上线前实测过，不是照抄配置：
+#   POST <gateway>/v1/messages {"model":"auto",...} → HTTP 200，
+#   响应体 {"model":"auto","content":[{"type":"text","text":"OK"}]}，正常出词。
+# （今天刚栽过一次「把推断当实测」—— #832 里我拿 /v1/models 的列表推出「某模型不可用」，
+#  实打才发现网关认那个别名。所以换模型名这类改动，先打一次再改。）
+DEFAULT_MODEL = "auto"
 PY = sys.executable
 
 
@@ -104,6 +118,10 @@ def gateway_env(model: str) -> dict:
         # 补丁三：网关是直连 IP，必须绕过本机代理，否则 UnsupportedProxyProtocol
         # 会伪装成「网关故障」。
         "NO_PROXY": url.split("://", 1)[-1].split(":")[0] + ",localhost,127.0.0.1",
+        # 补丁四（2026-09-05，model=auto 起）：钉住思考预算。上游对 auto 路由的
+        # 硬上限是 1024，CLI 默认会发更大的值 → 400 直接失败。实测：不钉 4 次 2 败，
+        # 钉了 6 次 1 败。残余失败由 _TRANSPORT_ERRORS 的重试兜。
+        "MAX_THINKING_TOKENS": "1024",
     })
     return env
 
