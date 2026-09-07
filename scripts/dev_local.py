@@ -52,42 +52,51 @@ _TRANSPORT_ERRORS = (
     "No fallback model group found",
 )
 
-# ── 网关凭据的真值来源（2026-09-07 改）──────────────────────────────────────
-# 原来只读 _ops/secrets/console.{url,key}。那两个文件停在 2026-07-26，
-# **里面的 key 已经失效** —— 网关恢复之后它仍然 400 `No connected db`，
-# 而同一时刻用 ~/.claude/settings.json 里的 token 打同一网关是 200。
-# 排查时几乎把这判成「网关没修好」，实际是「我拿着一把过期的钥匙」。
+# ── 网关凭据的唯一真值：~/.claude/settings.json（2026-09-07 收口）───────────
+# **没有兜底，故意的。**
 #
-# 判据顺序：settings.json（人在维护、跟着网关走）→ console.* 文件（历史兜底）。
-# 两个都读不到就大声失败，绝不用一把已知失效的钥匙硬跑。
+# 完整因果链（hermes 的 state.db 会话记录 + 本会话实测）：
+#   1. LiteLLM 的 master key 轮换，旧 key `sk-c8c68…`(51位) 失效；
+#   2. master key 需要 DB 校验，DB 起不来时它报的是 `no_db_connection` ——
+#      于是「网关挂了」与「我拿着一把废钥匙」**在错误信息里完全同形**；
+#   3. hermes 2026-09-06 21:50 检测到并换成 `sk-lm-jp…`(47位)，
+#      **直接写进 settings.json**（它自己的 config.yaml 反而没同步）；
+#   4. 而 `_ops/secrets/console.key` 停在 2026-07-26，**没有任何人在维护它**。
+#      我拿它探测 → 400 → 误判「网关没修好」，浪费一轮。
+#
+# 所以 console.{url,key} 不是「历史兜底」，是**一份会过期且无人同步的副本**。
+# 把它留作 fallback 更糟：settings.json 哪天缺字段，就会**静默回落到一把死钥匙**，
+# 而症状还是那个分辨不出来的 `no_db_connection`。
+# 凭据只能有一个真值来源；取不到就大声失败，绝不用一把可能已死的钥匙硬跑。
 _SETTINGS_JSON = pathlib.Path.home() / ".claude" / "settings.json"
-GATEWAY_URL_FILE = pathlib.Path("D:/Github/_ops/secrets/console.url")
-GATEWAY_KEY_FILE = pathlib.Path("D:/Github/_ops/secrets/console.key")
 
 
 def _settings_env() -> dict:
     try:
         return (json.loads(_SETTINGS_JSON.read_text(encoding="utf-8")) or {}).get("env") or {}
-    except (OSError, ValueError):
-        return {}
+    except (OSError, ValueError) as e:
+        raise RuntimeError("读不到 %s：%s" % (_SETTINGS_JSON, e)) from e
 
 
 def resolve_gateway() -> tuple[str, str, str]:
-    """返回 (base_url, token, 来源说明)。来源要能被打印出来 —— 排障时
-    「我在用哪把钥匙」必须一眼可见，不能靠猜。"""
+    """返回 (base_url, token, 来源说明)。
+
+    来源要能被打印出来 —— 排障时「我在用哪把钥匙」必须一眼可见，不能靠猜
+    （2026-09-07 就是靠猜浪费了一轮：拿一把 7 月的废钥匙探测，看到
+    no_db_connection，误判成「网关没修好」）。
+    """
     env = _settings_env()
     url = (env.get("ANTHROPIC_BASE_URL") or "").strip()
     key = (env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
-    if url and key:
-        return url, key, f"settings.json（{_SETTINGS_JSON}）"
-    try:
-        return (GATEWAY_URL_FILE.read_text(encoding="utf-8").strip(),
-                GATEWAY_KEY_FILE.read_text(encoding="utf-8").strip(),
-                "_ops/secrets/console.{url,key}（历史兜底）")
-    except OSError as e:
+    if not (url and key):
         raise RuntimeError(
-            f"取不到网关凭据：settings.json 里没有 ANTHROPIC_BASE_URL/AUTH_TOKEN，"
-            f"console.{{url,key}} 也读不到（{e}）") from e
+            "%s 的 env 里缺 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN。%s"
+            "这是网关凭据的**唯一**真值来源，没有兜底（见上方注释：%s"
+            "曾经的 _ops/secrets/console.key 是一份无人维护的副本，%s"
+            "回落到它只会得到一个分辨不出来的 no_db_connection）。%s"
+            "处置：把可用的 base_url/token 写进 settings.json 的 env，再重跑。"
+            % (_SETTINGS_JSON, LF, LF, LF, LF))
+    return url, key, "settings.json（%s）" % _SETTINGS_JSON
 
 
 WORKER_HOME = "D:/Github/_ops/claude-worker-home"
@@ -99,6 +108,7 @@ WORKER_HOME = "D:/Github/_ops/claude-worker-home"
 #  实打才发现网关认那个别名。所以换模型名这类改动，先打一次再改。）
 DEFAULT_MODEL = "auto"
 PY = sys.executable
+LF = chr(10)
 
 
 def is_transport_error(out: str) -> bool:
@@ -387,9 +397,11 @@ def main() -> int:
     try:
         _u, _k, _src = resolve_gateway()
         note(f"#{n} 网关凭据来源：{_src}  base={_u}")
-    except RuntimeError:
-        _u = _k = ""
-    if not (_u and _k):
+    except RuntimeError as e:
+        write_result(ok=False, stage="preflight", error=str(e))
+        note(f"#{n} 网关凭据不可用：{e}")
+        return 2
+    if False:
         write_result(ok=False, stage="preflight", error="网关钥匙缺失（console.url/console.key）")
         note("网关钥匙缺失，拒绝启动")
         return 2
