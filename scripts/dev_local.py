@@ -70,8 +70,31 @@ def is_transport_error(out: str) -> bool:
     return any(sig in out for sig in _TRANSPORT_ERRORS)
 
 
+def is_engine_crash(out: str) -> bool:
+    """CLI 自己崩了 —— 工人**一轮都没跑过**，不是「做不出来」。
+
+    2026-09-03 实测（#821）：两次尝试都拿到
+
+        {"type":"result","subtype":"error_during_execution","num_turns":0,
+         "total_cost_usd":0,"is_error":true,
+         "errors":["undefined is not an object (evaluating 'e.includes')"]}
+
+    `num_turns:0` + `total_cost_usd:0` = 一个 token 都没花，任务根本没开始。
+    而执行器当时把它判成 rc=4「工人零产出 —— 多半是卡本身描述不足」——
+    **诊断完全错了**，会让人去改卡的描述，而卡一个字都没问题。
+
+    这就是 #234 定下的那条纪律：**「引擎不可用」必须与「做不出来」可区分**。
+    同 silent-failure 清单里反复出现的形态：失败长得和另一种失败一样。
+    """
+    if '"subtype":"error_during_execution"' in out:
+        return True
+    # 兜底：明确的零轮次 + 零开销，无论 subtype 叫什么
+    return '"num_turns":0' in out and '"total_cost_usd":0' in out
+
+
 # 2026-09-06：`auto` 路由在**真实负载**下会间歇性变得不可用，CLI 直接回这一句：
-#     There's an issue with the selected model (auto). It may not exist or you may not have access to it.
+#     There's an issue with the selected model (auto).
+#     It may not exist or you may not have access to it.
 # 实测边界（这条边界很重要，别照抄结论）：
 #   · 一句话 prompt：6 次 1 败
 #   · 中等 prompt（一段说明文）：三种配置各 1 次，全通
@@ -93,6 +116,27 @@ FALLBACK_MODEL = "kimi-k3"
 def is_model_unavailable(out: str) -> bool:
     """CLI 说「这个模型用不了」—— 不是工人的错，也不是网络抖动。"""
     return any(sig in out for sig in _MODEL_UNAVAILABLE_MARKERS)
+
+
+# 2026-09-07：网关**后端**故障。与「网络抖动」不同 —— 抖动重试能好，这个不能：
+#     API Error: 400 {"error":{"message":"No connected db.","type":"no_db_connection"}}
+# 实测当天两个入口（49.235.157.202:9400 与 nextscene.cn/llm）返回同一错误，
+# 说明后者只是同一 LiteLLM 实例前面的反代，**没有独立的第二条网关可退**。
+#
+# 为什么单独一类：它出现时工人一轮都没跑过、零产出，而执行器原本把零产出判成
+#   「rc=4 工人零产出 —— 多半是卡本身描述不足」
+# ——**诊断完全错了**，会让人去改一张一个字都没问题的卡。这正是 #234 定的那条
+# 纪律：「引擎不可用」必须与「做不出来」可区分。2026-09-07 它咬了一口：#833 与
+# canonical#150 同时被误判成「卡描述不足」。
+_GATEWAY_DOWN_MARKERS = (
+    "No connected db",
+    "no_db_connection",
+)
+
+
+def is_gateway_down(out: str) -> bool:
+    """网关后端挂了 —— 不是工人的错，也不是能靠重试解决的抖动。"""
+    return any(sig in out for sig in _GATEWAY_DOWN_MARKERS)
 
 
 def _main_repo_root() -> pathlib.Path:
@@ -363,22 +407,62 @@ def main() -> int:
             time.sleep(30)
             continue   # attempt 未自增 —— 这才是「不计入」
 
+        # 网关后端故障要在「零产出」之前判：它必然零产出，但原因完全不同。
+        # 不重试（重试治不好后端掉库），用独立退出码 10 大声退出。
+        if is_gateway_down(out):
+            note(f"#{n} ⛔ **网关后端故障**（No connected db）—— 工人一轮都没跑过。"
+                 f"这不是卡的问题，也不是重试能解决的：请先修网关再重派。")
+            write_result(ok=False, stage="gateway_down", rc=rc, attempt=attempt,
+                         model_used=active_model, model_fallback_from=model_fallback_from,
+                         transport_retries=transport_retries,
+                         error="网关后端不可用（No connected db）—— 与「工人做不出来」无关",
+                         tail=out[-2000:])
+            return 10
+
+        # 引擎崩溃与网关抖动同属「不是工人的错」，但**不重试**：抖动是瞬时的，
+        # CLI 崩溃重试也是同样的崩。大声失败、用独立退出码 9，别让人去改卡描述。
+        if is_engine_crash(out):
+            write_result(ok=False, stage="engine", rc=rc, engine_crash=True,
+                         transport_retries=transport_retries,
+                         error="Claude Code CLI 自身崩溃（零轮次、零开销），任务从未开始",
+                         tail=out[-3000:])
+            note(f"#{n} **引擎崩溃**（CLI 一轮没跑、一个 token 没花）—— "
+                 f"不是做不出来，别改卡描述；先查 CLI/网关，再原样重派")
+            return 9
+
         attempt += 1
         diff = sh(["git", "status", "--porcelain"], cwd=wt).stdout.strip()
         if not diff:
-            note(f"#{n} 本次尝试零产出（rc={rc}）")
+            note(f"#{n} 本次尝试零产出（rc={rc}，model={active_model}）")
             if attempt == args.max_attempts:
                 write_result(ok=False, stage="develop", rc=rc, transport_retries=transport_retries,
-                             error="工人零产出", tail=out[-3000:])
+                             error="工人零产出", tail=out[-3000:],
+                             model_used=active_model, model_fallback_from=model_fallback_from)
                 return 4
             continue
 
-        ok, fail = acceptance(wt)
-        write_result(ok=ok, stage="acceptance" if not ok else "done", rc=rc,
-                     attempt=attempt, transport_retries=transport_retries,
-                     worktree=str(wt), branch=branch,
+        acc_ok, fail = acceptance(wt)
+        # ⚠️ 「跑完了没有」与「产出好不好」是两个正交的问题，各用一个字段答（#825）。
+        # 2026-09-02 实测（#823）：工人撞 90 分钟超时被杀（rc=124），产出恰好过了验收，
+        # 于是被写成 ok=true / stage=done —— 而 ok=true 与 rc=124 语义互斥：前者说
+        # 「可以交付」，后者说「没跑完就被杀了」。**验收回答不了「它想做的事做完没有」**，
+        # 测试只能证明「已写下的部分没把仓弄坏」。那次靠人逐项复核才没出事，
+        # 但判据本身是错的。超时一律不算通过，用独立退出码 8 与 4/5 分开。
+        timed_out = (rc == 124)
+        ok = acc_ok and not timed_out
+        write_result(ok=ok,
+                     stage="timeout" if timed_out else ("acceptance" if not acc_ok else "done"),
+                     rc=rc, attempt=attempt, transport_retries=transport_retries,
+                     model_used=active_model, model_fallback_from=model_fallback_from,
+                     worktree=str(wt), branch=branch, timed_out=timed_out,
+                     acceptance_passed=acc_ok, has_partial_work=True,
                      changed=diff.splitlines(), tail=out[-6000:],
-                     acceptance_fail=fail if not ok else "")
+                     acceptance_fail=fail if not acc_ok else "")
+        if timed_out:
+            note(f"#{n} **工人超时被杀**（rc=124，跑了 {args.timeout}s 上限）—— "
+                 f"验收{'通过' if acc_ok else '未过'}但那只说明「已写下的部分没弄坏仓」，"
+                 f"不说明活干完了。worktree 里是半成品：{wt}，必须人工逐项复核后才可推")
+            return 8
         note(f"#{n} {'验收通过' if ok else '验收未过'} —— 产出在 {wt}，未 push（等人审）")
         return 0 if ok else 5
 
