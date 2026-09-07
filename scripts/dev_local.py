@@ -52,8 +52,44 @@ _TRANSPORT_ERRORS = (
     "No fallback model group found",
 )
 
+# ── 网关凭据的真值来源（2026-09-07 改）──────────────────────────────────────
+# 原来只读 _ops/secrets/console.{url,key}。那两个文件停在 2026-07-26，
+# **里面的 key 已经失效** —— 网关恢复之后它仍然 400 `No connected db`，
+# 而同一时刻用 ~/.claude/settings.json 里的 token 打同一网关是 200。
+# 排查时几乎把这判成「网关没修好」，实际是「我拿着一把过期的钥匙」。
+#
+# 判据顺序：settings.json（人在维护、跟着网关走）→ console.* 文件（历史兜底）。
+# 两个都读不到就大声失败，绝不用一把已知失效的钥匙硬跑。
+_SETTINGS_JSON = pathlib.Path.home() / ".claude" / "settings.json"
 GATEWAY_URL_FILE = pathlib.Path("D:/Github/_ops/secrets/console.url")
 GATEWAY_KEY_FILE = pathlib.Path("D:/Github/_ops/secrets/console.key")
+
+
+def _settings_env() -> dict:
+    try:
+        return (json.loads(_SETTINGS_JSON.read_text(encoding="utf-8")) or {}).get("env") or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def resolve_gateway() -> tuple[str, str, str]:
+    """返回 (base_url, token, 来源说明)。来源要能被打印出来 —— 排障时
+    「我在用哪把钥匙」必须一眼可见，不能靠猜。"""
+    env = _settings_env()
+    url = (env.get("ANTHROPIC_BASE_URL") or "").strip()
+    key = (env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
+    if url and key:
+        return url, key, f"settings.json（{_SETTINGS_JSON}）"
+    try:
+        return (GATEWAY_URL_FILE.read_text(encoding="utf-8").strip(),
+                GATEWAY_KEY_FILE.read_text(encoding="utf-8").strip(),
+                "_ops/secrets/console.{url,key}（历史兜底）")
+    except OSError as e:
+        raise RuntimeError(
+            f"取不到网关凭据：settings.json 里没有 ANTHROPIC_BASE_URL/AUTH_TOKEN，"
+            f"console.{{url,key}} 也读不到（{e}）") from e
+
+
 WORKER_HOME = "D:/Github/_ops/claude-worker-home"
 # 2026-09-05 Muso 指示：开发/调研一律走 CLI，模型用 `auto`（网关侧自动路由）。
 # 上线前实测过，不是照抄配置：
@@ -166,10 +202,16 @@ def sh(args: list[str], cwd=None, env=None, timeout: int = 3600,
     return p
 
 
+
+def _host_of(url: str) -> str:
+    """从 base_url 取主机名（不含协议、端口、路径）—— NO_PROXY 只认主机。"""
+    rest = url.split("://", 1)[-1]
+    return rest.split("/", 1)[0].split(":")[0]
+
+
 def gateway_env(model: str) -> dict:
     """构造 claude CLI 的网关环境。逐条对应 run-worker.ps1 踩过的坑。"""
-    url = GATEWAY_URL_FILE.read_text(encoding="utf-8").strip()
-    key = GATEWAY_KEY_FILE.read_text(encoding="utf-8").strip()
+    url, key, src = resolve_gateway()
     env = dict(os.environ)
     # 补丁一：清掉可能指向别处的残留 —— 混合环境是「把网关 token 发去真
     # Anthropic 端点然后 401」的来源（run-worker.ps1:555 同款）。
@@ -184,9 +226,13 @@ def gateway_env(model: str) -> dict:
         # 补丁二：隔离 CLI 登录态。否则 OAuth 优先于 env token，静默烧订阅额度
         # 且模型不是你以为的那个。
         "CLAUDE_CONFIG_DIR": WORKER_HOME,
-        # 补丁三：网关是直连 IP，必须绕过本机代理，否则 UnsupportedProxyProtocol
-        # 会伪装成「网关故障」。
-        "NO_PROXY": url.split("://", 1)[-1].split(":")[0] + ",localhost,127.0.0.1",
+        # 补丁三：绕过本机代理，否则 UnsupportedProxyProtocol 会伪装成「网关故障」。
+        # ⚠️ 必须只取**主机名**。旧写法 `url.split("://")[-1].split(":")[0]` 假设
+        # 网关是 `http://IP:PORT` 这种无路径形态；2026-09-07 凭据源改成
+        # settings.json 后 base_url 变成 `https://nextscene.cn/llm`（带路径），
+        # 那行算出 `nextscene.cn/llm` —— NO_PROXY 里放一个带路径的值不是合法主机，
+        # 匹配不上，代理绕过静默失效。
+        "NO_PROXY": _host_of(url) + ",localhost,127.0.0.1",
         # 补丁四（2026-09-05，model=auto 起）：钉住思考预算。上游对 auto 路由的
         # 硬上限是 1024，CLI 默认会发更大的值 → 400 直接失败。实测：不钉 4 次 2 败，
         # 钉了 6 次 1 败。残余失败由 _TRANSPORT_ERRORS 的重试兜。
@@ -338,7 +384,12 @@ def main() -> int:
                        ensure_ascii=False, indent=2), encoding="utf-8")
 
     # ── 前置体检（OPERATIONS-GUIDE「派活前置体检」）─────────────────────────
-    if not (GATEWAY_URL_FILE.exists() and GATEWAY_KEY_FILE.exists()):
+    try:
+        _u, _k, _src = resolve_gateway()
+        note(f"#{n} 网关凭据来源：{_src}  base={_u}")
+    except RuntimeError:
+        _u = _k = ""
+    if not (_u and _k):
         write_result(ok=False, stage="preflight", error="网关钥匙缺失（console.url/console.key）")
         note("网关钥匙缺失，拒绝启动")
         return 2
