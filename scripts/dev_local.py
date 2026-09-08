@@ -75,7 +75,7 @@ def _settings_env() -> dict:
     try:
         return (json.loads(_SETTINGS_JSON.read_text(encoding="utf-8")) or {}).get("env") or {}
     except (OSError, ValueError) as e:
-        raise RuntimeError("读不到 %s：%s" % (_SETTINGS_JSON, e)) from e
+        raise RuntimeError(f"读不到 {_SETTINGS_JSON}：{e}") from e
 
 
 def resolve_gateway() -> tuple[str, str, str]:
@@ -90,13 +90,12 @@ def resolve_gateway() -> tuple[str, str, str]:
     key = (env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
     if not (url and key):
         raise RuntimeError(
-            "%s 的 env 里缺 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN。%s"
-            "这是网关凭据的**唯一**真值来源，没有兜底（见上方注释：%s"
-            "曾经的 _ops/secrets/console.key 是一份无人维护的副本，%s"
-            "回落到它只会得到一个分辨不出来的 no_db_connection）。%s"
-            "处置：把可用的 base_url/token 写进 settings.json 的 env，再重跑。"
-            % (_SETTINGS_JSON, LF, LF, LF, LF))
-    return url, key, "settings.json（%s）" % _SETTINGS_JSON
+            f"{_SETTINGS_JSON} 的 env 里缺 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN。{LF}"
+            f"这是网关凭据的**唯一**真值来源，没有兜底（见上方注释：{LF}"
+            f"曾经的 _ops/secrets/console.key 是一份无人维护的副本，{LF}"
+            f"回落到它只会得到一个分辨不出来的 no_db_connection）。{LF}"
+            f"处置：把可用的 base_url/token 写进 settings.json 的 env，再重跑。")
+    return url, key, f"settings.json（{_SETTINGS_JSON}）"
 
 
 WORKER_HOME = "D:/Github/_ops/claude-worker-home"
