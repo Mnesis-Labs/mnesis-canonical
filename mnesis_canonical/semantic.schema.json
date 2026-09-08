@@ -274,6 +274,11 @@
           "enum": ["ok", "stale", "lost"],
           "description": "ok = T_map_headset is currently valid; stale = the last extrinsic is still carried but no longer trusted; lost = no usable extrinsic (the key is omitted)."
         },
+        "source": {
+          "type": "string",
+          "enum": ["headset", "robot"],
+          "description": "Who solved this alignment. A subset of ObservationLabel.source WITHOUT 'human' — a human adjudication cannot produce an extrinsic. Optional in v1.1 for backward compatibility only: new producers MUST fill it, and ABSENT MEANS UNKNOWN — a consumer receiving a message without source must NOT default it to either end (SPEC §Conventions). The robot end (Daedalus, ADR-004) remains the fusion owner; a headset-uplinked T_map_headset is one observation, not the authoritative value."
+        },
         "T_map_headset": {
           "allOf": [{ "$ref": "#/$defs/pose" }],
           "description": "Extrinsic T_map<-headset: transforms a point in the headset frame into the map frame. Required when state is 'ok'; MUST be omitted when state is 'lost' — an identity transform as a stand-in silently places every headset label at the map origin."
@@ -283,28 +288,71 @@
           "minimum": 0,
           "description": "When the extrinsic was computed, Unix nanoseconds. Required whenever T_map_headset is present: the age of the alignment is what makes it trustworthy or not."
         },
+        "T_map_tag": {
+          "allOf": [{ "$ref": "#/$defs/pose" }],
+          "description": "Optional T_map<-tag: the reference AprilTag both ends anchor to. Only the robot end can emit it — the robot observes the tag, the headset cannot (proposal §4 Q-H option 1, adopted by Daedalus). The shape is the SAME pose object as T_map_headset: metres + unit quaternion scalar-last, one convention per standard. Its absence is NOT a claim that no tag is anchored, only that this producer has no reading to send; omit rather than publishing a stand-in transform."
+        },
         "quality": {
           "type": "object",
           "description": "Alignment quality. Required when state is 'ok' — an extrinsic without a quality figure cannot be gated on.",
-          "required": ["rmse_m", "inlier_ratio"],
+          "required": ["rmse_m"],
           "properties": {
+            "method": {
+              "type": "string",
+              "enum": ["manual_3pt", "tag_detect"],
+              "description": "How the alignment was solved. Absent means v1 semantics — the three v1 fields below keep their original meaning and inlier_ratio is REQUIRED. manual_3pt = operator poked three AprilTag corners; tag_detect = automated tag detection. 'tag_detect' reserves the value only, defining no fields of its own: adding an enum value later would be a contract change every consumer with a hard-coded branch has to revisit. The tag_detect quality fields are proposed by Daedalus as a producer."
+            },
             "rmse_m": {
               "type": "number",
               "minimum": 0,
-              "description": "Registration RMSE in metres."
+              "description": "Registration RMSE in metres. Under method == 'manual_3pt' this is the residual RMS of the Horn solution after the three corner correspondences — deliberately NOT a separate residual_m: one quantity, one name (one convention per standard)."
+            },
+            "facing_ok": {
+              "type": "boolean",
+              "description": "Required when method is 'manual_3pt'. True when the solved tag faces the operator — the only defence against the mirror ambiguity of a 3-point coplanar solve (a 180-degree flip about an in-plane axis is a real rotation with zero residual). false must NOT appear with state 'ok'."
+            },
+            "drift_state": {
+              "type": "string",
+              "enum": ["unmonitored", "within", "exceeded"],
+              "description": "Required when method is 'manual_3pt'. Three-valued, not a boolean, because 'not drifting' and 'not being monitored' must be told apart: unmonitored = no spatial anchor available at all (Editor / plain-VR fallback / anchoring subsystem not up); within = monitored and inside threshold; exceeded contradicts state 'ok' — the headset has already cleared the extrinsic to identity and reports state 'lost' instead."
+            },
+            "drift_trans_m": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Optional. Translation drift reading in metres; carried only when drift_state is not 'unmonitored'."
+            },
+            "drift_rot_deg": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Optional. Rotation drift reading in degrees; carried only when drift_state is not 'unmonitored'."
             },
             "inlier_ratio": {
               "type": "number",
               "minimum": 0,
               "maximum": 1,
-              "description": "Fraction of correspondences that are inliers."
+              "description": "Fraction of correspondences that are inliers. REQUIRED unless method is 'manual_3pt', where it is degenerate: 3 correspondences are the MINIMUM set for a rigid pose, there is no outlier-rejection stage, so the value is a constant 1.0 and would be mistaken for confidence. Loosening, not tightening — every v1-legal message stays legal."
             },
             "match_count": {
               "type": "integer",
               "minimum": 0,
-              "description": "Number of correspondences used."
+              "description": "Number of correspondences used. Same story as inlier_ratio: omit it for manual_3pt, where it is a constant 3."
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": { "required": ["method"], "properties": { "method": { "const": "manual_3pt" } } },
+              "then": { "required": ["facing_ok", "drift_state"] },
+              "else": { "required": ["inlier_ratio"] }
+            },
+            {
+              "if": { "required": ["drift_state", "drift_trans_m"], "properties": { "drift_state": { "const": "unmonitored" } } },
+              "then": { "not": { "required": ["drift_trans_m"] } }
+            },
+            {
+              "if": { "required": ["drift_state", "drift_rot_deg"], "properties": { "drift_state": { "const": "unmonitored" } } },
+              "then": { "not": { "required": ["drift_rot_deg"] } }
+            }
+          ]
         },
         "event": {
           "type": "string",
@@ -325,6 +373,26 @@
         {
           "if": { "properties": { "state": { "const": "lost" } }, "required": ["state"] },
           "then": { "not": { "required": ["T_map_headset"] } }
+        },
+        {
+          "if": {
+            "required": ["state", "quality"],
+            "properties": {
+              "state": { "const": "ok" },
+              "quality": { "required": ["facing_ok"], "properties": { "facing_ok": { "const": false } } }
+            }
+          },
+          "then": { "not": { "true": false } }
+        },
+        {
+          "if": {
+            "required": ["state", "quality"],
+            "properties": {
+              "state": { "const": "ok" },
+              "quality": { "required": ["drift_state"], "properties": { "drift_state": { "const": "exceeded" } } }
+            }
+          },
+          "then": { "not": { "true": false } }
         },
         {
           "if": { "required": ["T_map_headset"] },

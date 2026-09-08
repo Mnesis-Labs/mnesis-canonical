@@ -15,11 +15,15 @@ from pathlib import Path
 import pytest
 
 from mnesis_canonical import (
+    COLOCALIZATION_DRIFT_STATES,
+    COLOCALIZATION_METHODS,
+    COLOCALIZATION_SOURCES,
     COLOCALIZATION_STALE_EVENT,
     COLOCALIZATION_STATES,
     LABEL_FRAME_IDS,
     LABEL_SOURCES,
     LABEL_STATES,
+    MANUAL_3PT_REQUIRED_QUALITY,
     OBJECT_CLASS_TAXONOMY,
     PS_MAX_HZ,
     PS_MESSAGE_TYPES,
@@ -448,6 +452,309 @@ def test_quality_ranges_enforced():
     assert any("rmse_m" in e for e in errs)
     assert any("inlier_ratio" in e for e in errs)
 
+
+# ── C12 v1.1: colocalization producer direction + method-aware quality ──────
+
+
+def _coloc(**overrides) -> dict:
+    """A v1.1 colocalization body with the robot end's tag_detect shape."""
+    body = {
+        "map_id": "lab_bench_a",
+        "state": "ok",
+        "source": "robot",
+        "T_map_headset": {"t": [1.204, 0.0, -0.518], "q": [0.0, 0.7071068, 0.0, 0.7071068]},
+        "computed_at_ns": T0,
+        "quality": {"method": "tag_detect", "rmse_m": 0.014, "inlier_ratio": 0.91,
+                    "match_count": 428},
+    }
+    body.update(overrides)
+    return body
+
+
+def _manual_quality(**overrides) -> dict:
+    """A manual_3pt quality block: degenerate v1 fields omitted, drift fields set."""
+    quality = {
+        "method": "manual_3pt",
+        "rmse_m": 0.012,
+        "facing_ok": True,
+        "drift_state": "within",
+        "drift_trans_m": 0.007,
+        "drift_rot_deg": 1.2,
+    }
+    quality.update(overrides)
+    return quality
+
+
+def test_source_enum_is_a_subset_without_human():
+    """Narrowing the enum is the whole point: 'human' must be refused here."""
+    assert COLOCALIZATION_SOURCES == ("headset", "robot")
+    assert set(COLOCALIZATION_SOURCES) < set(LABEL_SOURCES)
+    assert "human" not in COLOCALIZATION_SOURCES
+
+
+def test_source_headset_is_accepted():
+    """Eidolon PS2b uplinks its own solved T_map_headset with source:'headset'."""
+    assert validate_ps_message(
+        _msg("colocalization", _coloc(source="headset", quality=_manual_quality()))
+    ) == []
+
+
+def test_source_robot_is_accepted():
+    assert validate_ps_message(_msg("colocalization", _coloc(source="robot"))) == []
+
+
+def test_source_human_rejected():
+    """A human adjudication cannot produce an extrinsic — the subset, not a typo."""
+    errs = validate_ps_message(_msg("colocalization", _coloc(source="human")))
+    assert any("source" in e and "human" in e for e in errs)
+
+
+def test_source_unknown_rejected():
+    assert validate_ps_message(_msg("colocalization", _coloc(source="cloud")))
+
+
+def test_source_absent_still_valid_for_v1_compatibility():
+    """Optional at the schema level so messages already sent under v1 stay legal."""
+    body = _coloc()
+    del body["source"]
+    assert validate_ps_message(_msg("colocalization", body)) == []
+
+
+def test_quality_method_enum():
+    assert COLOCALIZATION_METHODS == ("manual_3pt", "tag_detect")
+    for method in COLOCALIZATION_METHODS:
+        quality = _manual_quality() if method == "manual_3pt" else _coloc()["quality"]
+        quality["method"] = method
+        assert validate_ps_message(_msg("colocalization", _coloc(quality=quality))) == [], method
+
+
+def test_quality_method_unknown_rejected():
+    errs = validate_ps_message(
+        _msg("colocalization", _coloc(quality={"method": "feature_match", "rmse_m": 0.01,
+                                               "inlier_ratio": 0.9}))
+    )
+    assert any("method" in e for e in errs)
+
+
+def test_manual_3pt_full_case_validates():
+    """The Eidolon PS2b producer shape: no inlier_ratio, no match_count."""
+    errs = validate_ps_message(_msg("colocalization", _coloc(source="headset",
+                                                             quality=_manual_quality())))
+    assert errs == []
+
+
+def test_manual_3pt_requires_facing_ok_and_drift_state():
+    assert MANUAL_3PT_REQUIRED_QUALITY == ("facing_ok", "drift_state")
+    for key in MANUAL_3PT_REQUIRED_QUALITY:
+        quality = _manual_quality()
+        del quality[key]
+        errs = validate_ps_message(_msg("colocalization", _coloc(quality=quality)))
+        assert any(f"{key}" in e for e in errs), key
+
+
+def test_manual_3pt_facing_ok_must_be_boolean():
+    errs = validate_ps_message(
+        _msg("colocalization", _coloc(quality=_manual_quality(facing_ok="yes")))
+    )
+    assert any("facing_ok" in e for e in errs)
+
+
+def test_drift_states_enum():
+    assert COLOCALIZATION_DRIFT_STATES == ("unmonitored", "within", "exceeded")
+    within = _manual_quality(drift_state="within")
+    unmonitored = _manual_quality(drift_state="unmonitored")
+    # unmonitored means no reading exists, so the drift figures must be omitted.
+    del unmonitored["drift_trans_m"]
+    del unmonitored["drift_rot_deg"]
+    assert validate_ps_message(_msg("colocalization", _coloc(quality=within))) == []
+    assert validate_ps_message(_msg("colocalization", _coloc(quality=unmonitored))) == []
+
+
+def test_drift_readings_forbidden_when_unmonitored():
+    """No anchor means no reading — a constant reading under 'unmonitored' is a lie."""
+    errs = validate_ps_message(
+        _msg("colocalization", _coloc(quality=_manual_quality(drift_state="unmonitored")))
+    )
+    assert any("unmonitored" in e for e in errs)
+
+
+def test_drift_reading_forbidden_when_unmonitored_either_side():
+    """A reading exists in two shapes — the guard must fire on each one ALONE.
+
+    Regression: the JSON Schema originally required BOTH keys before firing and
+    banned only drift_trans_m, so a lone drift_rot_deg slipped past. The headset
+    end validates the schema, not Python, so a half-guard is a real hole.
+
+    The reading under test is isolated — the OTHER drift key is deleted — because
+    leaving both present would satisfy the buggy "requires both" rule and hide the
+    gap. That is exactly how this bug survived its first pass.
+    """
+    pytest.importorskip("jsonschema")
+    for keep in ("drift_trans_m", "drift_rot_deg"):
+        quality = _manual_quality(drift_state="unmonitored")
+        # keep exactly one reading
+        for key in ("drift_trans_m", "drift_rot_deg"):
+            if key != keep:
+                del quality[key]
+        msg = _msg("colocalization", _coloc(quality=quality))
+        assert validate_ps_message(msg), f"python missed {keep}"
+        assert validate_ps_message_jsonschema(msg), f"json schema missed {keep}"
+
+
+def test_json_schema_and_python_agree_when_drift_is_unmonitored_and_bare():
+    """The inverse: no readings under 'unmonitored' is legal for both validators."""
+    pytest.importorskip("jsonschema")
+    quality = _manual_quality(drift_state="unmonitored")
+    del quality["drift_trans_m"]
+    del quality["drift_rot_deg"]
+    msg = _msg("colocalization", _coloc(quality=quality))
+    assert validate_ps_message(msg) == []
+    assert validate_ps_message_jsonschema(msg) == []
+
+
+def test_manual_3pt_may_omit_inlier_ratio():
+    """The relaxation: 3 correspondences are the minimum set, so the ratio is a
+    constant 1.0 with no outlier-rejection stage — omitting it is legal here."""
+    errs = validate_ps_message(_msg("colocalization", _coloc(quality=_manual_quality())))
+    assert errs == []
+    assert "inlier_ratio" not in _manual_quality()
+
+
+def test_inlier_ratio_still_required_when_method_absent():
+    """Absent method keeps exact v1 semantics — nothing there gets looser."""
+    v1 = {
+        "map_id": "m",
+        "state": "ok",
+        "T_map_headset": {"t": [0, 0, 0], "q": [0, 0, 0, 1]},
+        "computed_at_ns": T0,
+        "quality": {"rmse_m": 0.01},
+    }
+    errs = validate_ps_message(_msg("colocalization", v1))
+    assert any("inlier_ratio" in e for e in errs)
+
+
+def test_inlier_ratio_still_required_for_tag_detect():
+    errs = validate_ps_message(
+        _msg("colocalization", _coloc(quality={"method": "tag_detect", "rmse_m": 0.01}))
+    )
+    assert any("inlier_ratio" in e for e in errs)
+
+
+def test_facing_ok_false_contradicts_ok_state():
+    errs = validate_ps_message(
+        _msg("colocalization", _coloc(quality=_manual_quality(facing_ok=False)))
+    )
+    assert any("facing_ok" in e and "contradicts" in e for e in errs)
+
+
+def test_drift_exceeded_contradicts_ok_state():
+    """NeedsRealign maps to 'lost' — the headset cleared the extrinsic already."""
+    errs = validate_ps_message(
+        _msg("colocalization", _coloc(quality=_manual_quality(drift_state="exceeded")))
+    )
+    assert any("drift_state" in e and "contradicts" in e for e in errs)
+
+
+def test_drift_trans_and_rot_must_be_non_negative():
+    assert validate_ps_message(
+        _msg("colocalization", _coloc(quality=_manual_quality(drift_trans_m=-0.1)))
+    )
+    assert validate_ps_message(
+        _msg("colocalization", _coloc(quality=_manual_quality(drift_rot_deg=-1.0)))
+    )
+
+
+def test_t_map_tag_carries_a_pose():
+    """Daedalus is already emitting this key; it must be legal, not unknown."""
+    tag = {"t": [0.412, 0.903, -0.231], "q": [0.0, 0.0, 0.0, 1.0]}
+    assert validate_ps_message(_msg("colocalization", _coloc(T_map_tag=tag))) == []
+
+
+def test_t_map_tag_rejects_a_non_unit_quaternion():
+    errs = validate_ps_message(
+        _msg("colocalization", _coloc(T_map_tag={"t": [0, 0, 0], "q": [0, 0, 0, 0.5]}))
+    )
+    assert any("T_map_tag" in e and "unit quaternion" in e for e in errs)
+
+
+def test_t_map_tag_absent_is_not_a_claim():
+    """Absent means this producer has no reading — omission, never a stand-in."""
+    assert "T_map_tag" not in _coloc()
+    assert validate_ps_message(_msg("colocalization", _coloc())) == []
+
+
+def test_v1_goldens_remain_valid_without_any_v1_1_keys():
+    """Additive-only proof: neither golden acquires source / method / T_map_tag."""
+    for name in ("colocalization.json", "colocalization_stale.json"):
+        msg = json.loads((SAMPLES_DIR / name).read_text(encoding="utf-8"))
+        body = msg["body"]
+        assert validate_ps_message(msg) == []
+        assert "source" not in body
+        assert "T_map_tag" not in body
+        assert "method" not in body["quality"]
+
+
+# ── v1.1 JSON Schema agreement ───────────────────────────────────────────────
+
+
+def test_json_schema_rejects_human_coloc_source():
+    """The headset end validates the schema, not Python — both must agree here."""
+    pytest.importorskip("jsonschema")
+    msg = _msg("colocalization", _coloc(source="human"))
+    assert validate_ps_message(msg)
+    assert validate_ps_message_jsonschema(msg)
+
+
+def test_json_schema_accepts_manual_3pt_and_t_map_tag():
+    pytest.importorskip("jsonschema")
+    body = _coloc(source="headset", quality=_manual_quality(),
+                  T_map_tag={"t": [0.4, 0.9, -0.2], "q": [0, 0, 0, 1]})
+    assert validate_ps_message(_msg("colocalization", body)) == []
+    assert validate_ps_message_jsonschema(_msg("colocalization", body)) == []
+
+
+def test_json_schema_rejects_missing_inlier_ratio_without_method():
+    pytest.importorskip("jsonschema")
+    body = {
+        "map_id": "m",
+        "state": "ok",
+        "T_map_headset": {"t": [0, 0, 0], "q": [0, 0, 0, 1]},
+        "computed_at_ns": T0,
+        "quality": {"rmse_m": 0.01},
+    }
+    assert validate_ps_message(_msg("colocalization", body))
+    assert validate_ps_message_jsonschema(_msg("colocalization", body))
+
+
+def test_json_schema_rejects_facing_ok_false_on_ok():
+    pytest.importorskip("jsonschema")
+    msg = _msg("colocalization", _coloc(quality=_manual_quality(facing_ok=False)))
+    assert validate_ps_message(msg)
+    assert validate_ps_message_jsonschema(msg)
+
+
+def test_json_schema_rejects_exceeded_drift_on_ok():
+    pytest.importorskip("jsonschema")
+    msg = _msg("colocalization", _coloc(quality=_manual_quality(drift_state="exceeded")))
+    assert validate_ps_message(msg)
+    assert validate_ps_message_jsonschema(msg)
+
+
+def test_schema_enum_matches_the_python_constants():
+    """Same drift guard as the class_id enum: two ends, one value domain."""
+    body_def = load_semantic_schema()["$defs"]["colocalization_body"]
+    assert tuple(body_def["properties"]["source"]["enum"]) == COLOCALIZATION_SOURCES
+    assert tuple(body_def["properties"]["quality"]["properties"]["method"]["enum"]) == (
+        COLOCALIZATION_METHODS
+    )
+    assert (
+        tuple(
+            body_def["properties"]["quality"]["properties"]["drift_state"]["enum"]
+        )
+        == COLOCALIZATION_DRIFT_STATES
+    )
+    assert "T_map_tag" in body_def["properties"]
+    assert body_def["properties"]["T_map_tag"]["allOf"][0]["$ref"] == "#/$defs/pose"
 
 # ── stream-level rules: low frequency is a HARD requirement ──────────────────
 
