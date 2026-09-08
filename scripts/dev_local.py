@@ -198,6 +198,35 @@ def _main_repo_root() -> pathlib.Path:
 REPO_ROOT = _main_repo_root()
 
 
+
+def default_branch() -> str:
+    """仓的默认分支 —— **不许写死 `main`**。
+
+    ⚠️ 2026-09-09 实测：Mnesis-Eidolon 根本没有 main，它的默认分支是
+    `feature/mvp-hand-and-scene`。把 `origin/main` 写死的后果是该仓**每一张卡**
+    在建 worktree 那一步就死：
+
+        fatal: invalid reference: origin/main
+
+    这与 Parthenon#812（内核的兄弟检出刷新把 main 写死、对 Eidolon 每 tick 必错）
+    是**同一个错**，而我在移植执行器时又犯了一次 —— 说明「默认分支叫 main」
+    这个假设不该出现在任何地方，要从数据里读。
+
+    判据顺序：origin/HEAD 的符号引用（本地已知的真值）→ gh 查远端 → 最后才退
+    `main`（退到这一步会打警告，因为它多半是错的）。
+    """
+    r = sh(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=REPO_ROOT)
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip().split("/", 1)[-1]
+    g = sh(["gh", "repo", "view", REPO, "--json", "defaultBranchRef",
+            "-q", ".defaultBranchRef.name"], cwd=REPO_ROOT)
+    if g.returncode == 0 and g.stdout.strip():
+        return g.stdout.strip()
+    note("⚠ 取不到默认分支（origin/HEAD 与 gh 都失败），退回 main —— "
+         "若本仓默认分支不叫 main，建 worktree 会失败")
+    return "main"
+
+
 def note(msg: str) -> None:
     print(f"[{time.strftime('%m-%d %H:%M:%S')}] {msg}", flush=True)
 
@@ -425,7 +454,8 @@ def main() -> int:
     wt = REPO_ROOT / ".claude" / "worktrees" / f"dl-issue-{n}"
     branch = f"claude/dl-issue-{n}"
     if not wt.exists():
-        sh(["git", "worktree", "add", "-B", branch, str(wt), "origin/main"],
+        base = f"origin/{default_branch()}"
+        sh(["git", "worktree", "add", "-B", branch, str(wt), base],
            cwd=REPO_ROOT, check=True)
         note(f"#{n} worktree 建好：{wt}")
     else:
