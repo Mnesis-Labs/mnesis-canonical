@@ -453,8 +453,20 @@ def main() -> int:
 
     wt = REPO_ROOT / ".claude" / "worktrees" / f"dl-issue-{n}"
     branch = f"claude/dl-issue-{n}"
-    if not wt.exists():
+    # ⚠️ 判据不能只看 `wt.exists()` —— **一个空壳目录也算「存在」**。
+    # 2026-09-09 实测：上一轮 `git worktree remove` 之后 git 已不认它，但目录
+    # 还留在磁盘上。下一轮执行器看到「目录存在」就跳过创建，于是 worktree 里
+    # 一个文件都没有，验收阶段才报「找不到 Unity 工程目录」—— 而那时工人已经
+    # 白跑了一整轮。**「目录在」不等于「worktree 在」。**
+    #
+    # 判据改成问 git：`git rev-parse --git-dir` 在真 worktree 里才成功。
+    is_live = wt.is_dir() and sh(["git", "rev-parse", "--git-dir"], cwd=wt).returncode == 0
+    if wt.is_dir() and not is_live:
+        note(f"#{n} 发现空壳目录（git 已不认它），删掉重建：{wt}")
+        shutil.rmtree(wt, ignore_errors=True)
+    if not is_live:
         base = f"origin/{default_branch()}"
+        sh(["git", "worktree", "prune"], cwd=REPO_ROOT)   # 清掉陈旧登记再建
         sh(["git", "worktree", "add", "-B", branch, str(wt), base],
            cwd=REPO_ROOT, check=True)
         note(f"#{n} worktree 建好：{wt}")
