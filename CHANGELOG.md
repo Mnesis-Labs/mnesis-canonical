@@ -7,7 +7,7 @@ and this project adheres to [SemVer-of-the-schema](README.md#compatibility-commi
 — the **package version** (this changelog) and the **schema version** (SPEC.md §Versioning)
 are decoupled:
 
-> **Package 0.6.0** is the current version — the same string as
+> **Package 0.7.0** is the current version — the same string as
 > `mnesis_canonical.__version__` and `pyproject.toml` `[project] version`, kept in
 > lockstep by `scripts/version_check.py`.
 >
@@ -15,6 +15,61 @@ are decoupled:
 > **0.3.0**: `ego_v1` = v0.1 backward-compatible default; `robot_v2` adds
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
+
+## [0.7.0] — 2026-09-07
+
+### Added
+
+- **C12 v1.1 落地：`colocalization` 登记头显生产者**（提案 canonical#148，
+  Muso 2026-09-03 拍板；本卡 canonical#150 = 「变更流程」第 2 步）。additive-only
+  （DEV_GUIDE §7「additive = minor」），三个新键全部**可选**：
+
+  - **`body.source`**：枚举 `headset | robot`，是 `ObservationLabel.source` 的
+    **子集，刻意不含 `human`**——人裁决产不出外参（照 `semantic_label` 上行把枚举
+    收窄到 `{headset, human}` 的先例）。schema 层保持可选只为不破坏 v1 已发出的
+    消息；**缺失 = 未知，消费方禁止默认成任一端**（SPEC §Conventions 铁律）。
+    `human` 在本层被拒收由反向用例焊住。
+  - **`quality.method`**：枚举 `manual_3pt | tag_detect`，让 `quality` 块方法感知。
+    `manual_3pt`（头显手动 3 点解）**必填** `facing_ok`（bool，镜像歧义的唯一防线）
+    与 `drift_state`（三值 `unmonitored | within | exceeded`——「没漂」与「没在监测」
+    必须分得开，所以是三值而非 bool）；**可省略** `inlier_ratio` / `match_count`——
+    3 个对应点是刚体位姿的最小集，没有外点剔除这一步，照填等于往契约里塞两个常量
+    还会被误当作置信度。`tag_detect` **只预留值、不定义字段**（照枚举第一天就留
+    `headset` 位的先例：后补枚举值是每个硬编码分支消费方都要回头改的契约变更）。
+    `drift_trans_m` / `drift_rot_deg` 可选，且仅 `drift_state != unmonitored` 时携带。
+    `rmse_m` 在两种 method 下**始终必填**（manual_3pt 下即 3 点 Horn 解的残差 RMS，
+    不另起 `residual_m`——同一个量一个名字）。
+  - **`body.T_map_tag`**：可选 pose，形状与 `T_map_headset` 完全相同（引用
+    `$defs/pose`，不另起约定）。只有机器人端能发——机器人观测 tag，头显观测不到。
+    缺失不是「没锚 tag」的断言，只是该生产者没有读数，照「禁带内哨兵」铁律整键省略。
+  - **`state == "ok"` 跨字段规则**：`facing_ok` 不得为 `false`、`drift_state`
+    不得为 `exceeded`——已丢外参的生产者清成单位量后会上报 `state == "lost"`。
+  - 新常量：`COLOCALIZATION_SOURCES` / `COLOCALIZATION_METHODS` /
+    `COLOCALIZATION_DRIFT_STATES` / `MANUAL_3PT_REQUIRED_QUALITY`。
+
+  **`inlier_ratio` 由必填改为「`method == manual_3pt` 时可省略」是放宽而非收紧**：
+  所有 v1 合法消息在 v1.1 下仍合法，现有两份 golden（`colocalization.json` /
+  `colocalization_stale.json`）**逐字节未变**——这是本卡 additive-only 的生效判据
+  （`test_v1_goldens_remain_valid_without_any_v1_1_keys` 钉住），故**未新增 golden
+  样本**：加了新 golden 反而会被误读成「必须携带新键」。
+
+  **`T_map_tag` 不能少**：Daedalus 自 PR#635 起**已经在发这个键**（源码注释自述
+  「canonical#148 §4 Q-H 选项 ①」），但当时它只存在于提案文本里、不在任何生效契约中
+  ——严格讲 Daedalus 当前产出不该算合规。处置是**让提案落地把它接住**，而不是让
+  Daedalus 回退；落地卡漏掉这个键等于批准了提案而契约里仍然没有它。落地后
+  **Daedalus 现有产出即合规**。
+
+  `contracts/` 与 `contracts.lock` 零改动：本卡不改 C1 帧、不改 C3 既有消息，
+  C12 契约文本在根目录 `CONTRACTS.md` / `SPEC.md`，不在 lock 跟踪范围内。
+  **§4 的 Q-A…Q-G 只登记不决策**（`source` 何时转必填、第四态、`computed_at_ns`
+  时基、`tag_id`、头显侧 `map_id` 来源、漂移阈值、`facing_ok` 放哪层），需要真实
+  数据或单独拍板，不进本卡。
+
+### 消费方联动（各仓另开卡，本卡只列）
+
+- **Eidolon**：上行 `source:"headset"` + `quality.method:"manual_3pt"`，把 PS2b 已
+  解出的 `T_map←headset` 真正发出去。
+- **Daedalus**：PS3 融合器按 `source` 分派；`T_map_tag` 已在发，落地后即合规。
 
 ## [0.6.0] — 2026-08-21
 

@@ -82,13 +82,17 @@ from .schema import (
     required_keys_for_profile,
 )
 from .semantic import (
+    COLOCALIZATION_DRIFT_STATES,
     COLOCALIZATION_MAX_HZ,
+    COLOCALIZATION_METHODS,
+    COLOCALIZATION_SOURCES,
     COLOCALIZATION_STALE_EVENT,
     COLOCALIZATION_STATES,
     ENVELOPE_KEYS,
     LABEL_FRAME_IDS,
     LABEL_SOURCES,
     LABEL_STATES,
+    MANUAL_3PT_REQUIRED_QUALITY,
     OBJECT_CLASS_TAXONOMY,
     PS_MAX_HZ,
     PS_MESSAGE_TYPES,
@@ -134,7 +138,7 @@ from .validate import (
 # running from a source checkout (not pip-installed); it is kept in sync with
 # ``pyproject.toml`` by ``scripts/version_check.py``. When pip-installed the
 # value is overridden from the wheel's own metadata so it can never disagree.
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 if not (_Path(__file__).resolve().parent.parent / "pyproject.toml").exists():
     try:
         __version__ = _metadata.version("mnesis-canonical")
@@ -219,6 +223,10 @@ __all__ = [
     "LABEL_STATES",
     "LABEL_FRAME_IDS",
     "COLOCALIZATION_STATES",
+    "COLOCALIZATION_SOURCES",
+    "COLOCALIZATION_METHODS",
+    "COLOCALIZATION_DRIFT_STATES",
+    "MANUAL_3PT_REQUIRED_QUALITY",
     "COLOCALIZATION_STALE_EVENT",
     "PS_MESSAGE_TYPES",
     "ENVELOPE_KEYS",

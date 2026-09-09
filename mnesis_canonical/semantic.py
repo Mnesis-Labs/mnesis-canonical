@@ -23,6 +23,13 @@ PS messages (8442 WS, envelope v1)
     Same public header as C3 — ``{type, seq, ts, body}`` — because they share the
     8442 socket with 30 Hz teleop frames.
 
+C12 v1.1 (additive) records the ``colocalization`` producer direction: ``body.source``
+narrowed to ``headset | robot`` (never ``human`` — a human adjudication cannot
+produce an extrinsic), ``quality.method`` making the quality block method-aware
+(``manual_3pt`` requires ``facing_ok`` / ``drift_state`` and may omit the
+degenerate ``inlier_ratio``), and the optional ``T_map_tag`` the robot end
+already emits. Every v1-legal message stays v1.1-legal.
+
 This module defines and validates the contract; it does **not** fuse. Fusion is
 Daedalus (ADR-004), headset-side consumption is Eidolon. See SPEC.md
 §Dual-endpoint semantic perception and CONTRACTS.md C12.
@@ -78,6 +85,41 @@ LABEL_FRAME_IDS = ("map",)
 #:   stale — the last extrinsic is still carried but is no longer trusted.
 #:   lost  — no usable extrinsic; the key is OMITTED (never identity, never zeros).
 COLOCALIZATION_STATES = ("ok", "stale", "lost")
+
+#: Who solved a ``colocalization`` body.  A **subset** of :data:`LABEL_SOURCES`
+#: without ``human``: a human adjudication cannot produce an extrinsic.  The
+#: precedent for narrowing an enum is the uplink ``semantic_label`` body, which
+#: keeps only :data:`UPLINK_LABEL_SOURCES`.
+#:
+#: Optional at the schema level for v1 backward compatibility, but a v1.1
+#: producer MUST fill it, and **absent means unknown** — a consumer that
+#: receives ``T_map_headset`` with no ``source`` must not default it to either
+#: end (SPEC §Conventions). The fusion owner is unchanged: the robot end
+#: (ADR-004). A headset-uplinked ``T_map_headset`` is one observation.
+COLOCALIZATION_SOURCES = ("headset", "robot")
+
+#: How an alignment was solved.  ``tag_detect`` reserves the value without
+#: defining any fields of its own, following the ``headset``-in-the-enum-from-day-
+#: one precedent — adding an enum value later is a contract change every consumer
+#: with a hard-coded branch has to revisit. The ``tag_detect`` quality fields are
+#: proposed by Daedalus as a producer.
+COLOCALIZATION_METHODS = ("manual_3pt", "tag_detect")
+
+#: Manual-3-point drift monitoring state.  Three-valued rather than a boolean
+#: because "not drifting" and "not being monitored" must be told apart.
+#:   unmonitored — no spatial anchor available at all (Editor / plain-VR
+#:                 fallback / anchoring subsystem not up).
+#:   within      — monitored and inside the producer's threshold.
+#:   exceeded    — contradicts ``state == "ok"``: the headset has already cleared
+#:                 the extrinsic to identity and reports ``state == "lost"``.
+COLOCALIZATION_DRIFT_STATES = ("unmonitored", "within", "exceeded")
+
+#: The quality fields that MUST be present when ``method == "manual_3pt"``.
+#: ``inlier_ratio`` drops out of the required set under this method: 3
+#: correspondences are the minimum set for a rigid pose, there is no
+#: outlier-rejection stage, so the ratio is a constant 1.0 and would be
+#: mistaken for a confidence figure.
+MANUAL_3PT_REQUIRED_QUALITY = ("facing_ok", "drift_state")
 
 #: The event name carried by a ``colocalization`` message announcing loss of
 #: alignment.  It is not a fourth message type: the event IS a ``colocalization``
@@ -426,6 +468,94 @@ def validate_scene_graph(graph: object, *, path: str = "scene_graph") -> list[st
 # --- colocalization ----------------------------------------------------------
 
 
+def _validate_quality(quality: object, path: str, errors: list[str], state: object) -> None:
+    """Validate a ``colocalization.body.quality`` object.
+
+    Method-aware since C12 v1.1: ``rmse_m`` is always required, but which of the
+    v1 fields is required depends on how the alignment was solved. Absent
+    ``method`` keeps the exact v1 semantics, so every v1-legal message stays
+    legal — the change is a relaxation, not a tightening.
+    """
+    if not isinstance(quality, dict):
+        errors.append(f"{path}.quality must be an object, got {quality!r}")
+        return
+
+    rmse = quality.get("rmse_m")
+    if not _is_finite_number(rmse) or rmse < 0.0:
+        errors.append(
+            f"{path}.quality.rmse_m must be a non-negative finite number "
+            f"(metres), got {rmse!r}"
+        )
+
+    method = quality.get("method")
+    if method is not None and method not in COLOCALIZATION_METHODS:
+        errors.append(
+            f"{path}.quality.method must be one of {COLOCALIZATION_METHODS}, got {method!r}"
+        )
+
+    is_manual = method == "manual_3pt"
+    if is_manual:
+        for key in MANUAL_3PT_REQUIRED_QUALITY:
+            if key not in quality:
+                errors.append(
+                    f"{path}.quality.{key} is required when method is 'manual_3pt'"
+                )
+        facing = quality.get("facing_ok")
+        if "facing_ok" in quality and not isinstance(facing, bool):
+            errors.append(
+                f"{path}.quality.facing_ok must be a boolean, got {facing!r}"
+            )
+        drift = quality.get("drift_state")
+        if "drift_state" in quality and drift not in COLOCALIZATION_DRIFT_STATES:
+            errors.append(
+                f"{path}.quality.drift_state must be one of "
+                f"{COLOCALIZATION_DRIFT_STATES}, got {drift!r}"
+            )
+        if drift == "unmonitored" and (
+            "drift_trans_m" in quality or "drift_rot_deg" in quality
+        ):
+            errors.append(
+                f"{path}.quality.drift_trans_m / drift_rot_deg must be omitted when "
+                f"drift_state is 'unmonitored' — no anchor means no reading"
+            )
+        for key, unit in (("drift_trans_m", "metres"), ("drift_rot_deg", "degrees")):
+            if key in quality:
+                val = quality[key]
+                if not _is_finite_number(val) or val < 0.0:
+                    errors.append(
+                        f"{path}.quality.{key} must be a non-negative finite number "
+                        f"({unit}), got {val!r}"
+                    )
+    else:
+        ratio = quality.get("inlier_ratio")
+        if not _is_finite_number(ratio) or ratio < 0.0 or ratio > 1.0:
+            errors.append(
+                f"{path}.quality.inlier_ratio must be a number in [0, 1], got {ratio!r}"
+            )
+
+    if "match_count" in quality:
+        mc = quality["match_count"]
+        if not _is_int(mc) or mc < 0:
+            errors.append(
+                f"{path}.quality.match_count must be a non-negative int, got {mc!r}"
+            )
+
+    # state == 'ok' means the extrinsic is currently trusted, so a quality
+    # figure that says it is not must not appear: the producer would have
+    # cleared the extrinsic and reported 'lost' instead.
+    if state == "ok":
+        if quality.get("facing_ok") is False:
+            errors.append(
+                f"{path}.quality.facing_ok false contradicts state 'ok' — an "
+                f"ambiguous solve is not a valid alignment"
+            )
+        if quality.get("drift_state") == "exceeded":
+            errors.append(
+                f"{path}.quality.drift_state 'exceeded' contradicts state 'ok' — "
+                f"the extrinsic has been cleared, report state 'lost'"
+            )
+
+
 def _validate_colocalization_body(body: dict, path: str, errors: list[str]) -> None:
     _check_str(body, "map_id", path, errors)
 
@@ -433,6 +563,14 @@ def _validate_colocalization_body(body: dict, path: str, errors: list[str]) -> N
     if state not in COLOCALIZATION_STATES:
         errors.append(
             f"{path}.state must be one of {COLOCALIZATION_STATES}, got {state!r}"
+        )
+
+    source = body.get("source")
+    if source is not None and source not in COLOCALIZATION_SOURCES:
+        errors.append(
+            f"{path}.source must be one of {COLOCALIZATION_SOURCES}, got {source!r} — "
+            f"'human' is deliberately excluded: a human adjudication cannot produce "
+            f"an extrinsic"
         )
 
     has_t = "T_map_headset" in body
@@ -447,30 +585,18 @@ def _validate_colocalization_body(body: dict, path: str, errors: list[str]) -> N
             f"absent means unknown; never publish an identity transform as a stand-in"
         )
 
+    # The robot end is the only producer that observes the anchor tag, so it
+    # carries T_map_tag; the headset end cannot. Same one-pose-convention as
+    # T_map_headset, and same absent-means-unknown discipline — omit rather than
+    # publishing a stand-in transform.
+    if "T_map_tag" in body:
+        _validate_pose(body["T_map_tag"], f"{path}.T_map_tag", errors)
+
     quality = body.get("quality")
     if state == "ok" and quality is None:
         errors.append(f"{path}.quality is required when state is 'ok'")
     if quality is not None:
-        if not isinstance(quality, dict):
-            errors.append(f"{path}.quality must be an object, got {quality!r}")
-        else:
-            rmse = quality.get("rmse_m")
-            if not _is_finite_number(rmse) or rmse < 0.0:
-                errors.append(
-                    f"{path}.quality.rmse_m must be a non-negative finite number "
-                    f"(metres), got {rmse!r}"
-                )
-            ratio = quality.get("inlier_ratio")
-            if not _is_finite_number(ratio) or ratio < 0.0 or ratio > 1.0:
-                errors.append(
-                    f"{path}.quality.inlier_ratio must be a number in [0, 1], got {ratio!r}"
-                )
-            if "match_count" in quality:
-                mc = quality["match_count"]
-                if not _is_int(mc) or mc < 0:
-                    errors.append(
-                        f"{path}.quality.match_count must be a non-negative int, got {mc!r}"
-                    )
+        _validate_quality(quality, path, errors, state)
 
     if "event" in body:
         event = body["event"]

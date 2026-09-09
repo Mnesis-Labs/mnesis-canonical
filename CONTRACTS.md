@@ -11,7 +11,7 @@
 | C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明/WebRTC 信令） | v1.7 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：状态/底盘/急停/相机/臂），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **v0 草案已出**（2026-08-27，现状钉扎：端点 stable/beta/draft 三档 + deadman/急停闩锁/闲置卸力安全语义版本化） | **Daedalus `docs/C4-ROBOT-BRIDGE-API.md`** | Ambrosia（`bridge/hw_bridge.py` 迁移需求单 = ambrosia#258）、Eidolon xr_bridge、web_console、joy_teleop | Daedalus#528（契约冒烟测试,建设中） |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
-| C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 · **vNext 草案 v1.1**（2026-09-02，`colocalization` 登记头显生产者 + `source` 判别 + `quality.method`，additive，见下「C12 vNext 草案 v1.1」；**未生效**） | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费；**v1.1 草案起兼 `colocalization` 上行生产者**） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b（`Tests/EditMode/ColocalizationSolverTests.cs` / `ColocalizationSessionTests.cs` / `ColocalizationDriftTests.cs`） |
+| C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | **v1.1**（2026-09-07 落地，`colocalization` 登记头显生产者 + `source` 判别 + `quality.method` + `T_map_tag`，additive，见下「C12 v1.1」） | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费；**v1.1 起兼 `colocalization` 上行生产者**） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b（`Tests/EditMode/ColocalizationSolverTests.cs` / `ColocalizationSessionTests.cs` / `ColocalizationDriftTests.cs`） |
 | C13 | **objects.jsonl 侧信道**（frames_dir 旁路文件，非 episode `sidecars[]`：`header` + 逐帧 `object` 观测；核心是 `pose_dof` 诚实字段——单视角 2D 框+深度只观测得到位置，`pose_dof:3` ⟺ `quat_wxyz:null`，禁止用占位四元数假装 6-DoF；`quat_wxyz` 为 `[w,x,y,z]` 标量在前，与本仓 C12 `pose.q` 标量在后刻意不同——两个生产方各自的既有约定，如实记录分歧而非悄悄改历史；`class_id` 开放词表，暂不对齐 `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §objects.jsonl side channel + `mnesis_canonical/objects_jsonl.schema.json`） | Daedalus（`scene/object_track.py` 生产者）·Ambrosia（`real2sim/augment.py` S32 消费，在途） | canonical `tests/test_objects_jsonl.py` · Daedalus `tests/scene/test_object_track.py`（Parthenon#764 / Daedalus#443） |
 
 ## 消费方怎么装 / 升 `mnesis-canonical`（装法唯一真值）
@@ -136,10 +136,11 @@ mnesis-canonical==X.Y.Z
 - **两端共用**：`examples/semantic/` 四个 golden 样本（含 `disputed` / `stale` / `source:"headset"` 三个边界样本）直接当 fixture 用。
 - **未动 `contracts/`**：PS 消息不改 C1 帧、不改 C3 既有消息，故 `contracts/*.md` 与 `contracts.lock` 本次零改动（本仓契约只读纪律）。C3 侧若要把这三个消息一并镜像进 `XR_ROBOT_CONTRACT.md`，属 Daedalus（C3 Owner）的独立卡。
 
-### C12 vNext 草案 v1.1 · `colocalization` 登记头显生产者（2026-09-02 · **提案，未生效** · 走「变更流程」第 1 步）
+### C12 v1.1 · `colocalization` 登记头显生产者（2026-09-02 提案 · **2026-09-07 生效**）
 
 > 来源：Eidolon PS2b 已合并 #225（手动 3 点 AprilTag 对齐 → `T_map←headset`）+ #230（漂移监测）；提案全文 Eidolon `docs/integration/PS2B_COLOCALIZATION.md` §4；登记卡 Eidolon#226 Part 2。设计依据 Parthenon `research/25` §5 D2（「头显端：手动 3 点戳 tag 角点 → 解 `T_map←headset`」）与 Daedalus ADR-004 §3.2（方案 A 采纳：两端各自锚定同一物理 tag）。
-> **性质**：additive-only（C12 v1 → v1.1，DEV_GUIDE §7「additive = minor」）。现有两份 golden（`colocalization.json` / `colocalization_stale.json`）在 v1.1 下**逐字节仍然合法**。本节只登记形状与规则，**不改 `semantic.schema.json` / `semantic.py` / 测试**——那是「变更流程」第 2 步（Owner 仓落地卡），待 Tech Lead 拍板后另开；包版本号（0.6.0 → 0.7.0）随落地卡升，不随本提案。
+> **批准**：Muso 2026-09-03 拍板（[canonical#148](https://github.com/Mnesis-Labs/mnesis-canonical/pull/148)，「变更流程」第 1 步）。
+> **性质**：additive-only（C12 v1 → v1.1，DEV_GUIDE §7「additive = minor」）。**生效判据**：现有两份 golden（`colocalization.json` / `colocalization_stale.json`）在 v1.1 下**逐字节仍然合法**（`tests/test_semantic.py::test_v1_goldens_remain_valid_without_any_v1_1_keys` 钉住）。已落地于「变更流程」第 2 步（canonical#150）：`semantic.schema.json` + `semantic.py` + `tests/test_semantic.py` + 包版本号 0.6.0 → 0.7.0。
 
 **要解决的缺口（一句话）**：C12 v1 把 Eidolon 登记成 `colocalization` 的**纯消费方**（上文「消费方解阻塞」：「共定位健康度只读 `colocalization.state`」），SPEC 只写「bidirectional」却没说哪一向由谁产出什么；而 PS2b 实际落地的正是**头显自己解出 `T_map_headset`**（research/25 D2 从第一天就是这么设计的）。两端都能产出同一个量、契约里没有生产者判别位 → 头显侧按仓规不得单方面发明线格式，上行链路因此卡住。
 
@@ -201,11 +202,16 @@ v1 的 `quality{rmse_m, inlier_ratio, match_count}` 是特征/点云配准的度
 - **Q-F · 漂移阈值要不要进契约。** 头显 `MaxDriftMeters=0.06 m` / `MaxDriftDegrees=6°`（推导见 Eidolon 文档 §2）；机器人侧 `MAX_DRIFT_M=0.15`（Daedalus `apriltag.py`）。两端能力差一个量级，倾向**不进契约**、各端在自己 SPEC/能力说明里写明；但两端阈值不一致会出现「一端 ok 一端 stale」的对不齐，融合器须以更保守者为准。待拍。
 - **Q-G · `facing_ok` 与 `drift_state` 是放 `quality` 还是 body 顶层。** 本提案放 `quality`（它们是「这个外参可不可信」的度量，与 `rmse_m` 同一层）；反对意见是 `drift_state` 描述的是解出**之后**的状态而非解算质量。待拍。
 - **Q-H · 机器人侧（PS2a）形状对齐 —— 已由 Daedalus 自行解决（2026-09-03 复核订正）。** 本提案初稿（09-02）记「`ColocalizationStatus.to_dict()` 形状与 C12 不符、`COLOCALIZATION_HZ = 2.0` 超 ≤1 Hz 上限」。**这两条现已不成立**：Daedalus 于 [#611](https://github.com/Mnesis-Labs/Mnesis-Daedalus/issues/611) / [PR#635](https://github.com/Mnesis-Labs/Mnesis-Daedalus/pull/635) 完成对齐 —— `state` 经 `C12_STATE_MAP` 映射到 C12 三态、`COLOCALIZATION_HZ = 1.0`（实测源码，合规）、`quality` 仅 `state == "ok"` 时携带。「机器人不观测头显、结构上给不出 `T_map_headset`」这一条仍然成立，选项 ① 亦已被 Daedalus 采纳：它现在**已经在发**可选键 `body.T_map_tag`（源码注释自述「canonical#148 §4 Q-H 选项 ①，本仓作为生产者提议」）。
-  ⚠️ **也就是说实现跑在了批准前面**：`T_map_tag` 此刻只存在于本提案里，尚未进入任何已生效的契约版本，严格讲 Daedalus 当前产出不在 C12 v1 范围内。这不是指责 —— 缺口是真的、方向也对 —— 但它把「先契约后实现」的次序破了一次，**处置是让本提案尽快落地把它接住**，而不是让 Daedalus 回退。落地卡须把 `body.T_map_tag`（可选 pose，additive）一并登记，否则批准了提案、契约里仍然没有这个键。
+  ⚠️ **实现曾跑在批准前面**：`T_map_tag` 当时只存在于提案里，尚未进入任何已生效的契约版本，严格讲 Daedalus 当前产出不在 C12 v1 范围内。这不是指责 —— 缺口是真的、方向也对 —— 但它把「先契约后实现」的次序破了一次，**处置是让本提案尽快落地把它接住**，而不是让 Daedalus 回退。落地卡（canonical#150）已把 `body.T_map_tag`（可选 pose，additive）一并登记：**Daedalus 现有产出自此合规，无需回退**。
 
-#### 5. 落地卡（拍板后，**不在本 PR**）
+#### 5. 落地卡（canonical#150 · **已完成 2026-09-07**）
 
-canonical：`SPEC.md` §colocalization body 补方向表 + `source` + `quality.method` 分支 → `semantic.schema.json`（`source` enum、`quality` 的 `if method == manual_3pt then required [facing_ok, drift_state], inlier_ratio 可选`、`state:"ok"` ⇒ `drift_state != exceeded`）→ `semantic.py`（`COLOCALIZATION_SOURCES` / `COLOCALIZATION_METHODS` / `COLOCALIZATION_DRIFT_STATES` 常量 + 校验分支）→ `examples/semantic/` 加 `colocalization_headset.json`（`source:"headset"` + `manual_3pt`）与 `colocalization_headset_lost.json`（drift exceeded → `lost`）两份 golden → `tests/test_semantic.py` → `CHANGELOG.md` 0.7.0。**两侧测试**：canonical `tests/test_semantic.py`（新增 manual_3pt / source 用例）· Eidolon `ColocalizationSessionTests` / `ColocalizationDriftTests`（既有，五态语义）+ 落地卡新增序列化对拍 golden 的测试（PR #222 曾对 v1 两份 golden 逐字节对拍，可复用）· Daedalus PS3 融合器按 `source` 分派的测试。
+已落地（canonical 侧）：`SPEC.md` §colocalization body 补方向表 + `source` + `quality.method` 分支 → `semantic.schema.json`（`source` enum、`quality.method` 分支（`manual_3pt` 必填 `facing_ok` / `drift_state`、`inlier_ratio` 可省略）、`state:"ok"` ⇒ `facing_ok != false` 且 `drift_state != exceeded`、`T_map_tag` 引用 `$defs/pose`）→ `semantic.py`（`COLOCALIZATION_SOURCES` / `COLOCALIZATION_METHODS` / `COLOCALIZATION_DRIFT_STATES` / `MANUAL_3PT_REQUIRED_QUALITY` 常量 + 校验分支）→ `tests/test_semantic.py`（source 两值 + `human` 反向用例、manual_3pt 完整例、`T_map_tag` 携带/形状用例、golden 未变断言、schema 与 Python 枚举对拍）→ `CHANGELOG.md` 0.7.0。**未新增 golden 样本**：v1.1 是 additive，两份既有 golden 逐字节不变即为本卡的生效判据（加了新 golden 反而会被误读成「必须携带新键」）。
+
+**消费方各自另开卡（本卡只列，不动）**：
+- **Eidolon**：上行 `source:"headset"` + `quality.method:"manual_3pt"`，把 PS2b 已解出的 `T_map←headset` 真正发出去。
+- **Daedalus**：PS3 融合器按 `source` 分派；`T_map_tag` 已在发，落地后即合规，无需回退。
+- **两侧测试**：Eidolon `ColocalizationSessionTests` / `ColocalizationDriftTests`（既有五态语义）+ 新增序列化对拍 canonical golden 的测试（PR #222 的 v1 逐字节对拍方法可复用）· Daedalus PS3 按 `source` 分派的测试。
 
 ## C13 objects.jsonl 侧信道（Video2Robo 轨迹侧 · canonical 定义，Daedalus 生产）
 
