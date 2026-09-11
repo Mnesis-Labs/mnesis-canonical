@@ -372,6 +372,16 @@ def validate_frame(
     if not isinstance(frame["tracking_state"], str):
         errors.append("tracking_state must be a string")
 
+    # --- optional is_lost flag (additive, all profiles) ---
+    # 1.0 = tracking lost (pose held), 0.0 = tracked. Absent = source does
+    # not report tracking loss (distinct from 0.0).
+    if "is_lost" in frame:
+        v = frame["is_lost"]
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            errors.append(f"is_lost must be a number (0.0 or 1.0), got {type(v).__name__}")
+        elif v not in (0.0, 1.0):
+            errors.append(f"is_lost must be 0.0 or 1.0, got {v}")
+
     if "spatial_anchor_id" in frame and frame["spatial_anchor_id"] is not None:
         if not isinstance(frame["spatial_anchor_id"], str):
             errors.append("spatial_anchor_id must be a string or null")
@@ -487,6 +497,7 @@ def _warn_unknown_keys(frame: dict, warnings: list[str]) -> None:
         # ego_v1-specific required
         "observation.images.ego",
         # Optional keys (explicitly defined in the schema)
+        "is_lost",
         "profile", "embodiment_id", "spatial_anchor_id", "spatial_anchor_pose_SE3",
         "observation.eef_pose.left", "observation.eef_pose.right",
         "action.gripper",

@@ -130,3 +130,38 @@ def test_unknown_extension_column_is_carried_through():
     restored = from_lerobot(to_lerobot(frames))
     assert all("x-vendor.thing" in f for f in restored)
     assert restored == frames
+
+
+# ── is_lost tracking flag (grabette borrow, PIPELINE-DIFF §6.3) ───────────
+
+
+def test_is_lost_round_trips_when_present():
+    """is_lost=0.0/1.0 must survive the columnar round-trip exactly."""
+    frames = [
+        {"index": 0, "is_lost": 0.0},
+        {"index": 1, "is_lost": 1.0},
+    ]
+    columns = to_lerobot(frames)
+    assert columns["is_lost"] == [0.0, 1.0]
+    restored = from_lerobot(columns)
+    assert restored == frames
+
+
+def test_is_lost_not_fabricated_when_absent():
+    """A frame that never carried is_lost must not gain it after round-trip.
+
+    is_lost is non-nullable (type number, no null), so the schema-driven
+    from_lerobot drops None cells — preserving 'absent means unknown' semantics
+    (same mechanism as observation.hand.right in test_sparse_optional_key).
+    """
+    frames = [
+        {"index": 0, "is_lost": 0.0},
+        {"index": 1},  # this frame has no is_lost
+    ]
+    columns = to_lerobot(frames)
+    # to_lerobot produces a None in the is_lost column for frame 1
+    assert columns["is_lost"] == [0.0, None]
+    restored = from_lerobot(columns)
+    # frame 1 must NOT have is_lost (absent means unknown, not 0.0)
+    assert "is_lost" not in restored[1]
+    assert restored[0]["is_lost"] == 0.0

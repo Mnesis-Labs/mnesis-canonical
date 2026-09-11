@@ -892,3 +892,39 @@ def test_validate_annotations_existing_episodes_have_no_annotations():
     for name in ("episode_0", "episode_quest", "episode_robot", "episode_dual_airbot"):
         ep = examples / name
         assert validate_annotations(ep) == [], f"{name} should have no annotations"
+
+
+# ── is_lost validation (grabette borrow) ─────────────────────────────────
+
+
+def test_is_lost_rejects_non_number(good_frame):
+    """is_lost must be a number, not a string or bool."""
+    f = good_frame()
+    f["is_lost"] = "yes"
+    errors = validate_frame(f)
+    assert any("is_lost" in e for e in errors)
+
+
+def test_is_lost_rejects_bad_value(good_frame):
+    """is_lost must be exactly 0.0 or 1.0, not 0.5 or 2."""
+    f = good_frame()
+    f["is_lost"] = 0.5
+    errors = validate_frame(f)
+    assert any("is_lost" in e for e in errors)
+
+
+def test_is_lost_accepts_valid_values(good_frame):
+    """is_lost=0.0 and is_lost=1.0 should both validate cleanly."""
+    for v in (0.0, 1.0):
+        f = good_frame()
+        f["is_lost"] = v
+        errors = validate_frame(f)
+        assert not any("is_lost" in e for e in errors), f"is_lost={v} should be valid"
+
+
+def test_is_lost_absent_is_valid(good_frame):
+    """Absence of is_lost is valid (source does not report tracking loss)."""
+    f = good_frame()
+    assert "is_lost" not in f
+    errors = validate_frame(f)
+    assert not any("is_lost" in e for e in errors)

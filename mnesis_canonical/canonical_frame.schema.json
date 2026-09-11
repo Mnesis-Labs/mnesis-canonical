@@ -108,6 +108,12 @@
       "x-status": "stable",
       "description": "e.g. TRACKING, PAUSED, STOPPED."
     },
+    "is_lost": {
+      "type": "number",
+      "enum": [0.0, 1.0],
+      "x-status": "stable",
+      "description": "SLAM/VIO tracking-lost flag for this frame: 1.0 = tracking was lost (pose held, not re-localised), 0.0 = tracked. Additive, all profiles; absent = source does not report tracking loss (distinct from 0.0). Training-side consumers mask or reject lost frames; producers SHOULD hold the last good pose during loss to keep the delta action ~0 and avoid teleportation artefacts."
+    },
     "profile": {
       "type": "string",
       "enum": ["ego_v1", "ego_multicam_v1", "robot_v2"],

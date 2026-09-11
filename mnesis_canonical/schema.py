@@ -310,6 +310,11 @@ class CanonicalFrame:
     source_device: str
     source_modality: str
     tracking_state: str
+    # SLAM/VIO tracking-lost flag (additive, optional, all profiles).
+    # 1.0 = tracking lost (pose held), 0.0 = tracked. None = source does
+    # not report tracking loss (distinct from 0.0). Borrowed from grabette's
+    # float32(1) is_lost feature — see canonical_frame.schema.json.
+    is_lost: float | None = None
     spatial_anchor_id: str | None = None
     profile: str | None = None
     embodiment_id: str | None = None
@@ -358,6 +363,8 @@ class CanonicalFrame:
             "source.modality": self.source_modality,
             "tracking_state": self.tracking_state,
         }
+        if self.is_lost is not None:
+            d["is_lost"] = self.is_lost
         if self.profile is not None:
             d["profile"] = self.profile
         # ``observation.images.ego`` is required by ego_v1 (where "" is the legal
@@ -425,6 +432,7 @@ class CanonicalFrame:
             source_device=d["source.device"],
             source_modality=d["source.modality"],
             tracking_state=d["tracking_state"],
+            is_lost=d.get("is_lost"),
             spatial_anchor_id=d.get("spatial_anchor_id"),
             profile=d.get("profile"),
             embodiment_id=d.get("embodiment_id"),
