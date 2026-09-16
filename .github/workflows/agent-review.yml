@@ -45,10 +45,38 @@ jobs:
       # 参数签名一致（-Pr / -Repo），行为由各自脚本保证一致。
       # ⚠️ 2026-08-19 起实际只剩 Windows 一台在接活（见文件头订正块），
       # 所以这里的"分派"当前恒定走 Windows 腿。
+      # ── 2026-09-16：入口按机器解析，不再写死 D:\Github ──────────────────────
+      # 与 Parthenon#854 同形的改动（那边已合并并实测）。起因：本仓此前只有 1 个
+      # runner、且六仓的 runner 全在 nextscene-core 上（CI_POLICY R3 早已不满足），
+      # Parthenon 实测排过 26 小时的队。第二台 Windows 机器（NeXT）要能分担，就绕不开
+      # 这一行 —— `runs-on` 按 R1 是裸 `[self-hosted]`，**GitHub 的模型里没有办法让某台
+      # runner 只接一部分作业**：NeXT 一注册，本作业就会随机落到它头上，而它上面连
+      # D: 盘都没有。要挑作业只能在作业侧加节点标签，那是 R2 禁止、`ci_policy_lint.py`
+      # 判 error 的 node-pin。所以选择让新机器也能评审。
+      #
+      # 解析顺序：机器级环境变量 MNESIS_REPO_ROOT → 回落 D:\Github（core 上无需设变量，
+      # 行为与改动前逐字一致）。`cockpit/worker/common.ps1` 本来就认这个变量。
+      # **找不到脚本一律当场红**，绝不静默跳过：这是评审门，fail-open 等于把「没评审」
+      # 伪装成「评审通过」。
+      #
+      # 守卫对齐：Parthenon 的 tests/test_review_entrypoint_consistency.py 以正则
+      # `[^\s'"`;|]*run-review\.(ps1|sh)` 提取落点，并要求归一化后含
+      # `/parthenon/cockpit/worker/run-review.` —— 所以 `$root` 与 `Parthenon` 之间
+      # 那个反斜杠不能省，否则六仓一致性检查会红。
       - name: reviewer (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: pwsh -File D:\Github\Parthenon\cockpit\worker\run-review.ps1 -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
+        run: |
+          $root = $env:MNESIS_REPO_ROOT
+          if (-not $root) { $root = 'D:\Github' }
+          $script = "$root\Parthenon\cockpit\worker\run-review.ps1"
+          if (-not (Test-Path $script)) {
+            Write-Host "::error::本机（$env:COMPUTERNAME）找不到评审器 $script"
+            Write-Host '这台 runner 没有铺 Parthenon 生产检出，或 MNESIS_REPO_ROOT 指错了。'
+            Write-Host '接入清单见 Parthenon 的 ops/2026-09-15-second-windows-node.md。'
+            exit 1
+          }
+          pwsh -File $script -Pr ${{ github.event.pull_request.number }} -Repo ${{ github.repository }}
       # ⚠️ 死代码（2026-08-19 起）：mac 腿已摘除，本 step 的 `if` 恒为 false。
       # 保留不删的理由见文件头 08-19 订正块。
       - name: reviewer (macOS)
