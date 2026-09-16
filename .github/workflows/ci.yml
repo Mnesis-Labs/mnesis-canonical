@@ -82,6 +82,22 @@ env:
 # Windows 上因权限/占用而失败（实测 canonical#59 三个 job 全挂）。uv 用机器上已有的
 # Python 建 venv，没有这个问题，且顺带把依赖装进项目级 venv 而不是污染全局环境。
 #
+# ── 2026-09-16：Python 版本必须由**仓**决定，不由机器决定（新增 `.python-version`）──
+# `uv venv --seed` 不带版本约束时，uv 按机器上**碰巧装了什么**挑最新的可用版本，而
+# `requires-python` 是 `>=3.10` —— 于是同一个 commit 在不同机器上跑的是不同解释器。
+# 实测（第二台 Windows 机器 NeXT 接入前的对照跑，同一 SHA 96ea478）：
+#   core (uv 选到 3.12)：ruff 通过 / **666 passed**
+#   NeXT (uv 选到 3.13)：ruff 通过 / 665 passed / **1 failed**
+#     └ `tests/test_wheel_install.py::test_wheel_install_loader`：该用例在临时目录里
+#       嵌套建 venv，uv 托管的 3.13 构建在嵌套 venv 里跑 `ensurepip` 返回非零，
+#       报错停在 `subprocess.CalledProcessError`，**完全不提 Python 版本**。
+#   NeXT 钉 `--python 3.12` 后：**666 passed**，与 core 逐条一致 → 变量就是版本本身。
+# 也就是说：不钉版本的话，这个仓的 CI 结论取决于作业落到哪台机器（"落点轮盘"）。
+# 钉在 `.python-version` 而不是三处 `uv venv` 参数里：uv 会在 venv / run / pip 全链路
+# 读它，本地开发也跟着一致，且以后加作业不会漏钉。
+# ⚠️ 这条钉子同时意味着 **3.13 没有被 CI 覆盖**；requires-python 仍写 `>=3.10` 是
+# 有意的（库的兼容声明），要覆盖多版本应当另建矩阵作业，而不是把版本交还给机器。
+#
 # ── 自托管腿为什么手写 checkout 而不用 actions/checkout（2026-08-19，#126）─────
 # main 连续红 4 小时，四个 job 里三个**在 "Set up job" 就死了**，一行仓内代码都没跑：
 #
