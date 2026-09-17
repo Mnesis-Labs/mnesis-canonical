@@ -388,9 +388,19 @@ authoritative side.
 {
   "map_id": "lab_bench_a",
   "state":  "ok",                     // ok | stale | lost
+  "source": "headset",                // optional: headset | robot (since v1.1)
   "T_map_headset": { "t": [...], "q": [...] },   // T_map←headset
+  "T_map_tag":     { "t": [...], "q": [...] },   // optional T_map←tag (robot only, since v1.1)
   "computed_at_ns": 1785196800940000000,
-  "quality": { "rmse_m": 0.014, "inlier_ratio": 0.91, "match_count": 428 },
+  "quality": {                        // method-aware since v1.1
+    "method":        "manual_3pt",    // manual_3pt | tag_detect; absent = v1 semantics
+    "rmse_m":        0.012,           // always required
+    "facing_ok":     true,            // manual_3pt required: solved tag faces operator
+    "drift_state":   "within",        // manual_3pt required: unmonitored | within | exceeded
+    "drift_trans_m": 0.007,           // optional; only when drift_state != unmonitored
+    "drift_rot_deg": 1.2,             // optional; only when drift_state != unmonitored
+    // inlier_ratio / match_count: v1 fields, omittable under manual_3pt
+  },
   "event":  "colocalization_stale",   // only with state stale | lost
   "reason": "tracking recovered; extrinsic not re-solved"
 }
@@ -408,11 +418,41 @@ authoritative side.
   message with a non-`ok` state, so alignment health has exactly one place to be
   read from.
 
-### Golden samples
+##### Producer direction (v1.1, additive)
 
-`examples/semantic/` carries one validated sample per message plus the three
-boundary cases the consumers asked for: `disputed`, `stale`, and
-`source: "headset"`.
+C12 v1 recorded Eidolon as a pure consumer of `colocalization`. v1.1 registers
+the uplink direction — the headset solves `T_map_headset` itself (manual 3-point
+AprilTag), so it is now a **producer** too. The same quantity, two producers,
+needs a discriminator or the fuser cannot tell them apart.
+
+| direction | producer | `source` | carries | frequency |
+|---|---|---|---|---|
+| **up** headset → bridge | Eidolon PS2b | `"headset"` | headset-solved `T_map_headset` + method-aware `quality` + state/event | change-driven: state transitions always; optional ≤1 Hz drift refresh while `ok`; silent when nothing changes |
+| **down** bridge → headset | Daedalus PS2a | `"robot"` | robot-end judgement of alignment health (`state` / `event` / `reason`); `T_map_headset` only if the robot end has that quantity | ≤1 Hz + event (v1 unchanged) |
+
+- **`body.source` (optional, enum `headset | robot`)**: a subset of
+  `ObservationLabel.source` **without `human`** — a human adjudication cannot
+  produce an extrinsic. Optional at the schema level only so v1 messages stay
+  legal; v1.1 producers MUST fill it. **Absent means unknown** — a consumer
+  must not default it to either end (SPEC §Conventions). The fusion owner is
+  unchanged (ADR-004): a headset-uplinked `T_map_headset` is one observation,
+  not the authoritative value.
+- **`quality.method` (optional, enum `manual_3pt | tag_detect`)**: makes the
+  quality block method-aware. `manual_3pt` (the headset's manual 3-point solve)
+  **requires** `facing_ok` and `drift_state`, and **may omit** `inlier_ratio` /
+  `match_count` — three correspondences are the minimum set for a rigid pose,
+  there is no outlier-rejection stage, so those values are degenerate constants
+  that would be mistaken for confidence. `tag_detect` reserves the value only,
+  defining no fields of its own (the precedent for reserving an enum value). The
+  relaxation is loosening, not tightening: every v1-legal message stays v1.1-legal.
+- **`body.T_map_tag` (optional, same pose shape as `T_map_headset`)**: the
+  reference AprilTag both ends anchor to. Only the robot end can emit it — the
+  robot observes the tag, the headset cannot. Absent is not a claim that no tag
+  is anchored, only that this producer has no reading; omit rather than publish
+  a stand-in transform.
+- **`state == "ok"` cross-field rules**: `quality.facing_ok` must be `true` and
+  `quality.drift_state` must not be `exceeded` — the producer that lost the
+  extrinsic has already cleared it to identity and reports `state == "lost"`.
 
 ## objects.jsonl side channel (C13)
 
