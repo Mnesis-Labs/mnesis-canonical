@@ -231,7 +231,8 @@ class TestEscalate:
         assert rec["reason"] == "网关后端故障（交编排侧接管）"
 
     def test_all_dev_cooling_is_exit_42_per_policy(self, tmp_path):
-        # worker-policy.json exit_codes_that_escalate: "42" = 开发组模型全部冷却/不可用（Parthenon#877 全舰队统一）
+        # worker-policy.json exit_codes_that_escalate: "42" = 开发组模型全部冷却/不可用
+        # （Parthenon#877 全舰队统一）
         at = dt.datetime(2026, 1, 15, 12, 0, tzinfo=TZ8)
         path = dl.escalate("CAN-156", "/w", 42, pathlib.Path("/r"), "quota",
                            at=at, record_dir=tmp_path)
