@@ -355,9 +355,9 @@ def pick_live_model(
 # ═══════════════════════════════════════════════════════════════════════════
 TZ = dt.timezone(dt.timedelta(hours=8))  # 北京时间，与 cline_run 一致
 ESCALATION_DIR = pathlib.Path(
-    os.environ.get("MNESIS_ESCALATION_DIR",
-                   (_POLICY.get("escalation") or {}).get(
-                       "record_dir", "D:/Github/_ops/escalations")))
+    os.environ.get("MNESIS_ESCALATION_DIR")
+    or str((_POLICY.get("escalation") or {}).get("record_dir")
+           or "D:/Github/_ops/escalations"))
 
 # 本仓的非零退出码 → 升级原因（#156；具体看 detail 字段）。
 # 7（跳过=卡已关）故意不在表里：跳过不是失败，不写升级记录 —— 否则每次双派
