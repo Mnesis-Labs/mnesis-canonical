@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import pathlib
@@ -105,6 +106,9 @@ WORKER_HOME = "D:/Github/_ops/claude-worker-home"
 #   响应体 {"model":"auto","content":[{"type":"text","text":"OK"}]}，正常出词。
 # （今天刚栽过一次「把推断当实测」—— #832 里我拿 /v1/models 的列表推出「某模型不可用」，
 #  实打才发现网关认那个别名。所以换模型名这类改动，先打一次再改。）
+# #156（2026-09-24 worker-policy）起，**默认模型不再取这里**：按 --role 从
+# worker-policy.json 的 claude_cli.{dev,ci} 取组内顺位（见 main 里的模型分组）。
+# `auto` 仍留在 ci 组里；本常量只用于 --help 文案与历史追溯。
 DEFAULT_MODEL = "auto"
 PY = sys.executable
 LF = chr(10)
@@ -151,13 +155,6 @@ _MODEL_UNAVAILABLE_MARKERS = (
     "It may not exist or you may not have access to it",
 )
 
-# `auto` 不可用时的退路。**网关侧没给 auto 配降级组**（实测报错原文
-# `Available Model Group Fallbacks=None`），所以这条链必须由执行器提供。
-# kimi-k3 是全舰队长期实跑的模型，且它在网关侧自带
-# glm-5.2 → deepseek-pro → deepseek → … 的降级链。
-FALLBACK_MODEL = "kimi-k3"
-
-
 def is_model_unavailable(out: str) -> bool:
     """CLI 说「这个模型用不了」—— 不是工人的错，也不是网络抖动。"""
     return any(sig in out for sig in _MODEL_UNAVAILABLE_MARKERS)
@@ -182,6 +179,272 @@ _GATEWAY_DOWN_MARKERS = (
 def is_gateway_down(out: str) -> bool:
     """网关后端挂了 —— 不是工人的错，也不是能靠重试解决的抖动。"""
     return any(sig in out for sig in _GATEWAY_DOWN_MARKERS)
+
+
+# ── #156：worker-policy 读取 + 额度冷却（照 Iris#208 已验收实现移植，不重新设计）──
+# 真值在 Parthenon cockpit/data/worker-policy.json（docs/WORKER-POLICY.md 的机器
+# 可读版）。本脚本只读它，不在本仓写死第二份（#156 铁律）。
+#
+# 额度状态跨仓库共享 —— 额度是账号级的，不是仓库级的；哪个仓先撞上 429，
+# 其余仓 5h 内也不该再拿这个模型去烧 attempt。
+_QUOTA_MARKERS = (
+    "entitlement exhausted",
+    "RateLimitError",
+    "rate_limit_error",
+    "insufficient_quota",
+    "HTTP 429",
+    '"status":429',
+)
+_QUOTA_STATE_FILE = pathlib.Path("D:/Github/_ops/model_quota_cooldown.json")
+
+# worker-policy.json 默认路径；MNESIS_WORKER_POLICY 可覆盖（mac 等无此文件的
+# 机器走内置默认，回退行为见 scripts/tests/test_dev_local_policy.py）。
+_POLICY_FILE = pathlib.Path(
+    os.environ.get("MNESIS_WORKER_POLICY",
+                   "D:/Github/Parthenon/cockpit/data/worker-policy.json"))
+
+
+def load_worker_policy(path: pathlib.Path | str | None = None) -> dict:
+    """读 worker-policy.json；读不到返回 {}，由上层逐字段填默认。"""
+    p = pathlib.Path(path) if path is not None else _POLICY_FILE
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+_POLICY = load_worker_policy()
+
+# 内置默认：策略文件缺失/缺字段时的回退。与 worker-policy.json 的 claude_cli
+# 对齐；改值请改策略文件（合并后各仓自动跟上），不要只改这里。
+_DEFAULT_CLAUDE_CLI = {
+    "cooldown_hours": 5,
+    "dev": ["kimi-k3", "deepseek-pro", "glm-5.2"],
+    "ci": ["deepseek", "sensenova-lite", "sensenova-lite-global",
+           "internlm-s2", "internlm-s1", "auto"],
+}
+
+
+def claude_cli_section(policy: dict | None = None) -> dict:
+    """claude_cli 段，逐字段回退到内置默认（policy 可由测试注入）。"""
+    sec = (policy if policy is not None else _POLICY).get("claude_cli") or {}
+    return {
+        "cooldown_hours": sec.get("cooldown_hours",
+                                  _DEFAULT_CLAUDE_CLI["cooldown_hours"]),
+        "dev": list(sec.get("dev") or _DEFAULT_CLAUDE_CLI["dev"]),
+        "ci": list(sec.get("ci") or _DEFAULT_CLAUDE_CLI["ci"]),
+    }
+
+
+def cooldown_seconds(policy: dict | None = None) -> float:
+    """网关额度耗尽后的冷却秒数。5h 滚动窗（Muso 2026-09-24），旧 4.5h 作废。"""
+    return float(claude_cli_section(policy)["cooldown_hours"]) * 3600.0
+
+
+def dev_models(policy: dict | None = None) -> tuple[str, ...]:
+    """开发任务模型组（按序）：kimi-k3 → deepseek-pro → glm-5.2。"""
+    return tuple(claude_cli_section(policy)["dev"])
+
+
+def ci_models(policy: dict | None = None) -> tuple[str, ...]:
+    """CI/CD 任务模型组（按序）：deepseek、sensenova-lite、…、auto。"""
+    return tuple(claude_cli_section(policy)["ci"])
+
+
+def models_for_role(role: str, policy: dict | None = None) -> tuple[str, ...]:
+    """dev → 开发组；ci → CI 组。两组都从策略文件读，不在本仓写死第二份。"""
+    if role == "ci":
+        return ci_models(policy)
+    return dev_models(policy)
+
+
+# 冷却秒数的**可选覆盖钩子**（tests 用 monkeypatch.setattr 钉它）；
+# 默认 None = 冷却时长以策略文件为准（cooldown_seconds，旧 4.5h 写死已废）。
+_QUOTA_COOLDOWN_S: float | None = None
+
+
+def _cooldown_s() -> float:
+    """当前生效的冷却秒数：显式覆盖（测试用）优先，否则读策略文件。"""
+    return _QUOTA_COOLDOWN_S if _QUOTA_COOLDOWN_S is not None else cooldown_seconds()
+
+
+def is_quota_exhausted(out: str) -> bool:
+    """这个 model id 的额度用光了 —— 换模型能解决，重试不能。"""
+    return any(sig in out for sig in _QUOTA_MARKERS)
+
+
+def _load_quota_cooldowns() -> dict:
+    try:
+        return json.loads(_QUOTA_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 —— 坏 JSON / 没文件都当「没在冷却」
+        return {}
+
+
+def _save_quota_cooldowns(d: dict) -> None:
+    try:
+        _QUOTA_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _QUOTA_STATE_FILE.write_text(json.dumps(d), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass  # 状态文件是优化，不是关键路径
+
+
+def _mark_quota_exhausted(model: str) -> None:
+    d = _load_quota_cooldowns()
+    d[model] = time.time()
+    _save_quota_cooldowns(d)
+
+
+def _clear_quota_cooldown(model: str) -> None:
+    """手工豁免：删掉该 model 的冷却记录（如网关换分组后提前解冻）。"""
+    d = _load_quota_cooldowns()
+    if model in d:
+        del d[model]
+        _save_quota_cooldowns(d)
+
+
+def model_in_cooldown(model: str) -> tuple[bool, float]:
+    """是否在额度冷却窗内 + 已冷却秒数。窗长 = 策略文件（默认 5h），
+    或测试用 _QUOTA_COOLDOWN_S 显式覆盖。"""
+    t = _load_quota_cooldowns().get(model)
+    if t is None:
+        return False, 0.0
+    elapsed = time.time() - t
+    return elapsed < _cooldown_s(), elapsed
+
+
+def pick_live_model(
+    preferred: str,
+    fallbacks: tuple[str, ...],
+    *,
+    skip: tuple[str, ...] = (),
+) -> tuple[str, str]:
+    """挑一个不在冷却窗内的模型。返回 (model, 说明)。
+
+    candidates = preferred + fallbacks（去重）。fallbacks 必须由调用方按 --role
+    从 worker-policy.json 读（models_for_role）—— 组别顺序的真值在策略文件，
+    本仓不写死第二份回退表。
+
+    与 Iris#208 参考版的差异：那版还做 HTTP 探活（probe_model）；本仓按
+    #156「最小改动接入」只按冷却状态挑，可用性由 CLI 实跑判定（接入点是既有
+    的 is_model_unavailable 分支）。
+
+    换模型必须大声说出来 —— 静默换会让复盘时分不清这张卡是谁做的（#234）。
+    全部候选都不可用 → 原样返回 preferred，上层据此写升级记录并停（exit 10），
+    **不改用另一组模型硬做**。
+    skip = 本次运行已判负的模型（不依赖 state 文件写成功 —— _save 是吞异常的）。
+    """
+    seen: set[str] = set()
+    tried = []
+    for m in (preferred, *fallbacks):
+        if m in seen or m in skip:
+            continue
+        seen.add(m)
+        cooling, elapsed = model_in_cooldown(m)
+        if cooling:
+            remain_min = (_cooldown_s() - elapsed) / 60
+            tried.append(f"{m}=冷却中(还剩{remain_min:.0f}min)")
+            continue
+        if m == preferred:
+            return m, f"{m} 不在冷却窗内"
+        return m, f"⚠ 前选 {preferred} 冷却/已判负 → 组内改用 {m}"
+    return preferred, "全部候选不可用：" + (" · ".join(tried) or "均在 skip 内")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 升级记录（#156，对齐 Parthenon cockpit/scripts/cline_run.py 的 escalate）
+# ═══════════════════════════════════════════════════════════════════════════
+TZ = dt.timezone(dt.timedelta(hours=8))  # 北京时间，与 cline_run 一致
+ESCALATION_DIR = pathlib.Path(
+    os.environ.get("MNESIS_ESCALATION_DIR",
+                   (_POLICY.get("escalation") or {}).get(
+                       "record_dir", "D:/Github/_ops/escalations")))
+
+# 本仓的非零退出码 → 升级原因（#156；具体看 detail 字段）。
+# 7（跳过=卡已关）故意不在表里：跳过不是失败，不写升级记录 —— 否则每次双派
+# 保护触发都给派单 root 塞一条幽灵记录（对齐 Iris#208 的 skip 先例）。
+_ESCALATE_REASON = {
+    2: "网关凭据不可用（前置体检）—— 修配置，不是工人不行",
+    3: "读卡失败（网络/权限）",
+    4: "工人零产出 —— 看 detail，多半是卡本身描述不足",
+    5: "验收未过（pytest 红）—— 看 detail 的 acceptance_fail",
+    6: "尝试用尽 —— worktree 里可能有半成品，看 rundir",
+    8: "工人超时被杀 —— worktree 是半成品，必须人工逐项复核后才可推",
+    9: "引擎崩溃（CLI 零轮次零开销）—— 不是做不出来，别改卡描述",
+    10: "网关后端故障或开发组模型全部冷却（交编排侧接管）",
+}
+
+
+def now() -> dt.datetime:
+    return dt.datetime.now(tz=TZ)
+
+
+def _count_recent_failures(task: str, esc_dir: pathlib.Path,
+                           at: dt.datetime) -> int:
+    """该任务 24h 内已有的升级记录数（本条写入前的数，对本条 +1）。"""
+    cutoff = (at - dt.timedelta(hours=24)).timestamp()
+    if not esc_dir.is_dir():
+        return 0
+    cnt = 0
+    for f in esc_dir.glob("*.json"):
+        try:
+            rec = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if rec.get("task") != task:
+            continue
+        t = rec.get("at")
+        if not isinstance(t, str):
+            continue
+        try:
+            ts = dt.datetime.fromisoformat(t).timestamp()
+        except ValueError:
+            continue
+        if ts >= cutoff:
+            cnt += 1
+    return cnt
+
+
+def escalate(
+    task: str,
+    cwd: str,
+    code: int,
+    rundir: pathlib.Path,
+    detail: str,
+    *,
+    role: str = "dev",
+    record_dir: pathlib.Path | None = None,
+    at: dt.datetime | None = None,
+) -> pathlib.Path:
+    """写一条升级记录（对齐 cline_run.escalate；调用方包好异常，别让它阻塞退出）。
+
+    记录落 {ESCALATION_DIR}/{task}-{时间戳}.json，字段：task、cli="claude"、
+    role、cwd、exit_code、reason、detail、rundir、at、failures_24h_for_task、
+    resolved=false、to、hint。派单 root（Claude Desktop, Opus 5.5）按
+    failures_24h_for_task 聚合升级；record_dir 由测试注入临时目录。
+    """
+    esc_dir = pathlib.Path(record_dir) if record_dir is not None else ESCALATION_DIR
+    ts = at or now()
+    esc_dir.mkdir(parents=True, exist_ok=True)
+    recent = _count_recent_failures(task, esc_dir, ts)
+    rec = {
+        "task": task,
+        "cli": "claude",
+        "role": role,
+        "cwd": cwd,
+        "exit_code": code,
+        "reason": _ESCALATE_REASON.get(code, f"exit {code}"),
+        "detail": (detail or "")[-500:],
+        "rundir": str(rundir),
+        "at": ts.isoformat(),
+        "failures_24h_for_task": recent + 1,
+        "to": "Claude Desktop（Opus 5.5）",
+        "resolved": False,
+        "hint": "工作区里 CLI 已写的部分要保留，在它基础上接着做。",
+    }
+    path = esc_dir / f"{task}-{ts.strftime('%m%d-%H%M%S')}.json"
+    path.write_text(json.dumps(rec, ensure_ascii=False, indent=2),
+                    encoding="utf-8")
+    return path
 
 
 def _main_repo_root() -> pathlib.Path:
@@ -406,7 +669,13 @@ DONE / BLOCKED / PARTIAL
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("issue", type=int)
-    ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument("--model", default=None,
+                    help="网关模型；留空按 --role 从 worker-policy.json 的 claude_cli "
+                         f"取组内首位（历史默认：{DEFAULT_MODEL}）")
+    ap.add_argument("--role", choices=("dev", "ci"), default="dev",
+                    help="dev=开发任务（kimi-k3 → deepseek-pro → glm-5.2）；"
+                         "ci=CI/CD 任务（deepseek → … → auto）。两组都从 "
+                         "worker-policy.json 的 claude_cli 读，不在本仓写死第二份")
     ap.add_argument("--max-attempts", type=int, default=2)
     ap.add_argument("--timeout", type=int, default=5400)
     args = ap.parse_args()
@@ -421,6 +690,40 @@ def main() -> int:
             json.dumps({"issue": n, "repo": REPO, "ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **kw},
                        ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # ── 升级记录入口（#156）：非成功退出写一条 JSON 交派单 root（照 Iris#208 移植）──
+    def esc(rc: int, detail: str, *, role: str | None = None,
+            cwd: str | None = None, rundir: pathlib.Path | None = None) -> None:
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            # scripts/tests/ 直接测 escalate（显式 record_dir=tmp_path），不经过本挡；
+            # 生产路径无此环境变量，照写不误。测试期绝不写真实 escalations 目录
+            # —— 每轮塞幽灵记录会被派单 root 当成真失败接手。
+            return
+        try:
+            p = escalate(f"CAN-{n}", cwd or str(REPO_ROOT), rc,
+                         rundir or out_dir, detail, role=role or args.role)
+            note(f"#{n} 升级记录 → {p}")
+        except Exception as e:  # noqa: BLE001 —— 升级记录只增不阻塞
+            note(f"#{n} 写升级记录失败（不阻塞）：{e}")
+
+    # ── 模型分组（#156）：默认值不再在本仓写死，按 --role 从策略文件取 ──
+    role_chain = models_for_role(args.role)
+    args.model = args.model or role_chain[0]  # dev → kimi-k3，ci → deepseek
+    picked, why_pick = pick_live_model(args.model, role_chain)
+    note(f"#{n} 模型组 role={args.role}：{role_chain}；可用性：{why_pick}")
+    if picked != args.model:
+        # 换模型大声说出来（#234/#156）：静默换会让复盘分不清卡是谁做的。
+        note(f"#{n} ⚠ 首发模型 {args.model} 在 5h 冷却窗内 → 组内改用 {picked}；"
+             f"不改用另一组硬做")
+        args.model = picked
+    if model_in_cooldown(args.model)[0]:
+        # 开发组模型全部在冷却窗内：写升级记录然后停下（#156）——
+        # 绝不改用 CI 组模型硬做开发任务。
+        err = f"模型组 {role_chain} 全部在 {_cooldown_s() / 3600:.1f}h 冷却窗内"
+        write_result(ok=False, stage="quota", error=err)
+        note(f"#{n} ⛔ {err} —— 写升级记录交编排侧接管，冷却后原样重派")
+        esc(10, err)
+        return 10
+
     # ── 前置体检（OPERATIONS-GUIDE「派活前置体检」）─────────────────────────
     try:
         _u, _k, _src = resolve_gateway()
@@ -428,6 +731,7 @@ def main() -> int:
     except RuntimeError as e:
         write_result(ok=False, stage="preflight", error=str(e))
         note(f"#{n} 网关凭据不可用：{e}")
+        esc(2, f"网关凭据不可用：{e}")
         return 2
     if False:
         write_result(ok=False, stage="preflight", error="网关钥匙缺失（console.url/console.key）")
@@ -439,6 +743,7 @@ def main() -> int:
     if iv.returncode != 0:
         write_result(ok=False, stage="preflight", error=f"读卡失败：{iv.stderr[-500:]}")
         note(f"#{n} 读卡失败")
+        esc(3, f"读卡失败：{iv.stderr[-400:]}")
         return 3
     issue = json.loads(iv.stdout)
     if issue["state"] != "OPEN":
@@ -449,6 +754,8 @@ def main() -> int:
         # 拿它表示「压根没跑」会让队列日志把跳过显示成成功（2026-09-02 实测：
         # #812 被别的会话做掉后，日志打出「rc=0（0=验收过）」，看日志的人会以为
         # 我们做了这张卡）。跳过是好事（前置体检挡住了双派），但它得说实话。
+        # 升级记录也**故意不写**（对齐 Iris#208 的 skip 先例）：跳过不是失败，
+        # 写了就是给派单 root 塞幽灵记录 —— 「非成功退出写一条」指的是失败退出。
         return 7
 
     wt = REPO_ROOT / ".claude" / "worktrees" / f"dl-issue-{n}"
@@ -480,6 +787,7 @@ def main() -> int:
     transport_retries = 0
     active_model = args.model          # 实际在用的模型（可能因不可用而回退）
     model_fallback_from = None         # 若发生回退，记下原本要用的是哪个
+    dead_models: set[str] = set()      # #156：本次运行已判负的模型（不依赖 state 文件）
     # ⚠️ 用 while + 手动计数，**不能用 `for attempt in range(...)` + continue**。
     # 2026-09-02 实测（#818）：那样写时，网关抖动分支里的 `continue` 会推进 for 的
     # 计数器 —— 日志打着「不计入尝试」，实际每次抖动都吃掉一次尝试。#818 那轮
@@ -493,15 +801,35 @@ def main() -> int:
              f"（model={active_model}，已容忍抖动 {transport_retries} 次）")
         rc, out = run_claude(prompt, active_model, str(wt), timeout=args.timeout)
 
-        # 模型不可用 → 大声换一次退路模型，**绝不静默**。
+        # 模型不可用 / 额度耗尽 → 沿本组换一个，**绝不静默**、绝不改用另一组。
         # 「绝不静默换引擎」是本管线的硬规矩（#234）：静默换会让「引擎不可用」
-        # 与「做不出来」在结果里同形。这里换是有理由的（auto 在网关侧没有降级组，
-        # 退路只能由执行器给），但必须让人看见换了、换成了什么、为什么。
-        if is_model_unavailable(out) and active_model != FALLBACK_MODEL:
-            note(f"#{n} ⚠ 模型 {active_model} 不可用（CLI 原话：模型可能不存在或无权访问）"
-                 f" → 换 {FALLBACK_MODEL} 重跑，不计入尝试（attempt 仍为 {attempt}）")
-            model_fallback_from = active_model
-            active_model = FALLBACK_MODEL
+        # 与「做不出来」在结果里同形。#156 起接入 worker-policy：撞额度的模型
+        # 记 5h 冷却（跨仓共享 state），沿 dev/ci 组顺位换；整组都在冷却 →
+        # 写升级记录停下（exit 10），不改用另一组硬做。
+        if is_model_unavailable(out) or is_quota_exhausted(out):
+            dead_models.add(active_model)
+            _mark_quota_exhausted(active_model)
+            alt, why_alt = pick_live_model(active_model, role_chain,
+                                           skip=tuple(dead_models))
+            if alt == active_model:
+                chain_txt = " → ".join(role_chain)
+                cd_h = _cooldown_s() / 3600.0
+                msg = (f"模型组（{args.role}）全部额度用尽/冷却中：{chain_txt}。"
+                       f"不贴 blocked（不是工人做不出来）。{cd_h:.1f}h 冷却后原样重派，"
+                       f"或编排侧接管；不改用另一组硬做开发任务。{why_alt}")
+                note(f"#{n} ⛔ {msg}")
+                write_result(ok=False, stage="quota", rc=rc, attempt=attempt,
+                             model_used=active_model,
+                             model_fallback_from=model_fallback_from,
+                             error=msg, tail=out[-3000:])
+                esc(10, f"本组模型全部冷却/耗尽（{role_chain}）：{why_alt}",
+                    cwd=str(wt))
+                return 10
+            if model_fallback_from is None:
+                model_fallback_from = active_model
+            note(f"#{n} ⚠ {why_alt}（CLI：{out[-200:].strip()}）—— 记 5h 冷却，"
+                 f"不计入尝试（attempt 仍为 {attempt}）")
+            active_model = alt
             continue
 
         if is_transport_error(out) and transport_retries < MAX_TRANSPORT_RETRIES:
@@ -521,6 +849,8 @@ def main() -> int:
                          transport_retries=transport_retries,
                          error="网关后端不可用（No connected db）—— 与「工人做不出来」无关",
                          tail=out[-2000:])
+            esc(10, "GATEWAY DOWN (No connected db) —— 工人零轮次，先修网关再原样重派",
+                cwd=str(wt))
             return 10
 
         # 引擎崩溃与网关抖动同属「不是工人的错」，但**不重试**：抖动是瞬时的，
@@ -532,6 +862,8 @@ def main() -> int:
                          tail=out[-3000:])
             note(f"#{n} **引擎崩溃**（CLI 一轮没跑、一个 token 没花）—— "
                  f"不是做不出来，别改卡描述；先查 CLI/网关，再原样重派")
+            esc(9, "ENGINE CRASH (num_turns=0/cost=0) —— 引擎崩溃，零轮次零开销",
+                cwd=str(wt))
             return 9
 
         attempt += 1
@@ -542,6 +874,8 @@ def main() -> int:
                 write_result(ok=False, stage="develop", rc=rc, transport_retries=transport_retries,
                              error="工人零产出", tail=out[-3000:],
                              model_used=active_model, model_fallback_from=model_fallback_from)
+                esc(4, f"工人零产出（{args.max_attempts} 次尝试全零产出，"
+                       f"model={active_model}）", cwd=str(wt))
                 return 4
             continue
 
@@ -566,9 +900,15 @@ def main() -> int:
             note(f"#{n} **工人超时被杀**（rc=124，跑了 {args.timeout}s 上限）—— "
                  f"验收{'通过' if acc_ok else '未过'}但那只说明「已写下的部分没弄坏仓」，"
                  f"不说明活干完了。worktree 里是半成品：{wt}，必须人工逐项复核后才可推")
+            esc(8, f"工人超时被杀（rc=124，{args.timeout}s 上限）—— "
+                   f"worktree 是半成品，需人工逐项复核：{wt}", cwd=str(wt))
             return 8
         note(f"#{n} {'验收通过' if ok else '验收未过'} —— 产出在 {wt}，未 push（等人审）")
-        return 0 if ok else 5
+        if ok:
+            return 0
+        esc(5, f"验收未过（第 {attempt} 次，model={active_model}）：{(fail or '')[-400:]}",
+            cwd=str(wt))
+        return 5
 
     # 尝试用尽也要如实记录 worktree 里已有的产出。
     # 2026-09-02 实测（#818）：这条出口原本只写「尝试用尽」，result JSON 里
@@ -583,6 +923,9 @@ def main() -> int:
     if leftover:
         note(f"#{n} 尝试用尽，但 worktree 里有 {len(leftover.splitlines())} 个改动文件 —— "
              f"是半成品不是零产出，先去 {wt} 看一眼再决定丢不丢")
+    esc(6, f"尝试用尽（{args.max_attempts} 轮）—— worktree {wt}，改动文件 "
+           f"{len(leftover.splitlines()) if leftover else 0} 个"
+           + ("（半成品，先看一眼再决定丢不丢）" if leftover else ""))
     return 6
 
 
