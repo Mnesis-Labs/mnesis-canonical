@@ -15,7 +15,9 @@ import dev_local as dl
 
 TZ8 = dt.timezone(dt.timedelta(hours=8))
 
-EXPECTED_DEV = ("kimi-k3", "deepseek-pro", "glm-5.2")
+EXPECTED_DEV = ("glm-5.2", "kimi-k3", "deepseek-pro")
+# 跳过冷却的测试用一条固定顺序（与默认组解耦，默认顺序变了这些测试的意图不变）
+CHAIN_KDG = ("kimi-k3", "deepseek-pro", "glm-5.2")
 EXPECTED_CI = ("deepseek", "sensenova-lite", "sensenova-lite-global",
                "internlm-s2", "internlm-s1", "auto")
 
@@ -151,38 +153,38 @@ class TestPickLiveModel:
 
     def test_prefers_first_when_nothing_cooling(self, tmp_path, monkeypatch):
         self._iso(tmp_path, monkeypatch)
-        picked, _ = dl.pick_live_model("kimi-k3", EXPECTED_DEV)
+        picked, _ = dl.pick_live_model("kimi-k3", CHAIN_KDG)
         assert picked == "kimi-k3"
 
     def test_skips_cooling_models_in_order(self, tmp_path, monkeypatch):
         self._iso(tmp_path, monkeypatch)
         dl._mark_quota_exhausted("kimi-k3")
-        picked, why = dl.pick_live_model("kimi-k3", EXPECTED_DEV)
+        picked, why = dl.pick_live_model("kimi-k3", CHAIN_KDG)
         assert picked == "deepseek-pro"
         assert "kimi-k3" in why  # 换模型必须被说出来，不许静默（#234）
 
     def test_all_cooling_returns_preferred_for_escalation(self, tmp_path, monkeypatch):
         """整组冷却 → 原样返回 preferred（上层据此写升级记录 exit 10）。"""
         self._iso(tmp_path, monkeypatch)
-        for m in EXPECTED_DEV:
+        for m in CHAIN_KDG:
             dl._mark_quota_exhausted(m)
-        picked, why = dl.pick_live_model("kimi-k3", EXPECTED_DEV)
+        picked, why = dl.pick_live_model("kimi-k3", CHAIN_KDG)
         assert picked == "kimi-k3"
         assert "全部候选不可用" in why
 
     def test_never_returns_model_from_other_group(self, tmp_path, monkeypatch):
         """绝不用另一组模型硬做 —— #156 第一原则。"""
         self._iso(tmp_path, monkeypatch)
-        for m in EXPECTED_DEV:
+        for m in CHAIN_KDG:
             dl._mark_quota_exhausted(m)
-        picked, _ = dl.pick_live_model("kimi-k3", EXPECTED_DEV)
-        assert picked in EXPECTED_DEV
+        picked, _ = dl.pick_live_model("kimi-k3", CHAIN_KDG)
+        assert picked in CHAIN_KDG
         assert picked not in EXPECTED_CI
 
     def test_skip_set_works_without_state_file(self, tmp_path, monkeypatch):
         """skip 不依赖 state 文件 —— _save 吞异常时也不能原地打转。"""
         self._iso(tmp_path, monkeypatch)
-        picked, _ = dl.pick_live_model("kimi-k3", EXPECTED_DEV, skip=("kimi-k3",))
+        picked, _ = dl.pick_live_model("kimi-k3", CHAIN_KDG, skip=("kimi-k3",))
         assert picked == "deepseek-pro"
 
 
@@ -221,12 +223,22 @@ class TestEscalate:
         rec = json.loads(path.read_text(encoding="utf-8"))
         assert rec["role"] == "ci"
 
-    def test_quota_reason_for_exit_10(self, tmp_path):
+    def test_gateway_down_reason_for_exit_10(self, tmp_path):
         at = dt.datetime(2026, 1, 15, 12, 0, tzinfo=TZ8)
-        path = dl.escalate("CAN-156", "/w", 10, pathlib.Path("/r"), "quota",
+        path = dl.escalate("CAN-156", "/w", 10, pathlib.Path("/r"), "gateway down",
                            at=at, record_dir=tmp_path)
         rec = json.loads(path.read_text(encoding="utf-8"))
-        assert rec["reason"] == "网关后端故障或开发组模型全部冷却（交编排侧接管）"
+        assert rec["reason"] == "网关后端故障（交编排侧接管）"
+
+    def test_all_dev_cooling_is_exit_42_per_policy(self, tmp_path):
+        # worker-policy.json exit_codes_that_escalate: "42" = 开发组模型全部冷却/不可用（Parthenon#877 全舰队统一）
+        at = dt.datetime(2026, 1, 15, 12, 0, tzinfo=TZ8)
+        path = dl.escalate("CAN-156", "/w", 42, pathlib.Path("/r"), "quota",
+                           at=at, record_dir=tmp_path)
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        assert rec["exit_code"] == 42 and rec["reason"].startswith("开发组模型全部冷却")
+        src = pathlib.Path(dl.__file__).read_text(encoding="utf-8")
+        assert src.count("return 42") >= 2 and "esc(42, err)" in src
 
     def test_unknown_code_reason(self, tmp_path):
         at = dt.datetime(2026, 1, 15, 12, 0, tzinfo=TZ8)

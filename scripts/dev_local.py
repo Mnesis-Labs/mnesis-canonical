@@ -219,7 +219,7 @@ _POLICY = load_worker_policy()
 # 对齐；改值请改策略文件（合并后各仓自动跟上），不要只改这里。
 _DEFAULT_CLAUDE_CLI = {
     "cooldown_hours": 5,
-    "dev": ["kimi-k3", "deepseek-pro", "glm-5.2"],
+    "dev": ["glm-5.2", "kimi-k3", "deepseek-pro"],
     "ci": ["deepseek", "sensenova-lite", "sensenova-lite-global",
            "internlm-s2", "internlm-s1", "auto"],
 }
@@ -242,7 +242,7 @@ def cooldown_seconds(policy: dict | None = None) -> float:
 
 
 def dev_models(policy: dict | None = None) -> tuple[str, ...]:
-    """开发任务模型组（按序）：kimi-k3 → deepseek-pro → glm-5.2。"""
+    """开发任务模型组（按序）：glm-5.2 → kimi-k3 → deepseek-pro。"""
     return tuple(claude_cli_section(policy)["dev"])
 
 
@@ -370,7 +370,8 @@ _ESCALATE_REASON = {
     6: "尝试用尽 —— worktree 里可能有半成品，看 rundir",
     8: "工人超时被杀 —— worktree 是半成品，必须人工逐项复核后才可推",
     9: "引擎崩溃（CLI 零轮次零开销）—— 不是做不出来，别改卡描述",
-    10: "网关后端故障或开发组模型全部冷却（交编排侧接管）",
+    10: "网关后端故障（交编排侧接管）",
+    42: "开发组模型全部冷却/不可用（worker-policy.json exit_codes_that_escalate）",
 }
 
 
@@ -673,7 +674,7 @@ def main() -> int:
                     help="网关模型；留空按 --role 从 worker-policy.json 的 claude_cli "
                          f"取组内首位（历史默认：{DEFAULT_MODEL}）")
     ap.add_argument("--role", choices=("dev", "ci"), default="dev",
-                    help="dev=开发任务（kimi-k3 → deepseek-pro → glm-5.2）；"
+                    help="dev=开发任务（glm-5.2 → kimi-k3 → deepseek-pro）；"
                          "ci=CI/CD 任务（deepseek → … → auto）。两组都从 "
                          "worker-policy.json 的 claude_cli 读，不在本仓写死第二份")
     ap.add_argument("--max-attempts", type=int, default=2)
@@ -721,8 +722,8 @@ def main() -> int:
         err = f"模型组 {role_chain} 全部在 {_cooldown_s() / 3600:.1f}h 冷却窗内"
         write_result(ok=False, stage="quota", error=err)
         note(f"#{n} ⛔ {err} —— 写升级记录交编排侧接管，冷却后原样重派")
-        esc(10, err)
-        return 10
+        esc(42, err)
+        return 42
 
     # ── 前置体检（OPERATIONS-GUIDE「派活前置体检」）─────────────────────────
     try:
@@ -822,9 +823,9 @@ def main() -> int:
                              model_used=active_model,
                              model_fallback_from=model_fallback_from,
                              error=msg, tail=out[-3000:])
-                esc(10, f"本组模型全部冷却/耗尽（{role_chain}）：{why_alt}",
+                esc(42, f"本组模型全部冷却/耗尽（{role_chain}）：{why_alt}",
                     cwd=str(wt))
-                return 10
+                return 42
             if model_fallback_from is None:
                 model_fallback_from = active_model
             note(f"#{n} ⚠ {why_alt}（CLI：{out[-200:].strip()}）—— 记 5h 冷却，"
