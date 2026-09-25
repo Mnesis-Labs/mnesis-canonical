@@ -39,7 +39,13 @@ jobs:
     # SECURITY：本 job 在自托管 runner 上直接执行本机脚本。fork PR 必须挡住，
     # 否则任何人开个 fork PR 就能触发本机执行（自托管 runner 经典事故形态）。
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted]
+    # CI_POLICY R2 例外·角色标签 mnesis-core（2026-09-25，Muso 定「只能在主节点跑的作业钉到主节点」，
+    # Mnesis-Labs/Parthenon#878）。评审是控制面：入口是主节点的 Parthenon 检出（cockpit/worker/run-review.ps1），要读主节点磁盘上的
+    # bot.pat 与网关 token（engine.local.ps1），NeXT 上都没有
+    # （与其它仓统一：评审身份与密钥只放主节点）
+    # mnesis-core 是角色标签（只挂在主节点那台 runner 上），不是机器名；普通测试作业仍是裸 [self-hosted]、两台分担。
+    # 撤销条件：NeXT 具备同等环境（评审入口/密钥或 Android 工具链）并按 #878 对照验证通过后，改回原 runs-on。
+    runs-on: [self-hosted, Windows, X64, mnesis-core]
     steps:
       # 两台机器的评审脚本路径与解释器不同，按 runner.os 分派。
       # 参数签名一致（-Pr / -Repo），行为由各自脚本保证一致。
