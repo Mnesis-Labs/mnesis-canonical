@@ -10,7 +10,7 @@
 | C2a | frames.zip 规范：根目录 `%06d.jpg`（与 `frame_index` 对齐，1fps）；包≤200MB/帧≤5MB/≤3600 帧。服务端宽容收 png/jpg/jpeg/webp/bmp，规范名以 jpg 为准 | v1.1 | Ambrosia | Iris（Eidolon/Daedalus 后续） | 同上 |
 | C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明/WebRTC 信令） | v1.7 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：状态/底盘/急停/相机/臂），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **v0 草案已出**（2026-08-27，现状钉扎：端点 stable/beta/draft 三档 + deadman/急停闩锁/闲置卸力安全语义版本化） | **Daedalus `docs/C4-ROBOT-BRIDGE-API.md`** | Ambrosia（`bridge/hw_bridge.py` 迁移需求单 = ambrosia#258）、Eidolon xr_bridge、web_console、joy_teleop | Daedalus#528（契约冒烟测试,建设中） |
-| C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
+| C5 | **MJCF 仿真资产 / scene bundle**（机器人/场景模型单一事实源；扫描房间 = navmap + collision MJCF + 可选 3DGS splat + calibration，同一 `frame_id`） | **v0 草案（2026-09-25，未生效）** | Daedalus（`scene/bundle.py` 生产者，`simulation/mujoco/` = 物理事实源） | Eidolon（MR tabletop / MuJoCo-GS-Web 只做展示）· Ambrosia（网页回放） | 待建：`mnesis_canonical/scene_bundle.schema.json` + `tests/test_scene_bundle.py` |
 | C12 | **双端语义契约 PS0**（`ObservationLabel` / `scene_graph` + 三个 8442 WS 消息 `semantic_label` / `scene_graph` / `colocalization`；`class_id` 取值域 = `taxonomies/object_class_v1.json`） | v1 · **vNext 草案 v1.1**（2026-09-02，`colocalization` 登记头显生产者 + `source` 判别 + `quality.method`，additive，见下「C12 vNext 草案 v1.1」；**未生效**） | canonical（`SPEC.md` §Dual-endpoint semantic perception + `mnesis_canonical/semantic.schema.json`） | Daedalus（融合，ADR-004）·Eidolon（头显消费；**v1.1 草案起兼 `colocalization` 上行生产者**） | canonical `tests/test_semantic.py` + `examples/semantic/` golden · Daedalus PS1/PS2a/PS3 · Eidolon PS2b（`Tests/EditMode/ColocalizationSolverTests.cs` / `ColocalizationSessionTests.cs` / `ColocalizationDriftTests.cs`） |
 | C13 | **objects.jsonl 侧信道**（frames_dir 旁路文件，非 episode `sidecars[]`：`header` + 逐帧 `object` 观测；核心是 `pose_dof` 诚实字段——单视角 2D 框+深度只观测得到位置，`pose_dof:3` ⟺ `quat_wxyz:null`，禁止用占位四元数假装 6-DoF；`quat_wxyz` 为 `[w,x,y,z]` 标量在前，与本仓 C12 `pose.q` 标量在后刻意不同——两个生产方各自的既有约定，如实记录分歧而非悄悄改历史；`class_id` 开放词表，暂不对齐 `taxonomies/object_class_v1.json`） | v1 | canonical（`SPEC.md` §objects.jsonl side channel + `mnesis_canonical/objects_jsonl.schema.json`） | Daedalus（`scene/object_track.py` 生产者）·Ambrosia（`real2sim/augment.py` S32 消费，在途） | canonical `tests/test_objects_jsonl.py` · Daedalus `tests/scene/test_object_track.py`（Parthenon#764 / Daedalus#443） |
 
@@ -372,3 +372,29 @@ Ambrosia 是全网**唯一同时握有**「真实 episode + 真机 MJCF(C5)+ 浏
 
 ## G. 建议的下一个跨仓"会师点"(投资人可演示)
 Eidolon MI-1 ✅ + Ambrosia S6(收 3 面 + robot 忠实回放 + LeRobot 导出)✅ + Daedalus(frames.zip + C5 发版)✅ → **一次联测:手机/Quest/机器人三面同屏入库 → 数据集 → 忠实回放 → 一键导出 LeRobot**。这就是"真实数据飞轮"的可演示形态,也是融资 Demo 的核心画面。
+
+
+## C5 vNext 草案 v0 · scene bundle（2026-09-25，**未生效**）
+
+> 来源：Daedalus `docs/adr/ADR-003-3dgs-mujoco-scan-to-sim.md` D-1/D-2（混合表示、一次扫描双输出）· Daedalus 线程 B 规划 `docs/PLAN-NAV-DIGITAL-TWIN-2026-09-25.md` B3/B5。
+
+一个扫描出来的房间打成一个目录 + `bundle.json`：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `version` | 是 | `mnesis.scene_bundle/v0` |
+| `frame_id` | 是 | 该房间坐标系的唯一 id；bundle 内所有产物、消费方摆放的机器人/物体都必须用它 |
+| `calibration` | 是 | `{rotation(3x3, proper), scale(m/unit), floor_z(m), evidence}`，与 Daedalus `scan_to_navmap` 的校准文件同形 |
+| `navmap` | 是 | `{map_json, grid_npz}`，`mnesis.navmap/v1` |
+| `collision` | 是 | `{mjcf}`，只含碰撞几何（箱体/mesh），无外观 |
+| `splat` | 否 | `{ply, spz?}`，3DGS 外观层；与 `navmap` 同 `frame_id` 同尺度 |
+| `checksums` | 是 | 每个文件的 sha256；消费方加载前必须校验 |
+| `provenance` | 是 | 采集时间、设备、LingBot-Map 版本、3DGS 后端与 license 记账 |
+
+规则：
+- **外观与物理分离**：`splat` 只管渲染，碰撞只认 `collision.mjcf`。消费方不得从 splat 推碰撞。
+- **同一坐标系硬要求**：`frame_id` 不一致即拒绝装配；尺度只来自 `calibration.scale`，不得各自估。
+- 动态物体（机器人、可抓物）不进 bundle，由消费方按 `frame_id` 摆放。
+- 生产者：Daedalus；消费者：Eidolon（展示）、Ambrosia（回放）；训练侧装配在 Daedalus 内部完成。
+
+待拍：`spz` 是否作为必填（取决于 Eidolon Quest 端渲染验证）；`collision` 是否允许 mesh 与箱体并存。
