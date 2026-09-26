@@ -378,3 +378,4 @@ ICE candidate 双向交换。
 
 - 完整协议文档: [`XR_ROBOT_CONTRACT.md`](XR_ROBOT_CONTRACT.md)
 - 跨仓契约登记簿: [`CONTRACTS.md`](../CONTRACTS.md)
+- 发现层（`EIDOLON-DISC/1` UDP 定位 + `GET /xr-bridge` v2；**不属于 C3 消息集**，`ver` 字段即本文 `PROTOCOL_VERSION`）: 登记见 [`CONTRACTS.md`](../CONTRACTS.md)「C3 说明记录」2026-09-26；真值 Daedalus `docs/integration/XR_BRIDGE_DISCOVERY.md` §6
