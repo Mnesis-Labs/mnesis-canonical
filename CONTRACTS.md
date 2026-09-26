@@ -384,7 +384,7 @@ Eidolon MI-1 ✅ + Ambrosia S6(收 3 面 + robot 忠实回放 + LeRobot 导出)�
 |---|---|---|
 | `version` | 是 | `mnesis.scene_bundle/v0` |
 | `frame_id` | 是 | 该房间坐标系的唯一 id；bundle 内所有产物、消费方摆放的机器人/物体都必须用它 |
-| `calibration` | 是 | `{rotation(3x3, proper), scale(m/unit), floor_z(m), evidence}`，与 Daedalus `scan_to_navmap` 的校准文件同形 |
+| `calibration` | 是 | `{rotation(3x3, proper), scale(m/unit), floor_z(m), evidence, translation?(3, 默认 0), source_convention?}`，与 Daedalus `scan_to_navmap.load_calibration` 的允许键**完全同形**（2026-09-26 补：`translation` 参与 `p_map = scale·R·p + translation`，消费方不得静默丢弃） |
 | `navmap` | 是 | `{map_json, grid_npz}`，`mnesis.navmap/v1` |
 | `collision` | 是 | `{mjcf}`，只含碰撞几何（箱体/mesh），无外观 |
 | `splat` | 否 | `{ply, spz?}`，3DGS 外观层；与 `navmap` 同 `frame_id` 同尺度 |

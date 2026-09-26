@@ -4,35 +4,145 @@
   "title": "Mnesis scene bundle v0 (draft, not in effect)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "frame_id", "calibration", "navmap", "collision", "checksums", "provenance"],
+  "required": [
+    "version",
+    "frame_id",
+    "calibration",
+    "navmap",
+    "collision",
+    "checksums",
+    "provenance"
+  ],
   "properties": {
-    "version": {"const": "mnesis.scene_bundle/v0"},
-    "frame_id": {"type": "string", "minLength": 1},
+    "version": {
+      "const": "mnesis.scene_bundle/v0"
+    },
+    "frame_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "calibration": {
-      "type": "object", "additionalProperties": false,
-      "required": ["rotation", "scale", "floor_z", "evidence"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rotation",
+        "scale",
+        "floor_z",
+        "evidence"
+      ],
       "properties": {
-        "rotation": {"type": "array", "minItems": 3, "maxItems": 3,
-          "items": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}},
-        "scale": {"type": "number", "exclusiveMinimum": 0},
-        "floor_z": {"type": "number"},
-        "evidence": {"type": "string", "minLength": 1}
+        "rotation": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "scale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "floor_z": {
+          "type": "number"
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        },
+        "translation": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          },
+          "description": "source frame origin in the map frame (metres); optional, default [0,0,0]; same meaning as scan_to_navmap.load_calibration"
+        },
+        "source_convention": {
+          "type": "string",
+          "description": "optional free-text convention of the source frame (mirrors scan_to_navmap.load_calibration)"
+        }
       }
     },
-    "navmap": {"type": "object", "additionalProperties": false, "required": ["map_json", "grid_npz"],
-      "properties": {"map_json": {"type": "string"}, "grid_npz": {"type": "string"}}},
-    "collision": {"type": "object", "additionalProperties": false, "required": ["mjcf"],
-      "properties": {"mjcf": {"type": "string"}}},
-    "splat": {"type": "object", "additionalProperties": false, "required": ["ply"],
-      "properties": {"ply": {"type": "string"}, "spz": {"type": "string"}}},
-    "checksums": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
-    "provenance": {"type": "object", "required": ["captured_at", "device", "reconstruction"],
+    "navmap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "map_json",
+        "grid_npz"
+      ],
       "properties": {
-        "captured_at": {"type": "string"},
-        "device": {"type": "string"},
-        "reconstruction": {"type": "string"},
-        "splat_backend": {"type": "string"},
-        "license": {"type": "string"}
+        "map_json": {
+          "type": "string"
+        },
+        "grid_npz": {
+          "type": "string"
+        }
+      }
+    },
+    "collision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mjcf"
+      ],
+      "properties": {
+        "mjcf": {
+          "type": "string"
+        }
+      }
+    },
+    "splat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ply"
+      ],
+      "properties": {
+        "ply": {
+          "type": "string"
+        },
+        "spz": {
+          "type": "string"
+        }
+      }
+    },
+    "checksums": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "captured_at",
+        "device",
+        "reconstruction"
+      ],
+      "properties": {
+        "captured_at": {
+          "type": "string"
+        },
+        "device": {
+          "type": "string"
+        },
+        "reconstruction": {
+          "type": "string"
+        },
+        "splat_backend": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        }
       }
     }
   }
