@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mnesis.dev/schemas/c2_recording_manifest/1.0.json",
+  "title": "Mnesis C2 recording manifest (C2b, schema_version c2/1.0)",
+  "description": "Inventory-only manifest a capture surface (Iris phone, Eidolon headset, robot recorder) writes next to one recording and uploads as the `manifest` part of the C2 episode upload. It records what was ACTUALLY captured — the capture options that took effect, a per-stream confirmation, the tracker runtime that really ran, every media file with its sha256, and one shared timebase — so the ingest side (Ambrosia) can verify the upload without trusting the request. It carries no frame data; frames live in the C1 JSONL. Authority: CONTRACTS.md C2b. Consumers in other languages vendor this file verbatim and pin it by sha256 (see contracts/contracts.lock). Keep in lock-step with mnesis_canonical/recording_manifest.py. Breaking changes bump schema_version.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "device",
+    "timebase",
+    "resolved_capture_options",
+    "stream_confirmations",
+    "tracker_runtime",
+    "media"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Contract version tag. Exactly \"c2/1.0\" for this schema; a breaking change ships as a new value (e.g. \"c2/2.0\") together with a new schema file hash.",
+      "const": "c2/1.0"
+    },
+    "device": {
+      "description": "The capture device that produced this recording.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "app_version", "os"],
+      "properties": {
+        "id": {
+          "description": "Stable, non-personal device identifier chosen by the capture app (e.g. an install-scoped UUID). Must not be a hardware serial or phone number.",
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "description": "Device class: `phone` (Iris), `headset` (Eidolon), `robot` (robot-side recorder).",
+          "enum": ["phone", "headset", "robot"]
+        },
+        "app_version": {
+          "description": "Version string of the capture app that wrote this manifest (e.g. \"0.4.2+build.118\").",
+          "type": "string",
+          "minLength": 1
+        },
+        "os": {
+          "description": "Operating system name and version of the device as reported at record time (e.g. \"Android 15\").",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "timebase": {
+      "description": "The single clock every timestamp in this recording is expressed against: a monotonic clock origin plus the wall-clock instant it corresponds to.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["monotonic_start_ns", "utc_start", "clock_source"],
+      "properties": {
+        "monotonic_start_ns": {
+          "description": "Reading of the device monotonic clock at recording start, in integer nanoseconds. Frame `t_ns` values in the C1 JSONL are on this same clock.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "utc_start": {
+          "description": "Wall-clock time at recording start, RFC 3339 with an explicit offset (`Z` or `+hh:mm`), e.g. \"2026-09-28T08:15:30.125Z\".",
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+        },
+        "clock_source": {
+          "description": "Name of the monotonic clock `monotonic_start_ns` was read from (e.g. \"android_elapsed_realtime_nanos\", \"xr_runtime_monotonic\", \"posix_clock_monotonic\").",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "resolved_capture_options": {
+      "description": "Capture parameters that actually took effect after the device negotiated/clamped the requested ones (not what was requested). Free-form: surfaces may add their own keys, but `video` and `streams` are always present.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["video", "streams"],
+      "properties": {
+        "video": {
+          "description": "Effective primary video encoder settings. Extra keys (e.g. bitrate_bps, keyframe_interval_s) are allowed.",
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["codec", "width", "height", "fps"],
+          "properties": {
+            "codec": {
+              "description": "Codec actually used by the encoder, lowercase short name (e.g. \"h264\", \"hevc\", \"av1\").",
+              "type": "string",
+              "minLength": 1
+            },
+            "width": {
+              "description": "Encoded frame width in pixels.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "height": {
+              "description": "Encoded frame height in pixels.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "fps": {
+              "description": "Effective encode frame rate in frames per second.",
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "streams": {
+          "description": "Names of every stream the capture session was configured to record (e.g. \"rgb\", \"depth\", \"head_pose\", \"hands\", \"audio\"). Each name appears in `stream_confirmations`.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "stream_confirmations": {
+      "description": "Per-stream confirmation of what was really recorded, one entry per name in `resolved_capture_options.streams`.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "enabled", "width", "height", "fps", "frame_count", "dropped_frames"],
+        "properties": {
+          "name": {
+            "description": "Stream name, matching an entry of `resolved_capture_options.streams`.",
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "description": "Whether the stream was actually running for this recording. A configured stream the device could not start is reported with `enabled: false` and `frame_count: 0`, never omitted.",
+            "type": "boolean"
+          },
+          "width": {
+            "description": "Effective width in pixels for image-like streams; null for non-image streams (poses, audio, IMU).",
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "height": {
+            "description": "Effective height in pixels for image-like streams; null for non-image streams.",
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "fps": {
+            "description": "Effective sample rate in Hz (frames per second for image streams, samples per second for pose/IMU/audio streams). 0 only when `enabled` is false.",
+            "type": "number",
+            "minimum": 0
+          },
+          "frame_count": {
+            "description": "Number of frames/samples actually written for this stream.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "dropped_frames": {
+            "description": "Number of frames/samples the pipeline knowingly dropped for this stream (0 when none).",
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "tracker_runtime": {
+      "description": "The pose/hand tracking runtime that actually ran during the recording (as opposed to the one the app was built against).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "mode"],
+      "properties": {
+        "name": {
+          "description": "Runtime identifier as reported by the device (e.g. \"platform_ar_session\", \"xr_runtime\"). Use \"none\" when no tracker ran.",
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "description": "Runtime version string as reported at record time.",
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "description": "Tracking mode that was active (e.g. \"6dof\", \"3dof\", \"6dof+hands\", \"6dof+controllers\", \"none\").",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "media": {
+      "description": "Every media file that belongs to this recording, each pinned by sha256 so the receiver can verify the upload byte-for-byte.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "bytes", "duration_s", "kind"],
+        "properties": {
+          "path": {
+            "description": "File path relative to the manifest's directory, forward slashes only; no leading slash, no drive letter, no `..` segment.",
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\:]+$"
+          },
+          "sha256": {
+            "description": "Lowercase hex SHA-256 of the file's bytes (exactly 64 characters).",
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "bytes": {
+            "description": "File size in bytes.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_s": {
+            "description": "Duration of the content in seconds (media time span for video/audio/depth/frames, first-to-last record span for jsonl).",
+            "type": "number",
+            "minimum": 0
+          },
+          "kind": {
+            "description": "Media kind: `video` (self-contained encoded video), `frames_zip` (C2a frames archive), `jsonl` (C1 frame JSONL or side channel), `audio`, `depth`.",
+            "enum": ["video", "frames_zip", "jsonl", "audio", "depth"]
+          }
+        }
+      }
+    }
+  }
+}

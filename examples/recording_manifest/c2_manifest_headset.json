@@ -1,0 +1,122 @@
+{
+  "schema_version": "c2/1.0",
+  "device": {
+    "id": "eidolon-2d9b61f4-8a07-4c3e-b1e2-5f6a7c8d9e01",
+    "kind": "headset",
+    "app_version": "0.4.0+build.57",
+    "os": "Horizon OS v78"
+  },
+  "timebase": {
+    "monotonic_start_ns": 5123400000000,
+    "utc_start": "2026-09-28T16:02:11.500+08:00",
+    "clock_source": "xr_runtime_monotonic"
+  },
+  "resolved_capture_options": {
+    "video": {
+      "codec": "hevc",
+      "width": 1280,
+      "height": 960,
+      "fps": 30
+    },
+    "streams": [
+      "passthrough_left",
+      "passthrough_right",
+      "head_pose",
+      "hands",
+      "controllers",
+      "depth"
+    ],
+    "hand_tracking": "high_frequency"
+  },
+  "stream_confirmations": [
+    {
+      "name": "passthrough_left",
+      "enabled": true,
+      "width": 1280,
+      "height": 960,
+      "fps": 30,
+      "frame_count": 3598,
+      "dropped_frames": 2
+    },
+    {
+      "name": "passthrough_right",
+      "enabled": true,
+      "width": 1280,
+      "height": 960,
+      "fps": 30,
+      "frame_count": 3597,
+      "dropped_frames": 3
+    },
+    {
+      "name": "head_pose",
+      "enabled": true,
+      "width": null,
+      "height": null,
+      "fps": 72,
+      "frame_count": 8640,
+      "dropped_frames": 0
+    },
+    {
+      "name": "hands",
+      "enabled": true,
+      "width": null,
+      "height": null,
+      "fps": 60,
+      "frame_count": 7188,
+      "dropped_frames": 12
+    },
+    {
+      "name": "controllers",
+      "enabled": false,
+      "width": null,
+      "height": null,
+      "fps": 0,
+      "frame_count": 0,
+      "dropped_frames": 0
+    },
+    {
+      "name": "depth",
+      "enabled": true,
+      "width": 320,
+      "height": 320,
+      "fps": 5,
+      "frame_count": 600,
+      "dropped_frames": 0
+    }
+  ],
+  "tracker_runtime": {
+    "name": "xr_runtime",
+    "version": "78.0.0.412",
+    "mode": "6dof+hands"
+  },
+  "media": [
+    {
+      "path": "video_left.mp4",
+      "sha256": "adffaa38d2250186c49e6847c29df3163409083c2f7d981c567d9fff602128d3",
+      "bytes": 61022048,
+      "duration_s": 120.0,
+      "kind": "video"
+    },
+    {
+      "path": "video_right.mp4",
+      "sha256": "641034446a625317c392499012e951b1f9fe3816b7a6a4732409792bc6f915ca",
+      "bytes": 60987712,
+      "duration_s": 120.0,
+      "kind": "video"
+    },
+    {
+      "path": "depth/depth.bin",
+      "sha256": "4c6d5c5883cd6571e31b38e696dd21c54b7262eb5499015eabdfda3a0302144d",
+      "bytes": 122880000,
+      "duration_s": 120.0,
+      "kind": "depth"
+    },
+    {
+      "path": "data.jsonl",
+      "sha256": "01f05c194abe15bfd1f89882ed2a613320c2ea734f11edf6625214b36a64b98b",
+      "bytes": 5890120,
+      "duration_s": 119.99,
+      "kind": "jsonl"
+    }
+  ]
+}

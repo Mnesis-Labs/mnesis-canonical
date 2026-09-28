@@ -8,6 +8,7 @@
 | C1 | **Canonical Frame Schema**（JSONL 帧格式：字段/向量长/双时间戳/词表） | v0.1 | canonical（`SPEC.md` + `canonical_frame.schema.json`） | Iris·Eidolon·Daedalus·Ambrosia | canonical `tests/` · Iris `CanonicalSchemaContractTest` · Ambrosia ingest 校验 |
 | C2 | **Episodes Ingest HTTP**（`POST /api/episodes` multipart：`manifest`+`jsonl`+`video?`+`frames?`；`X-App-Token?`） | v1.1 | Ambrosia（`docs/SPRINT_S4_CLINE.md` 契约节 + `docs/HANDOFF_S4.md`） | Iris·Eidolon·Daedalus | Ambrosia `tests/test_iris_contract.py`（Ct-1..11） · Iris `EpisodeUploaderHeaderTest`+S4 D2 |
 | C2a | frames.zip 规范：根目录 `%06d.jpg`（与 `frame_index` 对齐，1fps）；包≤200MB/帧≤5MB/≤3600 帧。服务端宽容收 png/jpg/jpeg/webp/bmp，规范名以 jpg 为准 | v1.1 | Ambrosia | Iris（Eidolon/Daedalus 后续） | 同上 |
+| C2b | **录制清单 Recording Manifest**（C2 上传的 `manifest` 部件：只做清单——`resolved_capture_options`（实际生效的采集参数，至少含 `video{codec,width,height,fps}` 与 `streams[]`）/ `stream_confirmations[]`（每路流 name/enabled/width/height/fps/frame_count/dropped_frames）/ `tracker_runtime`（name/version/mode，实际跑的那个）/ `media[]`（path/sha256/bytes/duration_s/kind）/ `timebase`（monotonic_start_ns + utc_start + clock_source 单一时基）/ `device`（id/kind/app_version/os）；顶层 `additionalProperties:false`） | `schema_version: "c2/1.0"` | canonical（`mnesis_canonical/contracts/c2_recording_manifest.schema.json` + `mnesis_canonical/recording_manifest.py`） | Iris（手机·生产）·Eidolon（头显·生产）·Ambrosia（入库校验） | canonical `tests/test_recording_manifest.py` + `examples/recording_manifest/` golden · Iris/Eidolon 按 sha256 vendoring 后各自持有 pin 测试（W3.1 / W2.2）· Ambrosia 入库调 `validate_recording_manifest`（issue #162） |
 | C3 | **xr_bridge WS**（VR↔机器人实时遥操作：帧协议/急停闩锁/重连再锚定/看门狗/双臂数组信封/PlanGate/相机控制协商/视频能力声明/WebRTC 信令） | v1.7 | Daedalus（`docs/integration/XR_ROBOT_CONTRACT.md`） | Eidolon | Daedalus harness + 坐标真值 fixture · Eidolon PH-2/PH-3 测试 |
 | C4 | **Robot-Bridge API**（平台↔真机：状态/底盘/急停/相机/臂），目的=把硬件控制留在 Daedalus、Ambrosia 只经 API 消费 | **v0 草案已出**（2026-08-27，现状钉扎：端点 stable/beta/draft 三档 + deadman/急停闩锁/闲置卸力安全语义版本化） | **Daedalus `docs/C4-ROBOT-BRIDGE-API.md`** | Ambrosia（`bridge/hw_bridge.py` 迁移需求单 = ambrosia#258）、Eidolon xr_bridge、web_console、joy_teleop | Daedalus#528（契约冒烟测试,建设中） |
 | C5 | **MJCF 仿真资产**（机器人/场景模型单一事实源） | **草案 TBD** | Daedalus（`simulation/mujoco/` = 物理事实源） | Ambrosia（网页 MuJoCo-WASM 查看器只做展示/回放） | 待建（资产版本号 + 校验和） |
@@ -227,6 +228,20 @@ canonical：`SPEC.md` §colocalization body 补方向表 + `source` + `quality.m
 - **Daedalus（生产者）**：`scene/object_track.py` 已实现并合并（PR#453）；产物按本契约校验，把 `mnesis-canonical` 的 sha 钉推进到含 C13 的提交后（装法见上文「消费方怎么装 / 升 `mnesis-canonical`」；**特别注意本条**：现存唯一 tag `v0.5.0` 早于 C13，钉它会 `ImportError`）可用 `mnesis_canonical.objects_jsonl.validate_objects_jsonl_stream` 做落盘前自检。
 - **Ambrosia（`real2sim/augment.py`，S32 位姿维增强，在途）**：读 `objects.jsonl` 取物体位置做高斯子集裁剪与重渲染；`pose_dof` 恒 3 意味着 v1 只能做位置维增强，朝向维增强要等 6-DoF 记录出现。
 - **未动 `contracts/`**：本次不改 C1 帧、不改 C3/C12 既有消息，`contracts/*.md` 与 `contracts.lock` 零改动。
+
+## C2b 录制清单（Recording Manifest · issue #162 · canonical 定义，采集面生产、入库消费）
+
+> 来源：mnesis-canonical#162（父卡 #161，MVP 瘦身冲刺 W5.1）。C2 上传（`POST /api/episodes`）里 `manifest` 部件的**内容契约**：C2 管「怎么传」，C2b 管「清单里写什么」。三个采集面（Iris 手机 / Eidolon 头显 / 机器人录制端）写同一份清单，Ambrosia 入库用同一个校验器核对。
+
+- **ID**：C2b · `schema_version: "c2/1.0"`
+- **Owner**：canonical（本仓）
+- **消费方**：Iris（手机，生产）· Eidolon（头显，生产）· Ambrosia（入库校验）
+- **文件**：`mnesis_canonical/contracts/c2_recording_manifest.schema.json`（JSON Schema 2020-12，每个字段带 `description`；随 wheel 分发）
+- **校验器**：`mnesis_canonical.validate_recording_manifest(obj) -> list[str]`（空列表 = 通过；**一次列出全部错误**，每条以字段路径开头，如 `media[0].sha256: ...`）；`load_recording_manifest(path)` 读文件。结构/类型走 schema（依赖可选的 `jsonschema`，与 `validate_frame_jsonschema` 同一依赖），schema 表达不了的跨字段规则在 Python 里补：`utc_start` 须是真实存在的时刻（形状由 schema `pattern` 管）、`stream_confirmations[].name` 与 `resolved_capture_options.streams` 一一对应且不重名、启用中的流 `fps > 0`、`media[].path` 不重复。
+- **示例**：`examples/recording_manifest/c2_manifest_phone.json`、`c2_manifest_headset.json`（均通过校验，pytest 钉住）。
+- **关键语义**：清单记录的是**实际发生的**，不是请求的——被设备钳制过的采集参数写钳制后的值；配置了但没起来的流写 `enabled:false, frame_count:0`，不许省略；非图像流 `width/height` 为 `null`。`media[].path` 相对清单所在目录、只用 `/`、不许绝对路径/盘符/`..`。`timebase.monotonic_start_ns` 与 C1 帧 `t_ns` 同一时钟。
+- **版本规则**：**破坏性变更必须升 `schema_version`**（`c2/1.0` → `c2/2.0`），同时 schema 文件哈希随之变化；**消费方按 sha256 vendoring**——Iris（Kotlin）/ Eidolon（C#）把 schema 文件原样拷进本仓库并在测试里钉住其 sha256，值以本仓 `contracts/contracts.lock` 中 `mnesis_canonical/contracts/c2_recording_manifest.schema.json` 一项为准；Python 消费方（Ambrosia）照「消费方怎么装」钉 commit sha 即可直接调校验器。
+- **`contracts.lock` 更新说明**：本次起 `contracts_check` 除 `contracts/` 顶层文件外，**也把包内 `mnesis_canonical/contracts/*.schema.json` 纳入锁**（锁键为仓库相对路径，与顶层裸文件名区分）；新增/修改该目录下 schema 而不重算锁 → CI 报 `UNTRACKED`/`MISMATCH`。重算：`python -m mnesis_canonical.contracts_check --generate`。既有四个文件哈希不变。
 
 ## C2 幂等语义（重复上传去重）
 

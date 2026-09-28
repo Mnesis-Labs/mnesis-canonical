@@ -87,3 +87,17 @@ def test_wheel_install_loader(tmp_path: Path) -> None:
     assert result.returncode == 0, f"Taxonomy loader failed:\n{result.stderr}"
     count, has_cup = result.stdout.split()
     assert int(count) > 0 and has_cup == "True", result.stdout
+
+    # The C2b recording-manifest schema lives in the package's contracts/ data
+    # dir; Ambrosia calls validate_recording_manifest from an installed wheel,
+    # which loads it from there — a missing package-data entry breaks ingest.
+    code = (
+        "import mnesis_canonical as m; "
+        "print(m.load_recording_manifest_schema()['properties']['schema_version']['const'])"
+    )
+    result = subprocess.run(
+        [str(python), "-c", code],
+        capture_output=True, text=True, cwd=tmp_path,
+    )
+    assert result.returncode == 0, f"Recording-manifest schema missing:\n{result.stderr}"
+    assert result.stdout.strip() == "c2/1.0", result.stdout

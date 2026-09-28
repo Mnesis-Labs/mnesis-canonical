@@ -46,6 +46,11 @@ from .objects_jsonl import (
 from .objects_jsonl import (
     validate_line_jsonschema as validate_objects_jsonl_line_jsonschema,
 )
+from .recording_manifest import (
+    load_recording_manifest,
+    load_recording_manifest_schema,
+    validate_recording_manifest,
+)
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -245,5 +250,9 @@ __all__ = [
     "validate_objects_jsonl_line_jsonschema",
     "validate_object_record",
     "validate_objects_jsonl_stream",
+    # C2b recording manifest
+    "load_recording_manifest",
+    "load_recording_manifest_schema",
+    "validate_recording_manifest",
     "__version__",
 ]

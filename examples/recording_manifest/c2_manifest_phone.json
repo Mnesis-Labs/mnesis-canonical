@@ -1,0 +1,96 @@
+{
+  "schema_version": "c2/1.0",
+  "device": {
+    "id": "iris-7f3c2a9e-4b1d-4e8a-9c55-0d2e6b1a8f10",
+    "kind": "phone",
+    "app_version": "0.9.3+build.412",
+    "os": "Android 15"
+  },
+  "timebase": {
+    "monotonic_start_ns": 81234567890123,
+    "utc_start": "2026-09-28T08:15:30.125Z",
+    "clock_source": "android_elapsed_realtime_nanos"
+  },
+  "resolved_capture_options": {
+    "video": {
+      "codec": "h264",
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "bitrate_bps": 12000000
+    },
+    "streams": [
+      "rgb",
+      "device_pose",
+      "hands",
+      "audio"
+    ],
+    "frames_zip_fps": 1
+  },
+  "stream_confirmations": [
+    {
+      "name": "rgb",
+      "enabled": true,
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "frame_count": 1802,
+      "dropped_frames": 3
+    },
+    {
+      "name": "device_pose",
+      "enabled": true,
+      "width": null,
+      "height": null,
+      "fps": 30,
+      "frame_count": 1805,
+      "dropped_frames": 0
+    },
+    {
+      "name": "hands",
+      "enabled": true,
+      "width": null,
+      "height": null,
+      "fps": 15,
+      "frame_count": 897,
+      "dropped_frames": 6
+    },
+    {
+      "name": "audio",
+      "enabled": false,
+      "width": null,
+      "height": null,
+      "fps": 0,
+      "frame_count": 0,
+      "dropped_frames": 0
+    }
+  ],
+  "tracker_runtime": {
+    "name": "platform_ar_session",
+    "version": "1.46.0",
+    "mode": "6dof+hands"
+  },
+  "media": [
+    {
+      "path": "video.mp4",
+      "sha256": "b2ef4f52ffe3b33d7092e25cbe5d7059f5a673740a860954a53b2aec625bf89b",
+      "bytes": 90412331,
+      "duration_s": 60.1,
+      "kind": "video"
+    },
+    {
+      "path": "frames.zip",
+      "sha256": "5f378c7d31bcbbb0d3d4e228117495615ec14fea44faf9cf270132b05d1fccee",
+      "bytes": 7340210,
+      "duration_s": 60.0,
+      "kind": "frames_zip"
+    },
+    {
+      "path": "data.jsonl",
+      "sha256": "e88089dad9a78fd4a7685590945a88f923a7ad923276307c43990b7a03c22db1",
+      "bytes": 2210554,
+      "duration_s": 60.13,
+      "kind": "jsonl"
+    }
+  ]
+}
