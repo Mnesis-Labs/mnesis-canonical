@@ -20,9 +20,12 @@ tell which field failed without parsing the message.
 from __future__ import annotations
 
 import json
+import math
 import re
-from datetime import datetime, timedelta, timezone
+from collections.abc import Iterable
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 SCHEMA_VERSION = "c2/1.0"
 
@@ -30,9 +33,18 @@ _SCHEMA_PATH = (
     Path(__file__).resolve().parent / "contracts" / "c2_recording_manifest.schema.json"
 )
 
+# Same shape as the schema's ``timebase.utc_start`` pattern (field ranges, no
+# leap second), with capture groups so the calendar check can rebuild the
+# instant. ``\Z`` rather than ``$``: ``$`` also matches before a trailing newline.
 _RFC3339_RE = re.compile(
-    r"^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(\.\d+)?([Zz]|([+-])(\d{2}):(\d{2}))$"
+    r"^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)"
+    r"(\.\d+)?([Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)\Z"
 )
+
+# C0 controls + DEL. No string in a manifest (ids, versions, paths, digests,
+# timestamps) legitimately carries one, and a trailing newline is exactly what
+# lets a value slip past a ``$``-anchored pattern in some regex engines.
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def load_recording_manifest_schema() -> dict:
@@ -44,9 +56,9 @@ def load_recording_manifest_schema() -> dict:
         return json.load(f)
 
 
-def _json_path(parts: object) -> str:
+def _json_path(parts: Iterable[str | int]) -> str:
     out = ""
-    for part in parts:  # type: ignore[union-attr]
+    for part in parts:
         if isinstance(part, int):
             out += f"[{part}]"
         else:
@@ -55,29 +67,38 @@ def _json_path(parts: object) -> str:
 
 
 def _rfc3339_calendar_error(value: str) -> str | None:
-    """Return why an RFC 3339-shaped string is not a real instant, or None."""
+    """Return why a correctly shaped RFC 3339 string is not a real instant
+    (e.g. February 30th), or None. Shape errors — including leap seconds,
+    which the contract rejects — are left to the schema pattern so each bad
+    value is reported once."""
     m = _RFC3339_RE.match(value)
     if m is None:
-        return None  # shape errors are reported by the schema pattern
+        return None
     year, month, day, hour, minute, second = (int(g) for g in m.groups()[:6])
     try:
-        tz = timezone.utc
-        if m.group(9):
-            off_h, off_m = int(m.group(10)), int(m.group(11))
-            if off_h > 23 or off_m > 59:
-                return f"offset {m.group(8)} out of range"
-            sign = 1 if m.group(9) == "+" else -1
-            tz = timezone(sign * timedelta(hours=off_h, minutes=off_m))
-        # RFC 3339 allows second == 60 (leap second); datetime does not.
-        datetime(year, month, day, hour, minute, min(second, 59), tzinfo=tz)
-        if second > 60:
-            raise ValueError("second must be in 0..60")
+        datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
     except ValueError as e:
         return str(e)
     return None
 
 
-def _schema_errors(obj: object) -> list[str]:
+def _scalar_errors(node: object, path: list[str | int], errors: list[str]) -> None:
+    """Reject non-finite numbers and control characters anywhere in the
+    manifest. NaN compares false against every bound, so ``minimum`` /
+    ``exclusiveMinimum`` alone let it through."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            _scalar_errors(value, [*path, str(key)], errors)
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            _scalar_errors(value, [*path, i], errors)
+    elif isinstance(node, float) and not math.isfinite(node):
+        errors.append(f"{_json_path(path)}: non-finite number {node!r} is not allowed")
+    elif isinstance(node, str) and _CONTROL_CHAR_RE.search(node):
+        errors.append(f"{_json_path(path)}: control characters are not allowed in {node!r}")
+
+
+def _schema_errors(obj: Any) -> list[str]:
     try:
         import jsonschema
     except ImportError as e:  # pragma: no cover - exercised only without extra
@@ -94,9 +115,12 @@ def _schema_errors(obj: object) -> list[str]:
 
 
 def _semantic_errors(obj: dict) -> list[str]:
-    """Cross-field rules JSON Schema cannot express. Tolerates malformed input:
+    """Rules JSON Schema cannot express: non-finite numbers, control
+    characters, real calendar dates, stream-name correspondence, enabled
+    streams with fps 0, duplicate media paths. Tolerates malformed input:
     anything with the wrong shape was already reported by the schema pass."""
     errors: list[str] = []
+    _scalar_errors(obj, [], errors)
 
     timebase = obj.get("timebase")
     if isinstance(timebase, dict) and isinstance(timebase.get("utc_start"), str):
@@ -132,7 +156,8 @@ def _semantic_errors(obj: dict) -> list[str]:
                         "resolved_capture_options.streams"
                     )
             fps = conf.get("fps")
-            if conf.get("enabled") is True and isinstance(fps, (int, float)) and fps == 0:
+            enabled = conf.get("enabled") is True
+            if enabled and isinstance(fps, (int, float)) and not isinstance(fps, bool) and fps == 0:
                 errors.append(
                     f"stream_confirmations[{i}].fps: enabled stream must have fps > 0"
                 )
@@ -173,10 +198,16 @@ def load_recording_manifest(path: str | Path) -> dict:
     """Read a recording manifest JSON file and return it as a dict.
 
     Does not validate; call :func:`validate_recording_manifest` on the result.
-    Raises ``ValueError`` if the file is not a JSON object.
+    Raises ``ValueError`` if the file is not a JSON object or uses the
+    non-standard ``NaN`` / ``Infinity`` / ``-Infinity`` literals (valid in
+    Python's JSON reader, invalid JSON).
     """
+
+    def _reject_constant(name: str) -> float:
+        raise ValueError(f"{path}: {name} is not valid JSON")
+
     with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+        data = json.load(f, parse_constant=_reject_constant)
     if not isinstance(data, dict):
         raise ValueError(f"{path}: recording manifest must be a JSON object")
     return data

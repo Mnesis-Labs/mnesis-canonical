@@ -58,10 +58,10 @@
           "minimum": 0
         },
         "utc_start": {
-          "description": "Wall-clock time at recording start, RFC 3339 with an explicit offset (`Z` or `+hh:mm`), e.g. \"2026-09-28T08:15:30.125Z\".",
+          "description": "Wall-clock time at recording start, RFC 3339 with an explicit offset (`Z` or `+hh:mm`), e.g. \"2026-09-28T08:15:30.125Z\". Must be a real calendar instant. Leap-second values (`:60`) are not accepted: capture clocks smear leap seconds, so a `:60` reading means a broken clock.",
           "type": "string",
           "format": "date-time",
-          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?([Zz]|[+-][0-9]{2}:[0-9]{2})$"
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[Tt]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$"
         },
         "clock_source": {
           "description": "Name of the monotonic clock `monotonic_start_ns` was read from (e.g. \"android_elapsed_realtime_nanos\", \"xr_runtime_monotonic\", \"posix_clock_monotonic\").",
@@ -83,9 +83,9 @@
           "required": ["codec", "width", "height", "fps"],
           "properties": {
             "codec": {
-              "description": "Codec actually used by the encoder, lowercase short name (e.g. \"h264\", \"hevc\", \"av1\").",
+              "description": "Codec actually used by the encoder, lowercase short name (e.g. \"h264\", \"hevc\", \"av1\"). Consumers dispatch on it case-sensitively.",
               "type": "string",
-              "minLength": 1
+              "pattern": "^[a-z0-9][a-z0-9._-]*$"
             },
             "width": {
               "description": "Encoded frame width in pixels.",
@@ -124,6 +124,16 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["name", "enabled", "width", "height", "fps", "frame_count", "dropped_frames"],
+        "if": {
+          "properties": { "enabled": { "const": false } },
+          "required": ["enabled"]
+        },
+        "then": {
+          "properties": {
+            "fps": { "const": 0 },
+            "frame_count": { "const": 0 }
+          }
+        },
         "properties": {
           "name": {
             "description": "Stream name, matching an entry of `resolved_capture_options.streams`.",
@@ -145,12 +155,12 @@
             "minimum": 1
           },
           "fps": {
-            "description": "Effective sample rate in Hz (frames per second for image streams, samples per second for pose/IMU/audio streams). 0 only when `enabled` is false.",
+            "description": "Effective sample rate in Hz (frames per second for image streams, samples per second for pose/IMU/audio streams). Exactly 0 when `enabled` is false, greater than 0 when it is true.",
             "type": "number",
             "minimum": 0
           },
           "frame_count": {
-            "description": "Number of frames/samples actually written for this stream.",
+            "description": "Number of frames/samples actually written for this stream. Must be 0 when `enabled` is false.",
             "type": "integer",
             "minimum": 0
           },
@@ -195,14 +205,15 @@
         "required": ["path", "sha256", "bytes", "duration_s", "kind"],
         "properties": {
           "path": {
-            "description": "File path relative to the manifest's directory, forward slashes only; no leading slash, no drive letter, no `..` segment.",
+            "description": "File path relative to the manifest's directory, forward slashes only; no leading slash, no drive letter, no `..` segment, no control characters.",
             "type": "string",
             "minLength": 1,
-            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\:]+$"
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\:\\u0000-\\u001f\\u007f]+$"
           },
           "sha256": {
             "description": "Lowercase hex SHA-256 of the file's bytes (exactly 64 characters).",
             "type": "string",
+            "maxLength": 64,
             "pattern": "^[0-9a-f]{64}$"
           },
           "bytes": {

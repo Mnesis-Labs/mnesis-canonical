@@ -96,6 +96,12 @@ def test_bad_sha256_length(phone):
     assert _errors_mentioning(errors, "media[0].sha256"), errors
 
 
+def test_sha256_with_trailing_newline_rejected(phone):
+    phone["media"][0]["sha256"] += "\n"  # 65 chars; `$` would match before the newline
+    errors = validate_recording_manifest(phone)
+    assert _errors_mentioning(errors, "media[0].sha256"), errors
+
+
 def test_uppercase_sha256_rejected(phone):
     phone["media"][0]["sha256"] = phone["media"][0]["sha256"].upper()
     assert _errors_mentioning(validate_recording_manifest(phone), "sha256")
@@ -130,6 +136,9 @@ def test_negative_frame_count(phone):
         "yesterday",
         "2026-13-01T00:00:00Z",  # right shape, impossible month
         "2026-02-30T00:00:00Z",  # right shape, impossible day
+        "2026-09-28T08:15:60Z",  # leap second: rejected, capture clocks smear them
+        "2026-09-28T08:15:30+24:00",  # offset hour out of range
+        "2026-09-28T08:15:30Z\n",  # trailing newline slips past a `$` anchor
     ],
 )
 def test_bad_utc_start(phone, value):
@@ -140,7 +149,7 @@ def test_bad_utc_start(phone, value):
 
 
 def test_utc_start_offsets_accepted(phone):
-    for value in ("2026-09-28T08:15:30Z", "2026-09-28T16:15:30.5+08:00", "2016-12-31T23:59:60Z"):
+    for value in ("2026-09-28T08:15:30Z", "2026-09-28T16:15:30.5+08:00", "2024-02-29T23:59:59Z"):
         phone["timebase"]["utc_start"] = value
         assert validate_recording_manifest(phone) == [], value
 
@@ -171,6 +180,55 @@ def test_resolved_capture_options_requires_video_fields(phone):
 def test_media_path_must_be_relative(phone, path):
     phone["media"][0]["path"] = path
     assert _errors_mentioning(validate_recording_manifest(phone), "media[0].path")
+
+
+def test_media_path_newline_traversal_rejected(phone):
+    phone["media"][0]["path"] = "safe\n/../../outside.mp4"
+    errors = validate_recording_manifest(phone)
+    assert _errors_mentioning(errors, "media[0].path"), errors
+
+
+def test_codec_must_be_lowercase(phone):
+    phone["resolved_capture_options"]["video"]["codec"] = "H264"
+    errors = validate_recording_manifest(phone)
+    assert len(errors) == 1, errors
+    assert _errors_mentioning(errors, "resolved_capture_options.video.codec"), errors
+
+
+@pytest.mark.parametrize("field,value", [("frame_count", 12), ("fps", 30)])
+def test_disabled_stream_must_have_no_frames(phone, field, value):
+    audio = next(c for c in phone["stream_confirmations"] if c["name"] == "audio")
+    assert audio["enabled"] is False
+    audio[field] = value
+    idx = phone["stream_confirmations"].index(audio)
+    errors = validate_recording_manifest(phone)
+    assert len(errors) == 1, errors
+    assert _errors_mentioning(errors, f"stream_confirmations[{idx}].{field}"), errors
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_non_finite_numbers_rejected(phone, value):
+    phone["media"][0]["duration_s"] = value
+    phone["stream_confirmations"][0]["fps"] = value
+    errors = validate_recording_manifest(phone)
+    assert _errors_mentioning(errors, "media[0].duration_s"), errors
+    assert _errors_mentioning(errors, "stream_confirmations[0].fps"), errors
+
+
+@pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+def test_load_rejects_non_json_constants(tmp_path, literal):
+    text = (EXAMPLES_DIR / "c2_manifest_phone.json").read_text(encoding="utf-8")
+    text = text.replace('"duration_s": 60.1', f'"duration_s": {literal}', 1)
+    assert literal in text
+    p = tmp_path / "m.json"
+    p.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match=literal):
+        load_recording_manifest(p)
+
+
+def test_control_characters_rejected_anywhere(phone):
+    phone["device"]["os"] = "Android 15\r"
+    assert _errors_mentioning(validate_recording_manifest(phone), "device.os")
 
 
 def test_stream_confirmation_not_declared(phone):
