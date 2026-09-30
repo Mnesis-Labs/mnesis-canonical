@@ -20,6 +20,8 @@
 # 哈希集合里所以今天没出事，但安全边际是 0。改成按路径覆盖整个目录。
 contracts/**  text eol=lf
 skeletons/**  text eol=lf
+# 包内随 wheel 分发的契约 schema 也进 contracts.lock 哈希集合（C2b 起），同理钉死。
+mnesis_canonical/contracts/**  text eol=lf
 
 # Importer test fixtures are binary containers — never normalize line endings.
 # 放在最后：真正的二进制即便落进上面的目录也不该被 eol 规则改写（后写的规则优先）。

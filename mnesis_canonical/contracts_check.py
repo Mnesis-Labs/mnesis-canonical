@@ -16,21 +16,32 @@ import json
 import sys
 from pathlib import Path
 
-CONTRACTS_DIR = Path(__file__).resolve().parent.parent / "contracts"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CONTRACTS_DIR = REPO_ROOT / "contracts"
 LOCK_FILE = CONTRACTS_DIR / "contracts.lock"
 LOCK_VERSION = 1
+
+# Machine-readable contract schemas that ship inside the package (so the Python
+# validator can load them from an installed wheel) are pinned by the same lock.
+# Their lock keys are repo-relative ("mnesis_canonical/contracts/<name>") to keep
+# them distinct from the top-level contracts/ entries, which are bare file names.
+PACKAGE_CONTRACTS_DIR = Path(__file__).resolve().parent / "contracts"
+PACKAGE_CONTRACTS_PREFIX = "mnesis_canonical/contracts/"
+PACKAGE_CONTRACTS_GLOB = "*.schema.json"
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _lock_paths() -> dict[str, str]:
-    """Return {relative_path: sha256} for all files tracked by the lock.
+def _tracked_files() -> dict[str, Path]:
+    """Return {lock_key: path} for every file the lock should cover.
 
-    The lock file itself and README.md are excluded from the tracked set.
+    Top-level ``contracts/`` files use their bare name (the lock file itself,
+    README.md and dotfiles are excluded); package-shipped schemas use the
+    repo-relative ``mnesis_canonical/contracts/<name>`` key.
     """
-    paths: dict[str, str] = {}
+    files: dict[str, Path] = {}
     for child in sorted(CONTRACTS_DIR.iterdir()):
         if not child.is_file():
             continue
@@ -39,8 +50,24 @@ def _lock_paths() -> dict[str, str]:
             continue
         if name.startswith("."):
             continue
-        paths[name] = _sha256(child)
-    return paths
+        files[name] = child
+    if PACKAGE_CONTRACTS_DIR.is_dir():
+        for child in sorted(PACKAGE_CONTRACTS_DIR.glob(PACKAGE_CONTRACTS_GLOB)):
+            if child.is_file():
+                files[PACKAGE_CONTRACTS_PREFIX + child.name] = child
+    return files
+
+
+def _resolve(name: str) -> Path:
+    """Map a lock key back to its file on disk."""
+    if "/" in name:
+        return REPO_ROOT / name
+    return CONTRACTS_DIR / name
+
+
+def _lock_paths() -> dict[str, str]:
+    """Return {lock_key: sha256} for all files tracked by the lock."""
+    return {name: _sha256(path) for name, path in _tracked_files().items()}
 
 
 def _load_lock() -> dict | None:
@@ -75,7 +102,7 @@ def cmd_verify() -> int:
 
     ok = True
     for name, stored_hash in sorted(expected.items()):
-        path = CONTRACTS_DIR / name
+        path = _resolve(name)
         if not path.exists():
             print(f"  {name}  ... MISSING (expected)", file=sys.stderr)
             ok = False
@@ -89,11 +116,9 @@ def cmd_verify() -> int:
 
     # Check for untracked files
     tracked = set(expected.keys())
-    for child in sorted(CONTRACTS_DIR.iterdir()):
-        if not child.is_file() or child.name == "contracts.lock" or child.name == "README.md":
-            continue
-        if child.name not in tracked:
-            print(f"  {child.name}  ... UNTRACKED", file=sys.stderr)
+    for name in _tracked_files():
+        if name not in tracked:
+            print(f"  {name}  ... UNTRACKED", file=sys.stderr)
             ok = False
 
     if ok:
@@ -113,10 +138,10 @@ def cmd_generate() -> int:
 def cmd_list() -> int:
     """List all tracked files and their SHA-256 hashes."""
     files = _lock_paths()
-    print(f"{'File':<40} SHA-256")
-    print("-" * 40 + "  " + "-" * 64)
+    print(f"{'File':<60} SHA-256")
+    print("-" * 60 + "  " + "-" * 64)
     for name, digest in sorted(files.items()):
-        print(f"{name:<40} {digest}")
+        print(f"{name:<60} {digest}")
     return 0
 
 

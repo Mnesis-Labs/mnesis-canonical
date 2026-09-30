@@ -16,6 +16,16 @@ are decoupled:
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
 
+## [Unreleased]
+
+### Added
+
+- **C2b 录制清单契约（issue #162）**：`mnesis_canonical/contracts/c2_recording_manifest.schema.json`
+  （`schema_version: "c2/1.0"`）+ `validate_recording_manifest()` / `load_recording_manifest()`
+  （一次列出全部错误）+ `examples/recording_manifest/` 手机/头显两份示例。`contracts_check`
+  开始把包内 `mnesis_canonical/contracts/*.schema.json` 纳入 `contracts.lock`，供 Iris/Eidolon
+  按 sha256 vendoring。详见 `CONTRACTS.md` §C2b。
+
 ## [0.6.0] — 2026-08-21
 
 ### Added
