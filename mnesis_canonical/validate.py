@@ -353,12 +353,18 @@ def validate_frame(
 
     # --- observation.images validation (profile-aware) ---
     if profile == "robot_v2":
-        # robot_v2: at least one observation.images.<cam> must exist
+        # robot_v2: zero or more observation.images.<cam> keys (#166, additive).
+        # NO image key = this capture had no camera stream — the recording
+        # manifest's C2b ``stream_confirmations`` declares that camera disabled
+        # (``enabled=false``), exactly as the iron rule "absent means unknown,
+        # no in-band sentinel" (SPEC §Conventions): a producer MUST NOT park a
+        # disabled camera as ``""`` or a fake path, it omits the key. A frame
+        # that used to be rejected here for lacking any camera key now validates;
+        # a frame that carries camera keys validates unchanged. When a key IS
+        # present it must be a string file reference (``''`` still allowed, as
+        # before — robot_v2 has always tolerated it for back-compat, unlike the
+        # strict ego_multicam_v1 branch).
         img_keys = image_keys(frame)
-        if not img_keys:
-            errors.append(
-                "robot_v2 profile requires at least one observation.images.<cam> key"
-            )
         for k in img_keys:
             if not isinstance(frame[k], str):
                 errors.append(f"{k} must be a string (file reference, '' allowed)")

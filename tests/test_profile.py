@@ -96,22 +96,54 @@ def test_robot_v2_does_not_require_ego_camera():
     assert validate_frame(f) == []
 
 
-def test_robot_v2_requires_at_least_one_camera():
-    """robot_v2 must have at least one observation.images.<cam> key."""
+def test_robot_v2_without_cameras_is_valid():
+    """#166: robot_v2 allows ZERO camera keys — no image key means the capture
+    had no camera stream (the recording manifest's C2b stream_confirmations
+    declares that camera enabled=false).
+
+    This frame used to be rejected ("requires at least one observation.images
+    key"); that rule is relaxed additively so a teleop recording with no video
+    can emit state/action frames without fabricating a camera path. state/action
+    here match so_arm101's 6 joints; embodiment_id is optional for robot_v2 but
+    carried to show a real single-arm robot produces these frames.
+    """
     f = {
         "index": 0, "episode_index": 0, "task_index": 0, "frame_index": 0,
         "t_ns": 1_000_000, "t_hw_ns": 1_000_000_000,
         "timestamp": "2026-07-21T00:00:00.000Z",
         "head_pose_SE3": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-        "observation.state": [0.0] * 7,
+        "observation.state": [0.0] * 6,  # so_arm101: Rotation..Jaw (6 joints)
         "action": [0.0] * 6,
         "spatial_anchor_id": None,
-        "source.device": "robot", "source.modality": "robot_replay",
+        "source.device": "robot", "source.modality": "teleop",
         "tracking_state": "TRACKING",
         "profile": "robot_v2",
+        "embodiment_id": "so_arm101",
+    }
+    assert validate_frame(f) == []
+
+
+def test_robot_v2_camera_values_still_checked():
+    """#166: relaxing "at least one camera" does NOT relax the per-key type
+    check — a present observation.images.<cam> must still be a string file
+    reference. The frame otherwise mirrors the zero-camera valid case.
+    """
+    f = {
+        "index": 0, "episode_index": 0, "task_index": 0, "frame_index": 0,
+        "t_ns": 1_000_000, "t_hw_ns": 1_000_000_000,
+        "timestamp": "2026-07-21T00:00:00.000Z",
+        "head_pose_SE3": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        "observation.state": [0.0] * 6,
+        "observation.images.head": 123,  # non-string → must still error
+        "action": [0.0] * 6,
+        "spatial_anchor_id": None,
+        "source.device": "robot", "source.modality": "teleop",
+        "tracking_state": "TRACKING",
+        "profile": "robot_v2",
+        "embodiment_id": "so_arm101",
     }
     errs = validate_frame(f)
-    assert any("observation.images" in e for e in errs)
+    assert any("observation.images.head" in e and "string" in e for e in errs)
 
 
 def test_robot_v2_multiple_cameras_accepted():
@@ -302,3 +334,43 @@ def test_required_keys_robot_v2():
 
 def test_required_keys_default():
     assert required_keys_for_profile(None) == required_keys_for_profile("ego_v1")
+
+
+# ── #166: the robot_v2 zero-camera relaxation must not leak into ego profiles ─
+
+
+def test_ego_profiles_unchanged(good_frame):
+    """#166: robot_v2 now allows zero cameras, but ego_v1 and ego_multicam_v1
+    keep their camera requirements verbatim — the relaxation is robot_v2-only.
+    """
+    # ego_v1: observation.images.ego is still required.
+    f = good_frame()
+    del f["observation.images.ego"]
+    assert any("observation.images.ego" in e for e in validate_frame(f))
+
+    # ego_multicam_v1: still requires at least one camera key, still rejects a
+    # non-string reference, and still rejects '' (strict rules untouched).
+    mc_base = {
+        "index": 0, "episode_index": 0, "task_index": 0, "frame_index": 0,
+        "t_ns": 1_000_000, "t_hw_ns": 1_000_000_000,
+        "timestamp": "2026-07-21T00:00:00.000Z",
+        "head_pose_SE3": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        "observation.state": [0.0] * 7,
+        "action": [0.0] * 6,
+        "spatial_anchor_id": None,
+        "source.device": "glasses", "source.modality": "ego_human",
+        "tracking_state": "TRACKING",
+        "profile": "ego_multicam_v1",
+    }
+    # No camera key at all → still "at least one" error.
+    assert any("at least one" in e for e in validate_frame(dict(mc_base)))
+
+    # Non-string camera reference → still rejected.
+    mc = dict(mc_base)
+    mc["observation.images.wide_l"] = 42
+    assert any("wide_l" in e and "string" in e for e in validate_frame(mc))
+
+    # Empty-string camera reference → still rejected (absent means unknown).
+    mc = dict(mc_base)
+    mc["observation.images.wide_l"] = ""
+    assert any("wide_l" in e and "non-empty" in e for e in validate_frame(mc))

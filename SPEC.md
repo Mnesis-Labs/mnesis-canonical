@@ -100,9 +100,12 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
 - `observation.state` is **variable-length** `float[N]` — N and semantic order
   are defined by the `embodiment_id` registry's `joint_names` (arms concatenated
   left + right).
-- `observation.images.<cam>` is an **open key set** — at least one camera key is
-  required (`wrist_left`, `wrist_right`, `head`, `quest_cast`, etc.), no single
-  camera is mandatory.
+- `observation.images.<cam>` is an **open key set** — zero or more camera keys;
+  no key means the capture had no camera stream (the recording manifest's C2b
+  `stream_confirmations` declares that camera `enabled=false`), no single
+  camera is mandatory. To say "this capture had no camera" you omit every
+  image key — never park a disabled camera as `""` or a fake path (the
+  "absent means unknown" iron rule, §Conventions).
 - `action` is **variable-length** — semantics (joint target or Δeef) declared by
   the registry.
 - `observation.eef_pose.left` and `observation.eef_pose.right` (optional) —
@@ -116,6 +119,15 @@ Designed for multi-DoF robot embodiments (e.g. dual-arm airbots):
   the commanded gripper via `action.gripper` and the observed gripper via
   `observation.gripper` on the **same** `[0,1]` closedness scale. All gripper
   keys are **optional and additive** — frames without them validate unchanged.
+
+> **2026-10-01 · #166 (additive):** a `robot_v2` frame with **no**
+> `observation.images.<cam>` key is now valid — "no image key" means the capture
+> had no camera stream, and the recording manifest's C2b `stream_confirmations`
+> declares that camera `enabled=false`. This relaxes the prior "at least one
+> camera key required" rule for `robot_v2` only; `ego_v1` / `ego_multicam_v1`
+> are untouched, and `robot_v2` frames that carried camera keys validate
+> unchanged. A disabled camera is expressed by omitting its key, never by `""`
+> or a fake path (§Conventions — absent means unknown).
 
 ### Gripper channel (C8, additive)
 The gripper is a **continuous scalar in `[0.0, 1.0]`** (`0.0` = fully open, `1.0` = fully
@@ -150,7 +162,7 @@ value lives in `canonical_frame.schema.json`'s per-property `x-status`.
 | `head_pose_SE3` | float[7] | *all* | `[tx,ty,tz, qx,qy,qz,qw]` metres + quaternion **{x,y,z,w}**, right-handed | `stable` |
 | `observation.state` | float[7] or float[N] | *all* | 7-DoF state (`ego_v1`) or variable-length N (`robot_v2`, per registry `joint_names`) | `stable` |
 | `observation.images.ego` | str | `ego_v1` required | File reference to the ego video frame (`""` allowed). Under `ego_multicam_v1` it is not special — just the camera named `ego` | `stable` |
-| `observation.images.<cam>` | str | `robot_v2` | Open camera key set — at least one required (`wrist_left`, `wrist_right`, `head`, etc.) | `stable` |
+| `observation.images.<cam>` | str | `robot_v2` | Open camera key set — zero or more; no key means the capture had no camera stream (C2b manifest declares it `enabled=false`) (`wrist_left`, `wrist_right`, `head`, etc.) | `stable` |
 | `observation.images.<camera_name>` | str | `ego_multicam_v1` | Registry-declared camera set — at least one required; `camera_name` ∈ the `embodiment_id` entry's `capture.cameras[].name` (typo = error). A camera that dropped this frame **omits** its key | `stable` |
 | `action` | float[6] or float[N] | *all* | Relative delta `[tx,ty,tz, rx,ry,rz]` (`ego_v1`, 6) or variable-length N (`robot_v2`) | `stable` |
 | `observation.eef_pose.left` | float[7] | `robot_v2` optional | Left end-effector pose `[tx,ty,tz, qx,qy,qz,qw]` | `stable` |
