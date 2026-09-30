@@ -321,6 +321,29 @@ are decoupled:
 
 ## [Unreleased]
 
+### Removed from top-level exports (frozen)
+
+- **Frozen modules moved off the public top-level API (#163, sprint slim-1).**
+  `isaac`, `migrate`, `skeleton_registry`, `objects_jsonl` (C13), `sdk`, and the
+  `extensions/` data directory are **no longer re-exported from the
+  `mnesis_canonical` package top level** (removed from `__init__` and `__all__`).
+  Source files, their tests, and the submodule paths all remain in place — still
+  importable via the full path:
+
+  - `from mnesis_canonical.isaac import to_isaac, from_isaac, quat_*`
+  - `from mnesis_canonical.migrate import migrate_hand_v0, migrate_hand_v0_frames`
+  - `from mnesis_canonical.skeleton_registry import load_skeleton, joint_count, …`
+  - `from mnesis_canonical.objects_jsonl import validate_object_record, …`
+  - `from mnesis_canonical.sdk import DeviceAdapter, QuestAdapter, RobotAdapter`
+
+  `extensions/` is a data directory (not a Python submodule); its `x-<vendor>.`
+  convention still lives in `schema` via `VENDOR_EXTENSION_PREFIX` and JSON
+  Schema patternProperties, which stay exported. The slim CI gate no longer runs
+  the frozen submodules' dedicated tests; main-path tests (`schema` / `validate`
+  / `io` / `lerobot` / `manifest` / `embodiment` / `importers`) and
+  `tests/test_public_api_slim.py` continue to gate. Nothing is deleted —
+  zero-cost rollback.
+
 ### Added
 
 - **C1-vNext — Manifest provenance section (issue #113, additive-only).**

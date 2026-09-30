@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mnesis_canonical import (
+from mnesis_canonical import read_jsonl
+from mnesis_canonical.isaac import (
     from_isaac,
     quat_wxyz_to_xyzw,
     quat_xyzw_to_wxyz,
-    read_jsonl,
     to_isaac,
 )
 

@@ -8,7 +8,8 @@
 ## 当前状态
 
 - **v0.5.0**（`__version__` = `pyproject` = `CHANGELOG.md` preamble）
-- 核心：typed `CanonicalFrame` + validate + JSONL I/O + LeRobot/Isaac 适配器 + manifest + Device Adapter SDK
+- 核心：typed `CanonicalFrame` + validate + JSONL I/O + LeRobot 适配器 + manifest + embodiment registry
+- **frozen (slim-1, #163)**：Isaac 适配器 / Device Adapter SDK / `migrate` / `skeleton_registry` / `objects_jsonl`(C13) / `extensions/` —— 移出包顶层导出与 slim CI 门禁，子模块路径仍可用，不删文件（零回滚成本）
 - 采集面：Iris ✅（真机验过）· Daedalus T3 ✅（上传器已做，缺 `frames.zip`）· Eidolon MI-1 ⛔（唯一缺口）
 
 ---
@@ -137,9 +138,9 @@ Eidolon MI-1 ✅ + Ambrosia S6（收 3 面 + robot 忠实回放 + LeRobot 导出
 | 本仓工作 | 说明 | 建议 Feature |
 |---|---|---|
 | C1 帧 schema 主体 + `canonical_frame.schema.json` | 全仓基石，Parthenon spine 中未单列 | 归属 `T2-comms` / `T4-contract` 底座，建议 F-T4-contract 下增设 `F-T4-contract-c1-schema` |
-| 骨架登记表（`skeletons/`） | C11 结案配套 | 归属 `F-T2-percep-ps0` 或新开 `F-T2-comms-c11-skeleton-registry` |
-| LeRobot/Isaac 适配器 | `to_lerobot` / `to_isaac` | 归属 `T5-std` 底座，建议 `F-T5-std-adapters` |
-| Device Adapter SDK | `mnesis_canonical.sdk` | 归属 `T2-comms`，建议 `F-T2-comms-adapter-sdk` |
+| 骨架登记表（`skeletons/`） | C11 结案配套（`skeleton_registry` 模块 frozen slim-1 #163，子模块仍可用；`skeletons/` 数据保留） | 归属 `F-T2-percep-ps0` 或新开 `F-T2-comms-c11-skeleton-registry` |
+| LeRobot/Isaac 适配器 | `to_lerobot`（主路径不变） / `to_isaac`（frozen slim-1 #163 → `mnesis_canonical.isaac.to_isaac`） | 归属 `T5-std` 底座，建议 `F-T5-std-adapters` |
+| Device Adapter SDK | `mnesis_canonical.sdk`（frozen slim-1 #163，子模块仍可用） | 归属 `T2-comms`，建议 `F-T2-comms-adapter-sdk` |
 | 文档大赦（ROADMAP/PRD/DEV_GUIDE 收敛） | 本卡 #102 | 归属 `F-T4-roadmap-amnesty` |
 
 **已并入 `F-T4-contract-canonical-schema-expansion`（Parthenon spine 已登记，见上表）**：C1-vNext manifest 溯源段（#113，已合并，另见 `F-T4-contract-canonical-provenance`）、C6 clock（PR#131 待合并）、C9 camera_intrinsics（PR#127 待合并）、C2 media.tar/sidecars（#116，已合并）。C8 space_id 此前在这四项里唯一没有本仓实现卡，2026-08-19 补开 #135。

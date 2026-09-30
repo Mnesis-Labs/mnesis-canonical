@@ -15,16 +15,21 @@ import pytest
 from mnesis_canonical import (
     HAND_FRAMES,
     CanonicalFrame,
+    read_jsonl,
+    validate_frame,
+)
+from mnesis_canonical.migrate import (
+    HAND_V0_DROPPED,
+    HAND_V0_RENAMES,
+    migrate_hand_v0,
+    migrate_hand_v0_frames,
+)
+from mnesis_canonical.skeleton_registry import (
     joint_count,
     list_skeleton_ids,
     list_skeletons,
     load_skeleton,
-    migrate_hand_v0,
-    migrate_hand_v0_frames,
-    read_jsonl,
-    validate_frame,
 )
-from mnesis_canonical.migrate import HAND_V0_DROPPED, HAND_V0_RENAMES
 
 ROOT = Path(__file__).resolve().parent.parent
 SKELETONS_DIR = ROOT / "skeletons"
