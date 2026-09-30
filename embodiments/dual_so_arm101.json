@@ -59,17 +59,17 @@
     "skeleton": ""
   },
   "teleop": {
-    "default_pos_scale": 0.3,
+    "default_pos_scale": 0.5,
     "workspace_box": [
       [
-        -0.6,
-        -0.6,
+        -0.3,
+        -0.3,
         0.0
       ],
       [
-        0.6,
-        0.6,
-        0.6
+        0.3,
+        0.3,
+        0.45
       ]
     ]
   }

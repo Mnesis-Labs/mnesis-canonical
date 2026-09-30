@@ -295,3 +295,14 @@ def test_dual_so_arm101_robot_v2_frame_validates():
     }
     errs = validate_frame(frame)
     assert not errs, f"robot_v2 frame for dual_so_arm101 failed validation: {errs}"
+
+def test_dual_so_arm101_limits_and_teleop_pinned():
+    """Limits are the SIM MJCF ones (Daedalus simulation/mujoco/so_arm101.xml @ c7bd96f7), per
+    arm; the teleop block is the single-arm so_arm101 one (same arm hardware), not another
+    robot's numbers."""
+    reg = _load_embodiment("dual_so_arm101")
+    per_arm_min = [-1.92, -0.1, -0.18621, -1.66, -2.79, -0.174]
+    per_arm_max = [1.92, 3.14158, 3.12779, 1.66, 2.79, 1.75]
+    assert reg["joint_limits"]["min"] == per_arm_min * 2
+    assert reg["joint_limits"]["max"] == per_arm_max * 2
+    assert reg["teleop"] == _load_embodiment("so_arm101")["teleop"]
