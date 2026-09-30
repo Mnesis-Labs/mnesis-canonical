@@ -1,7 +1,7 @@
 """Integration test: wheel-installed package must serve the loader API.
 
 Builds a wheel, installs it into a temporary venv, and verifies that
-``list_embodiments()`` returns 5 entries from a non-source-tree directory — and
+``list_embodiments()`` returns 7 entries from a non-source-tree directory — and
 that the *installed distribution* version matches ``__version__`` (#76: the two
 disagreed, so ``pip install`` gave 0.2.0 while the package reported 0.5.0).
 """
@@ -66,7 +66,7 @@ def test_wheel_install_loader(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, f"Loader failed:\n{result.stderr}"
     count, reported, installed = result.stdout.split()
-    assert int(count) == 6, f"Expected 6 embodiments, got {count}"
+    assert int(count) == 7, f"Expected 7 embodiments, got {count}"
     # What pip installed it as vs. what the package says about itself: #76's bug
     # was exactly these two disagreeing, and the old assertion never looked.
     assert installed == reported == expected, (

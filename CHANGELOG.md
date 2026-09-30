@@ -379,6 +379,23 @@ are decoupled:
   `clock_errors`), `SPEC.md` (§Clock synchronisation), `CONTRACTS.md` (C6 moved
   from draft to in-force), `tests/test_manifest.py` synced.
 
+- **Embodiment registry — `dual_so_arm101` (dual SO-ARM101, 12 joints; issue
+  #165, additive-only).** Registers the bimanual SO-ARM101: `arms:2`,
+  `dof_per_arm:5`, 12 `joint_names` (left then right). `joint_limits` (radians)
+  are taken from the SIM MJCF actually run (Daedalus `simulation/mujoco/so_arm101.xml`
+  @ `c7bd96f7`, default class range, left=right) — the `observation.state`
+  calibration SIM reports (qpos, model frame) when head-recorded. This
+  **differs from the single-arm `so_arm101` entry** (Pitch/Elbow there come from
+  the menagerie `so_arm100` MJCF); the divergence is recorded in `CONTRACTS.md`
+  and intentionally not unified by this card. `assets.mjcf` is `""` (source
+  pinned to the Daedalus file/commit, not copied into this repo); no
+  `capture`/`capture_profiles` (no ground-truth source). `embodiments/` +
+  `mnesis_canonical/embodiments/` (byte-identical); `tests/test_embodiment.py`
+  adds loader-by-id (12 joints, 6 per arm) and a passing `robot_v2` frame
+  (`embodiment_id:"dual_so_arm101"`, 12 state + 12 action,
+  `observation.images.head`). No schema/`validate.py` change; the validator
+  does not cross-check state length against the registry (out of scope).
+
 ### Fixed
 
 [0.5.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.5.0

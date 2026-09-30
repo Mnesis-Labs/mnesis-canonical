@@ -163,10 +163,10 @@ def test_package_embodiments_exist():
     assert len(paths) >= 6, f"Expected >=6, found {len(paths)}"
 
 
-def test_loader_list_embodiments_returns_6():
-    """list_embodiments() must return exactly 6 entries."""
+def test_loader_list_embodiments_returns_7():
+    """list_embodiments() must return exactly 7 entries."""
     result = _list_embodiments()
-    assert len(result) == 6, f"Expected 6, got {len(result)}"
+    assert len(result) == 7, f"Expected 7, got {len(result)}"
 
 
 def test_loader_list_embodiment_ids():
@@ -174,7 +174,7 @@ def test_loader_list_embodiment_ids():
     ids = _list_embodiment_ids()
     assert ids == sorted([
         "ego_human", "alohamini", "so_arm101", "airbot_play",
-        "dual_airbot_play", "ego_human_5cam_v1",
+        "dual_airbot_play", "ego_human_5cam_v1", "dual_so_arm101",
     ])
 
 
@@ -215,7 +215,8 @@ def test_package_data_sync_with_root():
     root_dir = _EMBODIMENTS_DIR
     pkg_dir = _PKG_EMBODIMENTS_DIR
     for fname in ("airbot_play.json", "alohamini.json", "dual_airbot_play.json",
-                  "ego_human.json", "so_arm101.json", "ego_human_5cam_v1.json"):
+                  "ego_human.json", "so_arm101.json", "ego_human_5cam_v1.json",
+                  "dual_so_arm101.json"):
         root_bytes = (root_dir / fname).read_bytes()
         pkg_bytes = (pkg_dir / fname).read_bytes()
         assert root_bytes == pkg_bytes, (
@@ -227,5 +228,81 @@ def test_loader_import_from_top_level():
     """The loader API must be importable from the top-level package."""
     from mnesis_canonical import list_embodiments as top_list
     from mnesis_canonical import load_embodiment as top_load
-    assert len(top_list()) == 6
+    assert len(top_list()) == 7
     assert top_load("airbot_play")["id"] == "airbot_play"
+
+
+# --- dual_so_arm101 (issue #165: dual SO-ARM101, 12 joints) ---
+
+
+def test_dual_so_arm101_registry_entry():
+    """dual_so_arm101 loads by id; 12 joints, left-then-right, 6 per arm.
+
+    Joint limits come from the SIM MJCF actually run (see CONTRACTS.md), NOT the
+    single-arm ``so_arm101`` entry — that divergence is recorded there and
+    intentionally not unified by this card.
+    """
+    data = _load_embodiment("dual_so_arm101")
+    assert data["id"] == "dual_so_arm101"
+    assert data["arms"] == 2
+    assert data["dof_per_arm"] == 5
+    expected = [
+        "left/Rotation", "left/Pitch", "left/Elbow",
+        "left/Wrist_Pitch", "left/Wrist_Roll", "left/Jaw",
+        "right/Rotation", "right/Pitch", "right/Elbow",
+        "right/Wrist_Pitch", "right/Wrist_Roll", "right/Jaw",
+    ]
+    assert data["joint_names"] == expected
+    assert len(data["joint_names"]) == 12
+    left, right = data["joint_names"][:6], data["joint_names"][6:]
+    assert len(left) == 6 and len(right) == 6
+    assert all(name.startswith("left/") for name in left)
+    assert all(name.startswith("right/") for name in right)
+    # joint_limits arrays must match the 12 joint_names (also pinned generally,
+    # but asserted here so a missing-joint mutation turns THIS test red).
+    assert len(data["joint_limits"]["min"]) == 12
+    assert len(data["joint_limits"]["max"]) == 12
+
+
+def test_dual_so_arm101_robot_v2_frame_validates():
+    """A robot_v2 frame (12 state + 12 action + head cam) for dual_so_arm101
+    passes ``mnesis_canonical.validate_frame``.
+
+    The validator does NOT cross-check ``observation.state`` length against the
+    registry (that is a separate contract change, out of scope for #165), so
+    this only asserts the frame is accepted — it does not assert that a
+    non-12-length state would be rejected.
+    """
+    from mnesis_canonical import validate_frame
+
+    frame = {
+        "index": 0,
+        "episode_index": 0,
+        "task_index": 0,
+        "frame_index": 0,
+        "t_ns": 1000000,
+        "t_hw_ns": 1000000000,
+        "timestamp": "2026-09-30T00:00:00.000Z",
+        "head_pose_SE3": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        "observation.state": [0.0] * 12,
+        "action": [0.0] * 12,
+        "observation.images.head": "frames/000000_head.jpg",
+        "source.device": "sim",
+        "source.modality": "sim",
+        "tracking_state": "TRACKING",
+        "profile": "robot_v2",
+        "embodiment_id": "dual_so_arm101",
+    }
+    errs = validate_frame(frame)
+    assert not errs, f"robot_v2 frame for dual_so_arm101 failed validation: {errs}"
+
+def test_dual_so_arm101_limits_and_teleop_pinned():
+    """Limits are the SIM MJCF ones (Daedalus simulation/mujoco/so_arm101.xml @ c7bd96f7), per
+    arm; the teleop block is the single-arm so_arm101 one (same arm hardware), not another
+    robot's numbers."""
+    reg = _load_embodiment("dual_so_arm101")
+    per_arm_min = [-1.92, -0.1, -0.18621, -1.66, -2.79, -0.174]
+    per_arm_max = [1.92, 3.14158, 3.12779, 1.66, 2.79, 1.75]
+    assert reg["joint_limits"]["min"] == per_arm_min * 2
+    assert reg["joint_limits"]["max"] == per_arm_max * 2
+    assert reg["teleop"] == _load_embodiment("so_arm101")["teleop"]

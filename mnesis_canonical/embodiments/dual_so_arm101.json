@@ -1,0 +1,76 @@
+{
+  "id": "dual_so_arm101",
+  "display_name": "SO-ARM101 (dual arm)",
+  "arms": 2,
+  "dof_per_arm": 5,
+  "joint_names": [
+    "left/Rotation",
+    "left/Pitch",
+    "left/Elbow",
+    "left/Wrist_Pitch",
+    "left/Wrist_Roll",
+    "left/Jaw",
+    "right/Rotation",
+    "right/Pitch",
+    "right/Elbow",
+    "right/Wrist_Pitch",
+    "right/Wrist_Roll",
+    "right/Jaw"
+  ],
+  "joint_limits": {
+    "min": [
+      -1.92,
+      -0.1,
+      -0.18621,
+      -1.66,
+      -2.79,
+      -0.174,
+      -1.92,
+      -0.1,
+      -0.18621,
+      -1.66,
+      -2.79,
+      -0.174
+    ],
+    "max": [
+      1.92,
+      3.14158,
+      3.12779,
+      1.66,
+      2.79,
+      1.75,
+      1.92,
+      3.14158,
+      3.12779,
+      1.66,
+      2.79,
+      1.75
+    ]
+  },
+  "gripper_range": [
+    0.0,
+    1.0
+  ],
+  "base_frame": "world",
+  "assets": {
+    "urdf": "",
+    "mjcf": "",
+    "glb": "",
+    "skeleton": ""
+  },
+  "teleop": {
+    "default_pos_scale": 0.5,
+    "workspace_box": [
+      [
+        -0.3,
+        -0.3,
+        0.0
+      ],
+      [
+        0.3,
+        0.3,
+        0.45
+      ]
+    ]
+  }
+}
