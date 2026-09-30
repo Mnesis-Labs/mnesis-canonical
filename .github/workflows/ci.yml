@@ -176,7 +176,16 @@ jobs:
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
       - run: uv run ruff check .
-      - run: uv run pytest -q
+      # #163 (sprint slim-1)：冻结 isaac / migrate / skeleton_registry /
+      # objects_jsonl(C13) / sdk / extensions 后，pytest 门禁只跑主路径
+      # （schema / validate / io / lerobot / manifest / embodiment /
+      # importers）+ tests/test_public_api_slim.py。冻结子模块的专属测试用
+      # --ignore 排除：test_isaac / test_objects_jsonl / test_sdk。
+      # migrate / skeleton_registry 无专属测试文件（其行为随 test_hand 主
+      # 路径 schema 测试一起跑，已改子模块导入，仍绿）。extensions 的
+      # x-<vendor>. 前缀校验属 schema/validate 主路径，test_extensions 保留。
+      # 用 --ignore 而非白名单，使新增主路径测试自动纳入门禁。
+      - run: uv run pytest -q --ignore=tests/test_isaac.py --ignore=tests/test_objects_jsonl.py --ignore=tests/test_sdk.py
 
   contracts-check:
     name: Contracts integrity

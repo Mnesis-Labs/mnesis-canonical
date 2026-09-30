@@ -50,6 +50,12 @@ Optional strict JSON-Schema backend: `validate_frame_jsonschema(frame)`
 
 ## Device Adapter SDK
 
+> ⚠️ **Frozen (slim-1, #163).** This SDK is no longer re-exported from the
+> `mnesis_canonical` package top level, and its dedicated tests are out of the
+> slim CI gate. The code, the `mnesis_canonical.sdk` submodule path, and the
+> examples below are unchanged — still `from mnesis_canonical.sdk import
+> QuestAdapter, RobotAdapter`. See CHANGELOG §Unreleased. Zero files deleted.
+
 `mnesis_canonical.sdk` provides a uniform interface for all Mnesis capture
 surfaces, so downstream code (training pipelines, evaluators, data viewers)
 can consume frames without caring which device produced them.

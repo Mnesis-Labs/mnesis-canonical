@@ -15,12 +15,6 @@ from .embodiment_registry import (
     reference_camera,
 )
 from .io import read_jsonl, write_jsonl
-from .isaac import (
-    from_isaac,
-    quat_wxyz_to_xyzw,
-    quat_xyzw_to_wxyz,
-    to_isaac,
-)
 from .lerobot import LEROBOT_FEATURES, from_lerobot, to_lerobot
 from .manifest import (
     CLOCK_SOURCES,
@@ -30,21 +24,6 @@ from .manifest import (
     manifest_for_episode,
     validate_manifest,
     write_manifest,
-)
-from .migrate import migrate_hand_v0, migrate_hand_v0_frames
-from .objects_jsonl import (
-    FRAME_DIALECTS,
-    POSE_DOFS,
-    POSE_FRAME,
-    load_objects_jsonl_schema,
-    validate_object_record,
-    validate_objects_jsonl_stream,
-)
-from .objects_jsonl import (
-    validate_header as validate_objects_jsonl_header,
-)
-from .objects_jsonl import (
-    validate_line_jsonschema as validate_objects_jsonl_line_jsonschema,
 )
 from .schema import (
     ANNOTATION_HANDS,
@@ -105,12 +84,6 @@ from .semantic import (
     validate_ps_stream,
     validate_scene_graph,
 )
-from .skeleton_registry import (
-    joint_count,
-    list_skeleton_ids,
-    list_skeletons,
-    load_skeleton,
-)
 from .taxonomy_registry import (
     list_taxonomies,
     list_taxonomy_ids,
@@ -127,6 +100,25 @@ from .validate import (
     validate_frame_jsonschema,
     validate_frames,
 )
+
+# ── Frozen modules (slim-1, #163) ────────────────────────────────────────────
+# The following modules are frozen: ``isaac``, ``migrate``, ``skeleton_registry``,
+# ``objects_jsonl`` (C13), ``sdk``, and the ``extensions/`` data directory. They
+# are NO LONGER exported from the package top level (neither re-exported here nor
+# listed in ``__all__``), but the source files and their tests are kept in place
+# and the importable submodules remain available via their full path, e.g.::
+#
+#     from mnesis_canonical.isaac import to_isaac, from_isaac
+#     from mnesis_canonical.migrate import migrate_hand_v0
+#     from mnesis_canonical.skeleton_registry import load_skeleton
+#     from mnesis_canonical.objects_jsonl import validate_object_record
+#     from mnesis_canonical.sdk import DeviceAdapter
+#
+# ``extensions/`` is a vendor-extension registry data directory (not a Python
+# submodule); its ``x-<vendor>.`` convention still lives in ``schema`` via
+# ``VENDOR_EXTENSION_PREFIX`` and the JSON Schema patternProperties, which are
+# part of the main path and stay exported. Freeze = removed from the public
+# top-level API + main docs + CI gate; nothing is deleted (zero-cost rollback).
 
 # ``__version__`` must match the installed dist — the #100 bug was that the
 # package reported 0.5.0 while ``pip install`` gave 0.2.0, sending downstream
@@ -194,19 +186,11 @@ __all__ = [
     "SIDECAR_KINDS",
     "CLOCK_SOURCES",
     "clock_errors",
-    "to_isaac",
-    "from_isaac",
-    "quat_xyzw_to_wxyz",
-    "quat_wxyz_to_xyzw",
     "list_embodiments",
     "list_embodiment_ids",
     "load_embodiment",
     "list_camera_names",
     "reference_camera",
-    "list_skeletons",
-    "list_skeleton_ids",
-    "load_skeleton",
-    "joint_count",
     "list_taxonomies",
     "list_taxonomy_ids",
     "list_terms",
@@ -235,15 +219,5 @@ __all__ = [
     "validate_ps_message_jsonschema",
     "validate_ps_stream",
     "load_semantic_schema",
-    "migrate_hand_v0",
-    "migrate_hand_v0_frames",
-    "FRAME_DIALECTS",
-    "POSE_DOFS",
-    "POSE_FRAME",
-    "load_objects_jsonl_schema",
-    "validate_objects_jsonl_header",
-    "validate_objects_jsonl_line_jsonschema",
-    "validate_object_record",
-    "validate_objects_jsonl_stream",
     "__version__",
 ]
