@@ -9,3 +9,6 @@ build/
 dist/
 .env
 uv.lock
+
+# Local worker runtime and nested isolated worktrees
+.agent-state/
