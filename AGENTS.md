@@ -1,3 +1,16 @@
+# 开发执行政策（2026-10-03，覆盖旧 CLI/模型角色规定）
+
+用户已要求全面下线 Claude 账号与 Claude Code CLI。此前所有“只能使用 Claude Code CLI”“Cline 已退役”或禁止使用 Codex 执行的规定已被本次决定覆盖。
+
+- Codex 主会话负责产品规划、任务规格、编排、独立验收和 GitHub/CI 闭环；执行助手使用 Codex CLI 的 Nextscene 专用 profile 或 Cline CLI。服务入口 https://nextscene.cn/llm，凭据由外部环境注入，禁止写入仓库、任务文本或日志；模型必须实时探活并明确指定，禁止静默降级到旧账号。
+- 主政策入口：[Parthenon WORKER-POLICY](D:/Github/Parthenon/docs/WORKER-POLICY.md)。接手与退役账目：[Claude retirement](D:/Github/Parthenon/ops/claude-retirement/README.md)。远端协作读取同名仓内文档的当前版本。
+- 一张任务卡、一位写入者、一个隔离 worktree；启动前检查进程、锁、脏差异、已有成果。不得抢占或覆盖他人写入领地；中断须先落盘并保留结果。
+- 本仓产品、安全、协议、资产、测试与验收要求继续生效。历史工具和机器路径描述需按当前环境核验；下文的 Claude/Cline 角色旧规定仅保留作为历史来源，不能重新启用已退役执行入口。
+- 完成须提供 diff、真实测试结果、未验证边界和当前提交 SHA；CLI 退出、commit、CI 绿或旧安装包均不能替代独立验收。复核当前 SHA 后明确 APPROVE/REJECT。
+- 真机操作沿用 Parthenon HARDWARE-OPERATIONS.md 唯一入口与本仓现有更严格限制；无人到场不得运动，不得绕过 estop/deadman/限位。模拟、静态检查和 CI 不得标为真机验证。
+
+## 本仓已有规则（保留）
+
 # AGENTS.md
 
 本仓给 AI agent 的约定。跨仓规则以 Parthenon 为准。
