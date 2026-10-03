@@ -25,6 +25,11 @@ from .manifest import (
     validate_manifest,
     write_manifest,
 )
+from .recording_manifest import (
+    load_recording_manifest,
+    load_recording_manifest_schema,
+    validate_recording_manifest,
+)
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -175,6 +180,9 @@ __all__ = [
     "ValidationReport",
     "read_jsonl",
     "write_jsonl",
+    "load_recording_manifest",
+    "load_recording_manifest_schema",
+    "validate_recording_manifest",
     "get_schema_version",
     "to_lerobot",
     "from_lerobot",

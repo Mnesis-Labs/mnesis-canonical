@@ -8,6 +8,7 @@ Usage::
 
 Exit codes: 0 = ok, 1 = integrity error, 2 = I/O or lock format error.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,6 +20,8 @@ from pathlib import Path
 CONTRACTS_DIR = Path(__file__).resolve().parent.parent / "contracts"
 LOCK_FILE = CONTRACTS_DIR / "contracts.lock"
 LOCK_VERSION = 1
+PACKAGE_CONTRACTS_DIR = Path(__file__).resolve().parent / "contracts"
+PACKAGE_CONTRACTS_PREFIX = "mnesis_canonical/contracts/"
 
 
 def _sha256(path: Path) -> str:
@@ -40,6 +43,9 @@ def _lock_paths() -> dict[str, str]:
         if name.startswith("."):
             continue
         paths[name] = _sha256(child)
+    for child in sorted(PACKAGE_CONTRACTS_DIR.glob("*.schema.json")):
+        if child.is_file():
+            paths[PACKAGE_CONTRACTS_PREFIX + child.name] = _sha256(child)
     return paths
 
 
@@ -75,7 +81,10 @@ def cmd_verify() -> int:
 
     ok = True
     for name, stored_hash in sorted(expected.items()):
-        path = CONTRACTS_DIR / name
+        if name.startswith(PACKAGE_CONTRACTS_PREFIX):
+            path = Path(__file__).resolve().parent.parent / name
+        else:
+            path = CONTRACTS_DIR / name
         if not path.exists():
             print(f"  {name}  ... MISSING (expected)", file=sys.stderr)
             ok = False
@@ -89,11 +98,9 @@ def cmd_verify() -> int:
 
     # Check for untracked files
     tracked = set(expected.keys())
-    for child in sorted(CONTRACTS_DIR.iterdir()):
-        if not child.is_file() or child.name == "contracts.lock" or child.name == "README.md":
-            continue
-        if child.name not in tracked:
-            print(f"  {child.name}  ... UNTRACKED", file=sys.stderr)
+    for name in _lock_paths():
+        if name not in tracked:
+            print(f"  {name}  ... UNTRACKED", file=sys.stderr)
             ok = False
 
     if ok:
