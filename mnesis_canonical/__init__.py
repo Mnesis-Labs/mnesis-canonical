@@ -131,7 +131,7 @@ from .validate import (
 # running from a source checkout (not pip-installed); it is kept in sync with
 # ``pyproject.toml`` by ``scripts/version_check.py``. When pip-installed the
 # value is overridden from the wheel's own metadata so it can never disagree.
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 if not (_Path(__file__).resolve().parent.parent / "pyproject.toml").exists():
     try:
         __version__ = _metadata.version("mnesis-canonical")
