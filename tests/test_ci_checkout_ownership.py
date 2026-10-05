@@ -124,7 +124,9 @@ def execute_checkout(root, script, sha=None, inherited=None, wrong_head=False, c
         bin_dir = root / "fault-bin"
         bin_dir.mkdir()
         wrapper = bin_dir / "git"
-        real_git = Path(shutil.which(GIT)).as_posix()
+        real_git_location = shutil.which(GIT)
+        assert real_git_location is not None, f"Git fixture executable not found: {GIT}"
+        real_git = Path(real_git_location).as_posix()
         wrapper.write_text(
             "#!/bin/bash\nset -e\n"
             f'"{real_git}" "$@"\n'

@@ -8,6 +8,7 @@ import sys
 import zipfile
 from importlib.resources.abc import Traversable
 from pathlib import Path
+from typing import IO, Literal, overload
 
 import pytest
 
@@ -29,7 +30,9 @@ def installed_checker(tmp_path, monkeypatch):
     importlib.invalidate_caches()
     try:
         checker = importlib.import_module("mnesis_canonical.embodiment_check")
-        assert Path(checker.__file__).resolve().is_relative_to(target)
+        checker_file = checker.__file__
+        assert checker_file is not None
+        assert Path(checker_file).resolve().is_relative_to(target)
         yield checker
     finally:
         for name in list(sys.modules):
@@ -64,7 +67,9 @@ def zip_checker(tmp_path, monkeypatch):
     importlib.invalidate_caches()
     try:
         checker = importlib.import_module("mnesis_canonical.embodiment_check")
-        assert str(archive) in checker.__file__
+        checker_file = checker.__file__
+        assert checker_file is not None
+        assert str(archive) in checker_file
         assert isinstance(checker._EMBODIMENTS_DIR, zipfile.Path)
         yield checker
     finally:
@@ -102,7 +107,7 @@ def test_zip_schema_resource_api(installed_checker, tmp_path, monkeypatch):
 
 class ResourceOnly(Traversable):
     """A real resource provider exposing only the portable Traversable contract."""
-    def __init__(self, resource):
+    def __init__(self, resource: Traversable):
         self.resource = resource
 
     @property
@@ -121,8 +126,20 @@ class ResourceOnly(Traversable):
     def joinpath(self, *descendants):
         return ResourceOnly(self.resource.joinpath(*descendants))
 
-    def open(self, mode="r", *args, **kwargs):
+    @overload
+    def open(self, mode: Literal["r"] = "r", *args, **kwargs) -> IO[str]: ...
+
+    @overload
+    def open(self, mode: Literal["rb"], *args, **kwargs) -> IO[bytes]: ...
+
+    def open(self, mode: Literal["r", "rb"] = "r", *args, **kwargs):
         return self.resource.open(mode, *args, **kwargs)
+
+    def read_bytes(self) -> bytes:
+        return self.resource.read_bytes()
+
+    def read_text(self, encoding: str | None = None) -> str:
+        return self.resource.read_text(encoding=encoding)
 
 
 def test_cli_uses_portable_resource_names_not_path_stem(installed_checker, monkeypatch):

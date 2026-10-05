@@ -34,7 +34,7 @@ def test_all_embodiments_exist():
 
 def test_expected_embodiments_present():
     """The six required embodiments must be present."""
-    ids = {p.stem for p in _discover_embodiments()}
+    ids = {p.name.removesuffix(".json") for p in _discover_embodiments()}
     required = {"ego_human", "alohamini", "so_arm101", "airbot_play",
                 "dual_airbot_play", "ego_human_5cam_v1"}
     missing = required - ids
@@ -72,7 +72,8 @@ def test_embodiment_id_matches_filename():
     """The id field must match the filename stem."""
     for path in _discover_embodiments():
         data = load_embodiment(path)
-        assert data["id"] == path.stem, f"{path.name}: id '{data['id']}' != '{path.stem}'"
+        resource_id = path.name.removesuffix(".json")
+        assert data["id"] == resource_id, f"{path.name}: id '{data['id']}' != '{resource_id}'"
 
 
 def test_dual_airbot_play_has_two_arms():
@@ -148,7 +149,7 @@ def test_ruff_clean_format():
         raw = path.read_text(encoding="utf-8")
         parsed = json.loads(raw)
         assert isinstance(parsed, dict)
-        assert parsed["id"] == path.stem
+        assert parsed["id"] == path.name.removesuffix(".json")
 
 
 # --- Loader API tests (issue #27: package-data + consumer-facing API) ---
