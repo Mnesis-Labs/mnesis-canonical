@@ -154,28 +154,57 @@ jobs:
         run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
       # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
       - name: Checkout
+        id: checkout
+        working-directory: ${{ github.workspace }}
         shell: bash
         run: |
           set -euo pipefail
-          # 上一版 actions/checkout 会把带 token 的 extraheader 写进 .git/config；
-          # 那个 token 早已过期，留着会让下面的 fetch 带着坏 Authorization 头去请求。
-          git init -q .
-          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
-            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for n in 1 2 3; do
-            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
-            sleep $((n * 10))
+          # Bootstrap must be inline: the repo is not available yet.
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 2
+          : "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${GITHUB_OUTPUT:?}" "${GITHUB_SERVER_URL:?}"
+          temp_root="$RUNNER_TEMP"
+          env_file="$GITHUB_ENV"
+          output_file="$GITHUB_OUTPUT"
+          if command -v cygpath >/dev/null 2>&1; then
+            temp_root="$(cygpath -u "$temp_root")"
+            env_file="$(cygpath -u "$env_file")"
+            output_file="$(cygpath -u "$output_file")"
+          fi
+          owned="$(mktemp -d "$temp_root/canonical-checkout.XXXXXXXX")"
+          cd "$owned"
+          # Clear inherited worktree routing, not legitimate runner authentication.
+          unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+          unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR
+          unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+          for name in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
+            unset "$name"
           done
-          [ "${ok:-}" = 1 ]
+          export GIT_TERMINAL_PROMPT=0
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          # One fixed-SHA attempt: preserve transport failure, no retry loop.
+          git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-          git clean -qffdx
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || exit 3
+          checkout_dir="$(pwd -P)"
+          if command -v cygpath >/dev/null 2>&1; then
+            checkout_dir="$(cygpath -m "$checkout_dir")"
+          fi
+          [[ "$checkout_dir" != *$'\n'* && "$checkout_dir" != *$'\r'* ]] || exit 4
+          printf 'CI_CHECKOUT_DIR=%s\n' "$checkout_dir" >> "$env_file"
+          printf 'checkout_dir=%s\n' "$checkout_dir" >> "$output_file"
+          # Retain owned evidence; never clean/reset the shared workspace.
       - name: Toolchain
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
         run: uv --version
       - name: Venv + deps
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
       - run: uv run ruff check .
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
       # #163 (sprint slim-1)：冻结 isaac / migrate / skeleton_registry /
       # objects_jsonl(C13) / sdk / extensions 后，pytest 门禁只跑主路径
       # （schema / validate / io / lerobot / manifest / embodiment /
@@ -186,6 +215,7 @@ jobs:
       # x-<vendor>. 前缀校验属 schema/validate 主路径，test_extensions 保留。
       # 用 --ignore 而非白名单，使新增主路径测试自动纳入门禁。
       - run: uv run pytest -q --ignore=tests/test_isaac.py --ignore=tests/test_objects_jsonl.py --ignore=tests/test_sdk.py
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
 
   contracts-check:
     name: Contracts integrity
@@ -198,24 +228,54 @@ jobs:
         run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
       # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
       - name: Checkout
+        id: checkout
+        working-directory: ${{ github.workspace }}
         shell: bash
         run: |
           set -euo pipefail
-          git init -q .
-          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
-            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for n in 1 2 3; do
-            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
-            sleep $((n * 10))
+          # Bootstrap must be inline: the repo is not available yet.
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 2
+          : "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${GITHUB_OUTPUT:?}" "${GITHUB_SERVER_URL:?}"
+          temp_root="$RUNNER_TEMP"
+          env_file="$GITHUB_ENV"
+          output_file="$GITHUB_OUTPUT"
+          if command -v cygpath >/dev/null 2>&1; then
+            temp_root="$(cygpath -u "$temp_root")"
+            env_file="$(cygpath -u "$env_file")"
+            output_file="$(cygpath -u "$output_file")"
+          fi
+          owned="$(mktemp -d "$temp_root/canonical-checkout.XXXXXXXX")"
+          cd "$owned"
+          # Clear inherited worktree routing, not legitimate runner authentication.
+          unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+          unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR
+          unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+          for name in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
+            unset "$name"
           done
-          [ "${ok:-}" = 1 ]
+          export GIT_TERMINAL_PROMPT=0
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          # One fixed-SHA attempt: preserve transport failure, no retry loop.
+          git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-          git clean -qffdx
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || exit 3
+          checkout_dir="$(pwd -P)"
+          if command -v cygpath >/dev/null 2>&1; then
+            checkout_dir="$(cygpath -m "$checkout_dir")"
+          fi
+          [[ "$checkout_dir" != *$'\n'* && "$checkout_dir" != *$'\r'* ]] || exit 4
+          printf 'CI_CHECKOUT_DIR=%s\n' "$checkout_dir" >> "$env_file"
+          printf 'checkout_dir=%s\n' "$checkout_dir" >> "$output_file"
+          # Retain owned evidence; never clean/reset the shared workspace.
       - name: Venv + deps
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
       - run: uv run python -m mnesis_canonical.contracts_check
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
 
   embodiment-check:
     name: Embodiment registry
@@ -228,24 +288,54 @@ jobs:
         run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
       # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
       - name: Checkout
+        id: checkout
+        working-directory: ${{ github.workspace }}
         shell: bash
         run: |
           set -euo pipefail
-          git init -q .
-          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
-            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for n in 1 2 3; do
-            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
-            sleep $((n * 10))
+          # Bootstrap must be inline: the repo is not available yet.
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 2
+          : "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${GITHUB_OUTPUT:?}" "${GITHUB_SERVER_URL:?}"
+          temp_root="$RUNNER_TEMP"
+          env_file="$GITHUB_ENV"
+          output_file="$GITHUB_OUTPUT"
+          if command -v cygpath >/dev/null 2>&1; then
+            temp_root="$(cygpath -u "$temp_root")"
+            env_file="$(cygpath -u "$env_file")"
+            output_file="$(cygpath -u "$output_file")"
+          fi
+          owned="$(mktemp -d "$temp_root/canonical-checkout.XXXXXXXX")"
+          cd "$owned"
+          # Clear inherited worktree routing, not legitimate runner authentication.
+          unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+          unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR
+          unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+          for name in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
+            unset "$name"
           done
-          [ "${ok:-}" = 1 ]
+          export GIT_TERMINAL_PROMPT=0
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          # One fixed-SHA attempt: preserve transport failure, no retry loop.
+          git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-          git clean -qffdx
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || exit 3
+          checkout_dir="$(pwd -P)"
+          if command -v cygpath >/dev/null 2>&1; then
+            checkout_dir="$(cygpath -m "$checkout_dir")"
+          fi
+          [[ "$checkout_dir" != *$'\n'* && "$checkout_dir" != *$'\r'* ]] || exit 4
+          printf 'CI_CHECKOUT_DIR=%s\n' "$checkout_dir" >> "$env_file"
+          printf 'checkout_dir=%s\n' "$checkout_dir" >> "$output_file"
+          # Retain owned evidence; never clean/reset the shared workspace.
       - name: Venv + deps
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
       - run: uv run python -m mnesis_canonical.embodiment_check
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
 
   release-check:
     name: Release checklist §2-§6
@@ -258,24 +348,54 @@ jobs:
         run: echo "C:\Program Files\Git\bin" >> $env:GITHUB_PATH
       # 手写 checkout：见文件头「自托管腿为什么手写 checkout」（#126）
       - name: Checkout
+        id: checkout
+        working-directory: ${{ github.workspace }}
         shell: bash
         run: |
           set -euo pipefail
-          git init -q .
-          git config --local --unset-all "http.${GITHUB_SERVER_URL}/.extraheader" 2>/dev/null || true
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 2>/dev/null \
-            || git remote set-url origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          for n in 1 2 3; do
-            if git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"; then ok=1; break; fi
-            sleep $((n * 10))
+          # Bootstrap must be inline: the repo is not available yet.
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 2
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 2
+          : "${RUNNER_TEMP:?}" "${GITHUB_ENV:?}" "${GITHUB_OUTPUT:?}" "${GITHUB_SERVER_URL:?}"
+          temp_root="$RUNNER_TEMP"
+          env_file="$GITHUB_ENV"
+          output_file="$GITHUB_OUTPUT"
+          if command -v cygpath >/dev/null 2>&1; then
+            temp_root="$(cygpath -u "$temp_root")"
+            env_file="$(cygpath -u "$env_file")"
+            output_file="$(cygpath -u "$output_file")"
+          fi
+          owned="$(mktemp -d "$temp_root/canonical-checkout.XXXXXXXX")"
+          cd "$owned"
+          # Clear inherited worktree routing, not legitimate runner authentication.
+          unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+          unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR
+          unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+          for name in ${!GIT_CONFIG_KEY_@} ${!GIT_CONFIG_VALUE_@}; do
+            unset "$name"
           done
-          [ "${ok:-}" = 1 ]
+          export GIT_TERMINAL_PROMPT=0
+          git init -q .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          # One fixed-SHA attempt: preserve transport failure, no retry loop.
+          git fetch -q --no-tags --depth=1 origin "$GITHUB_SHA"
           git checkout -q --detach FETCH_HEAD
-          git clean -qffdx
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]] || exit 3
+          checkout_dir="$(pwd -P)"
+          if command -v cygpath >/dev/null 2>&1; then
+            checkout_dir="$(cygpath -m "$checkout_dir")"
+          fi
+          [[ "$checkout_dir" != *$'\n'* && "$checkout_dir" != *$'\r'* ]] || exit 4
+          printf 'CI_CHECKOUT_DIR=%s\n' "$checkout_dir" >> "$env_file"
+          printf 'checkout_dir=%s\n' "$checkout_dir" >> "$output_file"
+          # Retain owned evidence; never clean/reset the shared workspace.
       - name: Venv + deps
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
         run: uv venv --seed
       - run: uv pip install -e ".[dev]"
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
       # 逐项跑 docs/RELEASE_CHECKLIST_v1.0.md §2–§6，任一失败整体 exit 1。
       # 走 uv run：脚本内部用 sys.executable 拉起子进程，并按 PATH 找 ruff /
       # pyright，两者都要落在 venv 里才算数。
       - run: uv run python scripts/release_check.py
+        working-directory: ${{ env.CI_CHECKOUT_DIR }}
