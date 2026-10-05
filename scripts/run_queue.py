@@ -8,8 +8,8 @@
 没跑**却显示「已发车」。落成文件 + 由后台任务托管，进度写进 PROGRESS 日志，
 不再有隐形失败。
 
-每张卡的开发实际发生在 `.claude/worktrees/dl-issue-<N>/`（独立 git worktree），
-worker 是无头 claude CLI；本脚本只负责排队与记账，**不 push、不开 PR**。
+每张卡的开发实际发生在 `.agent-state/worktrees/dl-issue-<N>/`（独立 git worktree），
+worker 是有界 Codex CLI；本脚本只负责排队与记账，**不 push、不开 PR**。
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import sys
 import time
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-PROGRESS = REPO_ROOT / ".claude" / "queue_progress.log"
+PROGRESS = REPO_ROOT / ".agent-state" / "queue_progress.log"
 PY = sys.executable
 
 # 退出码语义。与 dev_local.py 一一对应 —— 改一处必须改另一处。

@@ -1,4 +1,4 @@
-"""本地直驱开发执行器（mnesis-canonical） —— 一张卡跑一个隔离 worktree 里的无头 claude CLI。
+"""本地直驱开发执行器（mnesis-canonical） —— 一张卡跑一个隔离 worktree 里的无头 Codex CLI。
 
 用法:
     python scripts/dev_local.py 806
@@ -53,7 +53,7 @@ _TRANSPORT_ERRORS = (
     "No fallback model group found",
 )
 
-# ── 网关凭据的唯一真值：~/.claude/settings.json（2026-09-07 收口）───────────
+# ── 网关凭据的唯一真值：~/.agent-state/settings.json（2026-09-07 收口）───────────
 # **没有兜底，故意的。**
 #
 # 完整因果链（hermes 的 state.db 会话记录 + 本会话实测）：
@@ -69,37 +69,33 @@ _TRANSPORT_ERRORS = (
 # 把它留作 fallback 更糟：settings.json 哪天缺字段，就会**静默回落到一把死钥匙**，
 # 而症状还是那个分辨不出来的 `no_db_connection`。
 # 凭据只能有一个真值来源；取不到就大声失败，绝不用一把可能已死的钥匙硬跑。
-_SETTINGS_JSON = pathlib.Path.home() / ".claude" / "settings.json"
+_SETTINGS_JSON = pathlib.Path(os.environ.get("MNESIS_LLM_CREDENTIALS", "D:/Github/_ops/secrets/nextscene-llm.json"))
 
 
 def _settings_env() -> dict:
+    """Read the private replacement credential document, never legacy account state."""
     try:
-        return (json.loads(_SETTINGS_JSON.read_text(encoding="utf-8")) or {}).get("env") or {}
-    except (OSError, ValueError) as e:
-        raise RuntimeError(f"读不到 {_SETTINGS_JSON}：{e}") from e
+        cfg = json.loads(_SETTINGS_JSON.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        raise RuntimeError("Nextscene credential file is unavailable or invalid") from None
+    if not isinstance(cfg, dict):
+        raise RuntimeError("Nextscene credential document must be an object")
+    return cfg
 
 
 def resolve_gateway() -> tuple[str, str, str]:
-    """返回 (base_url, token, 来源说明)。
-
-    来源要能被打印出来 —— 排障时「我在用哪把钥匙」必须一眼可见，不能靠猜
-    （2026-09-07 就是靠猜浪费了一轮：拿一把 7 月的废钥匙探测，看到
-    no_db_connection，误判成「网关没修好」）。
-    """
-    env = _settings_env()
-    url = (env.get("ANTHROPIC_BASE_URL") or "").strip()
-    key = (env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
-    if not (url and key):
-        raise RuntimeError(
-            f"{_SETTINGS_JSON} 的 env 里缺 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN。{LF}"
-            f"这是网关凭据的**唯一**真值来源，没有兜底（见上方注释：{LF}"
-            f"曾经的 _ops/secrets/console.key 是一份无人维护的副本，{LF}"
-            f"回落到它只会得到一个分辨不出来的 no_db_connection）。{LF}"
-            f"处置：把可用的 base_url/token 写进 settings.json 的 env，再重跑。")
-    return url, key, f"settings.json（{_SETTINGS_JSON}）"
+    """Return explicit Nextscene endpoint, API key and a value-free source label."""
+    from urllib.parse import urlsplit
+    cfg = _settings_env() if not os.environ.get("NEXTSCENE_LLM_API_KEY") else {}
+    url = str(os.environ.get("NEXTSCENE_LLM_BASE_URL") or cfg.get("base_url") or "https://nextscene.cn/llm").strip()
+    key = str(os.environ.get("NEXTSCENE_LLM_API_KEY") or cfg.get("api_key") or "").strip()
+    parsed = urlsplit(url)
+    if not key or parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeError("Nextscene API credential or HTTP(S) base URL is missing or invalid")
+    return url.rstrip("/"), key, "Nextscene external credential configuration"
 
 
-WORKER_HOME = "D:/Github/_ops/claude-worker-home"
+WORKER_HOME = "D:/Github/_ops/codex-worker-home"
 # 2026-09-05 Muso 指示：开发/调研一律走 CLI，模型用 `auto`（网关侧自动路由）。
 # 上线前实测过，不是照抄配置：
 #   POST <gateway>/v1/messages {"model":"auto",...} → HTTP 200，
@@ -107,7 +103,7 @@ WORKER_HOME = "D:/Github/_ops/claude-worker-home"
 # （今天刚栽过一次「把推断当实测」—— #832 里我拿 /v1/models 的列表推出「某模型不可用」，
 #  实打才发现网关认那个别名。所以换模型名这类改动，先打一次再改。）
 # #156（2026-09-24 worker-policy）起，**默认模型不再取这里**：按 --role 从
-# worker-policy.json 的 claude_cli.{dev,ci} 取组内顺位（见 main 里的模型分组）。
+# worker-policy.json 的 codex_cli.{dev,ci} 取组内顺位（见 main 里的模型分组）。
 # `auto` 仍留在 ci 组里；本常量只用于 --help 文案与历史追溯。
 DEFAULT_MODEL = "auto"
 PY = sys.executable
@@ -215,40 +211,39 @@ def load_worker_policy(path: pathlib.Path | str | None = None) -> dict:
 
 _POLICY = load_worker_policy()
 
-# 内置默认：策略文件缺失/缺字段时的回退。与 worker-policy.json 的 claude_cli
+# 内置默认：策略文件缺失/缺字段时的回退。与 worker-policy.json 的 codex_cli
 # 对齐；改值请改策略文件（合并后各仓自动跟上），不要只改这里。
-_DEFAULT_CLAUDE_CLI = {
+_DEFAULT_CODEX_CLI = {
     "cooldown_hours": 5,
-    "dev": ["glm-5.2", "kimi-k3", "deepseek-pro"],
-    "ci": ["deepseek", "sensenova-lite", "sensenova-lite-global",
-           "internlm-s2", "internlm-s1", "auto"],
+    "dev": ["glm-5.2"],
+    "ci": ["glm-5.2"],
 }
 
 
-def claude_cli_section(policy: dict | None = None) -> dict:
-    """claude_cli 段，逐字段回退到内置默认（policy 可由测试注入）。"""
-    sec = (policy if policy is not None else _POLICY).get("claude_cli") or {}
+def codex_cli_section(policy: dict | None = None) -> dict:
+    """codex_cli 段，逐字段回退到内置默认（policy 可由测试注入）。"""
+    sec = (policy if policy is not None else _POLICY).get("codex_cli") or {}
     return {
         "cooldown_hours": sec.get("cooldown_hours",
-                                  _DEFAULT_CLAUDE_CLI["cooldown_hours"]),
-        "dev": list(sec.get("dev") or _DEFAULT_CLAUDE_CLI["dev"]),
-        "ci": list(sec.get("ci") or _DEFAULT_CLAUDE_CLI["ci"]),
+                                  _DEFAULT_CODEX_CLI["cooldown_hours"]),
+        "dev": list(sec.get("dev") or _DEFAULT_CODEX_CLI["dev"]),
+        "ci": list(sec.get("ci") or _DEFAULT_CODEX_CLI["ci"]),
     }
 
 
 def cooldown_seconds(policy: dict | None = None) -> float:
     """网关额度耗尽后的冷却秒数。5h 滚动窗（Muso 2026-09-24），旧 4.5h 作废。"""
-    return float(claude_cli_section(policy)["cooldown_hours"]) * 3600.0
+    return float(codex_cli_section(policy)["cooldown_hours"]) * 3600.0
 
 
 def dev_models(policy: dict | None = None) -> tuple[str, ...]:
     """开发任务模型组（按序）：glm-5.2 → kimi-k3 → deepseek-pro。"""
-    return tuple(claude_cli_section(policy)["dev"])
+    return tuple(codex_cli_section(policy)["dev"])
 
 
 def ci_models(policy: dict | None = None) -> tuple[str, ...]:
     """CI/CD 任务模型组（按序）：deepseek、sensenova-lite、…、auto。"""
-    return tuple(claude_cli_section(policy)["ci"])
+    return tuple(codex_cli_section(policy)["ci"])
 
 
 def models_for_role(role: str, policy: dict | None = None) -> tuple[str, ...]:
@@ -429,7 +424,7 @@ def escalate(
     recent = _count_recent_failures(task, esc_dir, ts)
     rec = {
         "task": task,
-        "cli": "claude",
+        "cli": "codex",
         "role": role,
         "cwd": cwd,
         "exit_code": code,
@@ -438,7 +433,7 @@ def escalate(
         "rundir": str(rundir),
         "at": ts.isoformat(),
         "failures_24h_for_task": recent + 1,
-        "to": "Claude Desktop（Opus 5.5）",
+        "to": "Codex root",
         "resolved": False,
         "hint": "工作区里 CLI 已写的部分要保留，在它基础上接着做。",
     }
@@ -512,60 +507,50 @@ def _host_of(url: str) -> str:
 
 
 def gateway_env(model: str) -> dict:
-    """构造 claude CLI 的网关环境。逐条对应 run-worker.ps1 踩过的坑。"""
-    url, key, src = resolve_gateway()
+    """Construct replacement worker environment; legacy credentials never propagate."""
+    url, key, _ = resolve_gateway()
     env = dict(os.environ)
-    # 补丁一：清掉可能指向别处的残留 —— 混合环境是「把网关 token 发去真
-    # Anthropic 端点然后 401」的来源（run-worker.ps1:555 同款）。
-    env.pop("ANTHROPIC_API_KEY", None)
-    env.update({
-        "ANTHROPIC_BASE_URL": url,
-        "ANTHROPIC_AUTH_TOKEN": key,
-        "ANTHROPIC_MODEL": model,
-        "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
-        "ANTHROPIC_DEFAULT_OPUS_MODEL": model,
-        # 补丁二：隔离 CLI 登录态。否则 OAuth 优先于 env token，静默烧订阅额度
-        # 且模型不是你以为的那个。
-        "CLAUDE_CONFIG_DIR": WORKER_HOME,
-        # 补丁三：绕过本机代理，否则 UnsupportedProxyProtocol 会伪装成「网关故障」。
-        # ⚠️ 必须只取**主机名**。旧写法 `url.split("://")[-1].split(":")[0]` 假设
-        # 网关是 `http://IP:PORT` 这种无路径形态；2026-09-07 凭据源改成
-        # settings.json 后 base_url 变成 `https://nextscene.cn/llm`（带路径），
-        # 那行算出 `nextscene.cn/llm` —— NO_PROXY 里放一个带路径的值不是合法主机，
-        # 匹配不上，代理绕过静默失效。
-        "NO_PROXY": _host_of(url) + ",localhost,127.0.0.1",
-        # 补丁四（2026-09-05，model=auto 起）：钉住思考预算。上游对 auto 路由的
-        # 硬上限是 1024，CLI 默认会发更大的值 → 400 直接失败。实测：不钉 4 次 2 败，
-        # 钉了 6 次 1 败。残余失败由 _TRANSPORT_ERRORS 的重试兜。
-        "MAX_THINKING_TOKENS": "1024",
-    })
+    for name in list(env):
+        if name.startswith(("ANTHROPIC_", "CLAUDE_")):
+            env.pop(name, None)
+    env["NEXTSCENE_LLM_BASE_URL"] = url
+    env["NEXTSCENE_LLM_API_KEY"] = key
     return env
 
 
-def run_claude(prompt: str, model: str, cwd: str, timeout: int = 5400) -> tuple[int, str]:
-    """无头跑一次 claude CLI。返回 (returncode, 输出)。"""
-    # Windows 下 subprocess 不解析 PATH 上的 .cmd shim，必须给完整路径。
-    exe = shutil.which("claude")
-    if not exe:
-        raise RuntimeError("claude CLI not found on PATH")
-    # prompt 走 **stdin** 而不是 argv：.CMD shim 经 cmd.exe 转发 argv 时，多行
-    # prompt 在首个换行处被截断 —— 工人只会看到第一行，然后自述「我不知道这张
-    # 卡要什么」。stdin 不经 cmd.exe 的参数解析，任意长度与字符都安全。
-    try:
-        p = subprocess.run(
-            [exe, "-p", "--model", model, "--dangerously-skip-permissions"],
-            input=prompt, cwd=cwd, env=gateway_env(model), timeout=timeout,
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
-    except subprocess.TimeoutExpired:
-        # 超时不许炸栈：炸栈会跳过收尾、损失现场信息。当作一次失败尝试返回，
-        # 工人已落盘的产出仍在 worktree 里，可人工收割。
-        return 124, f"[dev_local] worker timed out after {timeout}s; partial work kept in worktree"
-    tail = (p.stdout or "")
-    if p.returncode:
-        tail += "\n[stderr] " + (p.stderr or "")[-1500:]
-    return p.returncode, tail
+def run_claude(prompt: str, model: str, cwd: str, timeout: int = 5400, role: str = "dev") -> tuple[int, str]:
+    """Compatibility API: execute the bounded Codex adapter, return its final message."""
+    import tempfile
+    import uuid
+    runner = pathlib.Path(os.environ.get("MNESIS_LLM_RUNNER", "D:/Github/Parthenon/cockpit/scripts/llm_worker.py"))
+    if not runner.is_file():
+        return 10, "[dev_local] replacement LLM runner is unavailable; no account fallback"
+    if role not in ("dev", "ci") or not 1 <= timeout <= 14400:
+        return 10, "[dev_local] invalid worker role or timeout"
+    task = "dl-worker-" + uuid.uuid4().hex
+    staging = pathlib.Path(os.environ.get("MNESIS_LLM_INPUT_DIR", "D:/Github/_ops/llm-worker-input"))
+    staging.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=task + "-", dir=staging) as folder:
+        prompt_file = pathlib.Path(folder) / "prompt.txt"
+        output_file = pathlib.Path(folder) / "final.txt"
+        prompt_file.write_text(prompt, encoding="utf-8")
+        command = [sys.executable, str(runner), "--cwd", str(pathlib.Path(cwd).resolve()),
+                   "--prompt-file", str(prompt_file), "--task", task, "--engine", "codex",
+                   "--role", role, "--timeout", str(timeout), "--model", model,
+                   "--output-file", str(output_file)]
+        try:
+            result = subprocess.run(command, cwd=cwd, env=gateway_env(model), capture_output=True,
+                                    text=True, encoding="utf-8", errors="replace")
+        except OSError:
+            return 10, "[dev_local] replacement adapter launch failed; partial work preserved"
+        final = output_file.read_text(encoding="utf-8", errors="replace") if output_file.is_file() else ""
+        if not final:
+            if result.returncode == 0:
+                return 10, "[dev_local] adapter reported success without a final message; independent review required"
+            final = "[dev_local] adapter did not produce a final message; inspect external worker result"
+        if result.returncode:
+            final += "\n[dev_local] adapter failed (exit " + str(result.returncode) + "); partial work preserved"
+        return result.returncode, final
 
 
 def acceptance(worktree: pathlib.Path) -> tuple[bool, str]:
@@ -671,12 +656,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("issue", type=int)
     ap.add_argument("--model", default=None,
-                    help="网关模型；留空按 --role 从 worker-policy.json 的 claude_cli "
+                    help="网关模型；留空按 --role 从 worker-policy.json 的 codex_cli "
                          f"取组内首位（历史默认：{DEFAULT_MODEL}）")
     ap.add_argument("--role", choices=("dev", "ci"), default="dev",
                     help="dev=开发任务（glm-5.2 → kimi-k3 → deepseek-pro）；"
                          "ci=CI/CD 任务（deepseek → … → auto）。两组都从 "
-                         "worker-policy.json 的 claude_cli 读，不在本仓写死第二份")
+                         "worker-policy.json 的 codex_cli 读，不在本仓写死第二份")
     ap.add_argument("--max-attempts", type=int, default=2)
     ap.add_argument("--timeout", type=int, default=5400)
     args = ap.parse_args()
@@ -759,8 +744,8 @@ def main() -> int:
         # 写了就是给派单 root 塞幽灵记录 —— 「非成功退出写一条」指的是失败退出。
         return 7
 
-    wt = REPO_ROOT / ".claude" / "worktrees" / f"dl-issue-{n}"
-    branch = f"claude/dl-issue-{n}"
+    wt = REPO_ROOT / ".agent-state" / "worktrees" / f"dl-issue-{n}"
+    branch = f"codex/dl-issue-{n}"
     # ⚠️ 判据不能只看 `wt.exists()` —— **一个空壳目录也算「存在」**。
     # 2026-09-09 实测：上一轮 `git worktree remove` 之后 git 已不认它，但目录
     # 还留在磁盘上。下一轮执行器看到「目录存在」就跳过创建，于是 worktree 里
