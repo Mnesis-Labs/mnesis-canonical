@@ -45,7 +45,8 @@ MODALITIES = ("ego_human", "teleop", "robot_replay", "sim")
 #   ego_v1           — original v0.1 frame (fixed-length vectors, obs.images.ego required)
 #   ego_multicam_v1  — ego_v1 with a NAMED camera SET instead of the single ego key
 #   robot_v2         — robot-centric frame (variable-length state/action, open cameras, eef_pose)
-PROFILES = ("ego_v1", "ego_multicam_v1", "robot_v2")
+#   robot_nonvisual_v1 — explicit registry-sized joint vectors; all image keys forbidden
+PROFILES = ("ego_v1", "ego_multicam_v1", "robot_v2", "robot_nonvisual_v1")
 DEFAULT_PROFILE = "ego_v1"
 
 # When profile is "robot_v2", these fields are variable-length (no fixed-size check).
@@ -230,7 +231,7 @@ REQUIRED_KEYS = _REQUIRED_KEYS_EGO_V1
 def required_keys_for_profile(profile: str | None) -> tuple[str, ...]:
     """Return the required key set for the given profile name."""
     p = profile or DEFAULT_PROFILE
-    if p == "robot_v2":
+    if p in ("robot_v2", "robot_nonvisual_v1"):
         return _REQUIRED_KEYS_ROBOT_V2
     if p == "ego_multicam_v1":
         return _REQUIRED_KEYS_EGO_MULTICAM_V1

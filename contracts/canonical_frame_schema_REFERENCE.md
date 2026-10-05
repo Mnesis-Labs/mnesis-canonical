@@ -8,6 +8,21 @@
 
 ---
 
+## 显式非视觉关节 profile（0.6.1 additive 本地候选）
+
+`robot_nonvisual_v1` 必须显式选择，不能以缺 camera 让旧 robot_v2 自动降级。
+真实 registry 的 `embodiment_id` 必填，state/action 有限非 bool 数组按
+`joint_names` 全量顺序与长度；head_pose_SE3 保留 7 项。action 语义是
+`current_control_setpoint`，不是实际执行证明。所有 observation.images.* 键
+禁止（含空值/占位/真实路径）；episode 不混 profile、不换 embodiment，既有
+frame_index 单调规则不变。旧 DEFAULT 与三个视觉 profile/image gate 均保留。
+
+JSON Schema 只负责结构、非空身份/向量和图键禁入；实际 registry 存在性、动态
+向量长度、有限值与 episode 规则仍须 Python validator。录制右臂 subset 等身份
+保留在 C2b 既有 resolved_capture_options scalar 扩展，不推断 operation SINGLE。
+这不是训练/recon许可、媒体完整性、原子采样或硬件/Unity证明；本地源码变更
+不代表消费方已升级包与 lock。固定 ED 597B 合同见 tests/test_nonvisual_profile.py。
+
 ## 权威文件位置
 
 Canonical Frame Schema 的 JSON Schema 定义位于本仓以下路径：

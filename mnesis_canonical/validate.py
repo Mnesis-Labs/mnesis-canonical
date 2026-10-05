@@ -11,6 +11,8 @@ Profile-aware validation (v0.2+):
     registry's ``capture.cameras[].name`` when ``embodiment_id`` resolves.
   - ``robot_v2``: variable-length ``observation.state`` and ``action``, open camera-key set,
     optional ``observation.eef_pose.{left,right}``.
+  - ``robot_nonvisual_v1``: explicit registered joint layout, finite complete
+    state/control-setpoint vectors, no image keys; not execution evidence.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .embodiment_registry import list_camera_names
+from .embodiment_registry import list_camera_names, load_embodiment
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -74,8 +76,8 @@ def validate_frame_jsonschema(frame: dict) -> list[str]:
 
     Returns a list of human-readable errors (empty = valid). Raises RuntimeError
     if ``jsonschema`` is not installed. Note: this enforces structure/types only;
-    cross-frame rules (frame_index monotonicity) and strict vocab live in the
-    pure-Python :func:`validate_frame` / :func:`validate_frames`.
+    registry identity/dynamic joint lengths, finiteness, cross-frame rules and
+    strict vocab live in the pure-Python :func:`validate_frame` / :func:`validate_frames`.
     """
     try:
         import jsonschema
@@ -325,6 +327,17 @@ def validate_frame(
     if errors:
         return errors  # don't cascade if keys are missing
 
+    joint_count: int | None = None
+    if profile == "robot_nonvisual_v1":
+        eid = frame.get("embodiment_id")
+        if not isinstance(eid, str) or not eid:
+            errors.append("robot_nonvisual_v1 requires a registered embodiment_id")
+        else:
+            try:
+                joint_count = len(load_embodiment(eid).get("joint_names", []))
+            except LookupError:
+                errors.append("robot_nonvisual_v1 requires a registered embodiment_id")
+
     for key in INT_KEYS:
         if not isinstance(frame[key], int) or isinstance(frame[key], bool):
             errors.append(f"{key} must be int, got {type(frame[key]).__name__}")
@@ -334,7 +347,15 @@ def validate_frame(
 
     # --- Vector field validation (profile-aware) ---
     for key, expected_len in VECTOR_LENGTHS.items():
-        if key in ROBOT_V2_VARIABLE_VECTORS and profile == "robot_v2":
+        if profile == "robot_nonvisual_v1" and frame.get(key) is None:
+            errors.append(f"{key} must be a list")
+            continue
+        if key in ROBOT_V2_VARIABLE_VECTORS and profile == "robot_nonvisual_v1":
+            if joint_count is not None:
+                _validate_vector_field(frame, key, joint_count, errors)
+            elif key in frame:
+                errors.extend(_numeric_vector_errors(key, frame[key]))
+        elif key in ROBOT_V2_VARIABLE_VECTORS and profile == "robot_v2":
             # Variable-length: check type only, no fixed-size constraint
             val = frame.get(key)
             if val is not None:
@@ -364,7 +385,10 @@ def validate_frame(
                 errors.append(f"{k} must be a string (file reference, '' allowed)")
     elif profile == "ego_multicam_v1":
         _validate_multicam_images(frame, errors)
-    else:
+    elif profile == "robot_nonvisual_v1":
+        if image_keys(frame):
+            errors.append("robot_nonvisual_v1 forbids observation.images.* keys")
+    elif profile == "ego_v1":
         # ego_v1: observation.images.ego is required (already checked above)
         if not isinstance(frame["observation.images.ego"], str):
             errors.append("observation.images.ego must be a string (file reference, '' allowed)")
@@ -563,6 +587,8 @@ def validate_frames(
 ) -> ValidationReport:
     report = ValidationReport()
     prev_frame_index: int | None = None
+    nonvisual_frames = [f for f in frames if _get_profile(f) == "robot_nonvisual_v1"]
+    nonvisual_identity = nonvisual_frames[0].get("embodiment_id") if nonvisual_frames else None
 
     # --- Episode-level: spatial_anchor_id validation ---
     # Track anchor_ids that have been defined (non-None, non-empty, first occurrence)
@@ -574,6 +600,11 @@ def validate_frames(
     for i, frame in enumerate(frames):
         report.total += 1
         errs = validate_frame(frame, strict_vocab=strict_vocab, strict_stable=strict_stable)
+        if nonvisual_frames:
+            if _get_profile(frame) != "robot_nonvisual_v1":
+                errs.append("robot_nonvisual_v1 episode forbids mixed profile frames")
+            elif frame.get("embodiment_id") != nonvisual_identity:
+                errs.append("robot_nonvisual_v1 episode embodiment_id changed")
 
         # Collect unknown-key warnings (separate from errors — never invalidate).
         frame_warnings: list[str] = []

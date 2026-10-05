@@ -1,5 +1,15 @@
 # Mnesis 跨仓契约登记簿（CONTRACTS.md）
 
+## C1 显式非视觉关节录制（2026-10-05，0.6.1 本地 additive 候选）
+
+- 新 `robot_nonvisual_v1` 必须显式选择；旧三个 profile、默认 ego_v1、robot_v2 图像必需门与 C2b schema 不变。
+- 必须有真实已注册 `embodiment_id`；state/action 按该条目的 `joint_names` 完整顺序与长度，有限数且不接受 bool/null。head 保留 7 项，episode 不混 profile/embodiment，既有 frame_index 单调规则不变。
+- 禁止所有 `observation.images.*` 键，不以空图像或占位路径伪造视觉数据。action 是 `current_control_setpoint`，不是实际运动/执行许可。
+- 规范详见 SPEC 对应 profile；JSON Schema 只检结构，动态 registry 长度和 episode 规则须实际 Python `validate_frame(s)`。
+- canonical 固定生产输入/负例测试：`tests/test_nonvisual_profile.py`。ED 原 597B 的 robot_v2 仍应拒绝；只有显式换成新 profile 才可通过新源码合同。
+- 本批仅 canonical 源码候选；没有发布、消费依赖升级或跨仓 ingest 通过声明。ED/AM 后继须同步固定源码/包摘要及各自 lock，再用真实生产输入复验；录制 subset 身份沿既有 C2b scalar 扩展保留，operation_route 不由录制推断。
+- 非视觉接受不自动授予训练、recon、现场控制或 Unity 运行资格；本批没有这些执行证据。
+
 ## C2b 录制清单（#164 集成，保留 #163 冻结）
 
 - `schema_version: "c2/1.0"`，canonical 定义，Iris/Eidolon 生产，Ambrosia 消费。C2b 只描述 C2 上传清单，不改变 C1 图像要求或 C3 控制语义。
