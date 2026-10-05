@@ -30,6 +30,41 @@ defaults to `ego_v1` (identical to the v0.1 schema — full backward compatibili
 | `ego_v1` | Original v0.1 frame (default) | Fixed-length vectors, `observation.images.ego` required |
 | `ego_multicam_v1` | Multi-camera ego rig | `ego_v1` in every respect **except** the image keys: a registry-declared camera **set** instead of the single `ego` key |
 | `robot_v2` | Robot-centric frame | Variable-length `observation.state`/`action`, open camera keys, optional `eef_pose` |
+| `robot_nonvisual_v1` | Explicit nonvisual joint recording | Registered joint layout, no image keys, current control setpoints rather than execution evidence |
+
+### `robot_nonvisual_v1` profile (additive local candidate, package 0.6.1)
+
+This profile must be selected explicitly; the default remains `ego_v1`, and
+`robot_v2` still requires at least one image key. It is not an exemption for
+missing images in a visual episode.
+
+- `embodiment_id` must resolve through the bundled embodiment registry.
+  `observation.state` and `action` are complete finite numeric arrays, in exactly
+  that entry's `joint_names` order and count (including a named jaw where present).
+  Booleans, missing/null vectors and non-finite values are invalid. Joint values
+  use radians; percentage gripper values must not be substituted for named joints.
+- `action` means `current_control_setpoint`, not measured motion, achieved pose,
+  execution permission or proof that a command was sent. State and action must
+  retain their independent source values; one must never fill the other.
+- `head_pose_SE3` remains seven finite numbers with the existing pose convention.
+  Common fields and the existing strictly increasing, non-negative `frame_index`
+  episode rule remain mandatory. A nonvisual episode cannot mix profiles or
+  change `embodiment_id` between frames.
+- Every `observation.images.*` key is forbidden, including empty strings, nulls
+  and apparently valid paths. No blank camera placeholder is emitted.
+- The JSON Schema checks structure, nonempty identity/vectors and image-key
+  exclusion. Registry existence/dynamic joint count, finiteness and cross-frame
+  rules additionally require the reference Python validator, not schema-only
+  validation.
+
+Capture subset identity stays in the existing recording manifest's scalar
+`resolved_capture_options` extensions: e.g. `recording_scope`, `recording_arm`,
+`recording_layout`, `source_quantity`, with
+`operation_route=not_asserted_by_recording`. This profile does not redefine C2b
+or operation routing. A shape-valid registered Aloha frame does not prove that
+the current Aloha producer supplies the required command layout. Validation
+does not prove atomic state/action/head sampling, grant training/reconstruction
+permission, establish media availability, or prove Unity/hardware behavior.
 
 ### `ego_v1` profile
 The original v0.1 frame. Fields are identical to the table below; no change in

@@ -25,6 +25,11 @@ from .manifest import (
     validate_manifest,
     write_manifest,
 )
+from .recording_manifest import (
+    load_recording_manifest,
+    load_recording_manifest_schema,
+    validate_recording_manifest,
+)
 from .schema import (
     ANNOTATION_HANDS,
     ANNOTATION_SOURCES,
@@ -126,7 +131,7 @@ from .validate import (
 # running from a source checkout (not pip-installed); it is kept in sync with
 # ``pyproject.toml`` by ``scripts/version_check.py``. When pip-installed the
 # value is overridden from the wheel's own metadata so it can never disagree.
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 if not (_Path(__file__).resolve().parent.parent / "pyproject.toml").exists():
     try:
         __version__ = _metadata.version("mnesis-canonical")
@@ -175,6 +180,9 @@ __all__ = [
     "ValidationReport",
     "read_jsonl",
     "write_jsonl",
+    "load_recording_manifest",
+    "load_recording_manifest_schema",
+    "validate_recording_manifest",
     "get_schema_version",
     "to_lerobot",
     "from_lerobot",

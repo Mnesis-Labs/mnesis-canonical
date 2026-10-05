@@ -7,7 +7,7 @@ and this project adheres to [SemVer-of-the-schema](README.md#compatibility-commi
 — the **package version** (this changelog) and the **schema version** (SPEC.md §Versioning)
 are decoupled:
 
-> **Package 0.6.0** is the current version — the same string as
+> **Package 0.6.1** is the current version — the same string as
 > `mnesis_canonical.__version__` and `pyproject.toml` `[project] version`, kept in
 > lockstep by `scripts/version_check.py`.
 >
@@ -15,6 +15,27 @@ are decoupled:
 > **0.3.0**: `ego_v1` = v0.1 backward-compatible default; `robot_v2` adds
 > variable-length vectors, open camera keys, and optional `eef_pose`. All existing
 > data and examples validate without modification.
+
+## [0.6.1] — 2026-10-05
+
+### Added
+
+- Explicit `robot_nonvisual_v1` profile for registered embodiments with finite,
+  registry-sized state/action joint vectors and no `observation.images.*` fields.
+  Existing defaults and the `robot_v2` required-image gate remain unchanged.
+  `current_control_setpoint` data is not proof of execution or permission to train
+  or reconstruct.
+- CI job-owned, fixed-SHA checkout directories, without cleaning the shared
+  runner workspace.
+
+### Fixed
+
+- Embodiment and manifest schema resource loading for source checkouts, unpacked
+  wheels, and direct wheel zip imports.
+- Source `__version__` and this preamble now match the `0.6.1` package metadata;
+  installed-metadata fallback behavior is unchanged.
+
+These changes do not establish full MVP, Unity, device, or hardware acceptance.
 
 ## [0.6.0] — 2026-08-21
 

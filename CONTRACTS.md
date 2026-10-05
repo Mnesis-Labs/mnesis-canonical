@@ -1,5 +1,25 @@
 # Mnesis 跨仓契约登记簿（CONTRACTS.md）
 
+## C1 显式非视觉关节录制（2026-10-05，0.6.1 本地 additive 候选）
+
+- 新 `robot_nonvisual_v1` 必须显式选择；旧三个 profile、默认 ego_v1、robot_v2 图像必需门与 C2b schema 不变。
+- 必须有真实已注册 `embodiment_id`；state/action 按该条目的 `joint_names` 完整顺序与长度，有限数且不接受 bool/null。head 保留 7 项，episode 不混 profile/embodiment，既有 frame_index 单调规则不变。
+- 禁止所有 `observation.images.*` 键，不以空图像或占位路径伪造视觉数据。action 是 `current_control_setpoint`，不是实际运动/执行许可。
+- 规范详见 SPEC 对应 profile；JSON Schema 只检结构，动态 registry 长度和 episode 规则须实际 Python `validate_frame(s)`。
+- canonical 固定生产输入/负例测试：`tests/test_nonvisual_profile.py`。ED 原 597B 的 robot_v2 仍应拒绝；只有显式换成新 profile 才可通过新源码合同。
+- 本批仅 canonical 源码候选；没有发布、消费依赖升级或跨仓 ingest 通过声明。ED/AM 后继须同步固定源码/包摘要及各自 lock，再用真实生产输入复验；录制 subset 身份沿既有 C2b scalar 扩展保留，operation_route 不由录制推断。
+- 非视觉接受不自动授予训练、recon、现场控制或 Unity 运行资格；本批没有这些执行证据。
+
+## C2b 录制清单（#164 集成，保留 #163 冻结）
+
+- `schema_version: "c2/1.0"`，canonical 定义，Iris/Eidolon 生产，Ambrosia 消费。C2b 只描述 C2 上传清单，不改变 C1 图像要求或 C3 控制语义。
+- 包内 schema：`mnesis_canonical/contracts/c2_recording_manifest.schema.json`；顶层 API 仅新增 `load_recording_manifest`、`load_recording_manifest_schema`、`validate_recording_manifest`。已冻结模块仍只可按完整子模块路径导入。
+- 字段为实际生效的 `resolved_capture_options`、`stream_confirmations`、`tracker_runtime`、`media`、`timebase`、`device`。未知或缺失不等于停用；停用流必须明确 `enabled:false` 且 `fps:0, frame_count:0`。
+- 校验器依赖可选 `jsonschema`，一次返回全部字段路径错误；拒绝非法日历时间、重复/不对应流、重复媒体路径、非有限数及控制字符。清单路径必须相对且不能含盘符、反斜线或 `..`。
+- 手机/头显示例在 `examples/recording_manifest/`，是契约金样，不是设备录制、媒体完整性或上传成功证据。
+- schema 随 wheel 分发；`contracts/contracts.lock` 以仓库相对路径钉住其 SHA256。`contracts_check` 的生成和校验均覆盖包内 `contracts/*.schema.json`；既有四项锁值保持不变。
+- 本次一致候选不实施 #168 零相机策略，不声明消费者已安装本包或端到端 MR/SIM 验收。
+
 > **规则**：任何跨仓接口，先在这里登记/改版本，再改代码；两侧仓库各自持有钉死该契约的测试。改契约的 PR 必须在描述里链接两侧测试。本文件由 Tech Lead（Claude Code）守门。
 > 仓库：**Iris**=手机采集 · **Eidolon**=Quest VR 前端 · **Daedalus**=机器人执行/训练 · **Ambrosia**=数据平台/控制台 · **canonical**=本仓（数据标准）。
 
