@@ -423,6 +423,25 @@ These changes do not establish full MVP, Unity, device, or hardware acceptance.
   `clock_errors`), `SPEC.md` (§Clock synchronisation), `CONTRACTS.md` (C6 moved
   from draft to in-force), `tests/test_manifest.py` synced.
 
+### Changed
+
+- **robot_v2 允许零相机帧（issue #166, additive-only）.** The `robot_v2`
+  profile no longer requires at least one `observation.images.<cam>` key — a
+  frame with **no** image key is now valid and means the capture had no camera
+  stream (the recording manifest's C2b `stream_confirmations` declares that
+  camera `enabled=false`). This relaxes the only rule that forced robot_v2 to
+  carry a camera; the bundled JSON Schema never enforced it (its `allOf`
+  conditional requires `observation.images.ego` for `ego_v1` and non-empty
+  camera strings for `ego_multicam_v1`, but nothing for `robot_v2`), so the
+  two backends are now aligned and the schema file is unchanged. When a camera
+  is disabled the producer **omits the key entirely** — never `""` or a fake
+  path (§Conventions, absent means unknown). Validation of *present* camera
+  keys is unchanged (value must be a string). **Old data is unaffected**:
+  previously valid frames stay valid; only "robot_v2 with no
+  `observation.images.*` key" flips from invalid to valid. `ego_v1` /
+  `ego_multicam_v1` are untouched. `SPEC.md` (robot_v2 section + field table +
+  change note), `CONTRACTS.md` (C1 变更记录), `tests/test_profile.py` synced.
+
 ### Fixed
 
 [0.5.0]: https://github.com/Mnesis-Labs/mnesis-canonical/releases/tag/v0.5.0
