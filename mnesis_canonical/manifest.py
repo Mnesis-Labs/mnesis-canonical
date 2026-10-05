@@ -34,12 +34,13 @@ per frame.
 from __future__ import annotations
 
 import json
+from importlib import resources
 from pathlib import Path
 
 from .io import read_jsonl
 
-_SCHEMA_PATH = Path(__file__).resolve().parent / "manifest.schema.json"
-with open(_SCHEMA_PATH, encoding="utf-8") as _f:
+_SCHEMA_PATH = resources.files("mnesis_canonical") / "manifest.schema.json"
+with _SCHEMA_PATH.open("r", encoding="utf-8") as _f:
     _MANIFEST_SCHEMA = json.loads(_f.read())
 
 # Controlled vocabulary for sidecar ``kind`` (additive registration, SPEC §Episode

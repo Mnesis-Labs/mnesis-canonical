@@ -13,29 +13,32 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 
-_EMBODIMENTS_DIR = Path(__file__).resolve().parent.parent / "embodiments"
+_EMBODIMENTS_DIR = resources.files("mnesis_canonical.embodiments")
 _SCHEMA_PATH = _EMBODIMENTS_DIR / "embodiment.schema.json"
 
 
-def _discover_embodiments() -> list[Path]:
+def _discover_embodiments() -> list[Traversable]:
     """Return sorted list of embodiment JSON paths (excluding the schema)."""
     return sorted(
-        p for p in _EMBODIMENTS_DIR.iterdir()
-        if p.is_file() and p.suffix == ".json" and p.name != "embodiment.schema.json"
+        (p for p in _EMBODIMENTS_DIR.iterdir()
+         if p.is_file() and p.name.endswith(".json") and p.name != "embodiment.schema.json"),
+        key=lambda p: p.name,
     )
 
 
 def load_schema() -> dict:
     """Load the embodiment JSON Schema as a dict."""
-    with open(_SCHEMA_PATH, encoding="utf-8") as f:
+    with _SCHEMA_PATH.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def load_embodiment(path: Path) -> dict:
+def load_embodiment(path: Path | Traversable) -> dict:
     """Load one embodiment JSON file."""
-    with open(path, encoding="utf-8") as f:
+    with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -125,7 +128,7 @@ def cmd_validate() -> int:
             ok = False
         else:
             # Verify id matches filename stem
-            stem = path.stem
+            stem = Path(path.name).stem
             if data.get("id") != stem:
                 print(
                     f"  {path.name}  ... id mismatch: '{data.get('id')}' != '{stem}'",
