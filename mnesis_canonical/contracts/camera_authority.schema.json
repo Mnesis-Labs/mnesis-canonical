@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mnesis.dev/contracts/camera_authority.schema.json",
+  "title": "C9 camera exposure authority, camera-authority/1.0",
+  "description": "Standalone per-image authority, explicitly adopted and pinned by consumers. Does not redefine C1 head pose, C2b inventory or prove device/calibration evidence. No remote references.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "episode_id", "frame_index", "image_key", "image_ref", "image_sha256", "sensor_id", "world_frame_id", "provider", "intrinsics", "calibration", "clock_mapping", "exposure", "head_pose_at_exposure", "sensor_pose_at_exposure"],
+  "properties": {
+    "schema_version": {"const": "camera-authority/1.0"},
+    "episode_id": {"$ref": "#/$defs/id"},
+    "frame_index": {"type": "integer", "minimum": 0},
+    "image_key": {"type": "string", "pattern": "^observation\\.images\\.[a-z0-9][a-z0-9_]*$"},
+    "image_ref": {"type": "string", "pattern": "^(?!.*(?:\\.\\.|:|\\\\))[A-Za-z0-9][A-Za-z0-9_./-]*$"},
+    "image_sha256": {"$ref": "#/$defs/hash"},
+    "sensor_id": {"$ref": "#/$defs/id"},
+    "world_frame_id": {"$ref": "#/$defs/id"},
+    "provider": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "version", "evidence"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "version": {"$ref": "#/$defs/id"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "intrinsics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model", "width", "height", "K", "calibration_id", "calibration_revision"],
+      "properties": {
+        "model": {"const": "undistorted_pinhole"},
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "K": {"type": "array", "minItems": 9, "maxItems": 9, "items": {"type": "number"}},
+        "calibration_id": {"$ref": "#/$defs/id"},
+        "calibration_revision": {"$ref": "#/$defs/id"}
+      }
+    },
+    "calibration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["calibration_id", "revision", "sensor_id", "head_frame_id", "T_head_sensor", "evidence"],
+      "properties": {
+        "calibration_id": {"$ref": "#/$defs/id"},
+        "revision": {"$ref": "#/$defs/id"},
+        "sensor_id": {"$ref": "#/$defs/id"},
+        "head_frame_id": {"$ref": "#/$defs/id"},
+        "T_head_sensor": {"$ref": "#/$defs/pose"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "clock_mapping": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_clock_id", "target_clock_id", "offset_ns", "max_error_ns", "evidence"],
+      "properties": {
+        "source_clock_id": {"$ref": "#/$defs/id"},
+        "target_clock_id": {"$ref": "#/$defs/id"},
+        "offset_ns": {"type": "integer"},
+        "max_error_ns": {"type": "integer", "minimum": 0},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "exposure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["clock_id", "time_ns", "time_basis", "evidence"],
+      "properties": {
+        "clock_id": {"$ref": "#/$defs/id"},
+        "time_ns": {"type": "integer", "minimum": 0},
+        "time_basis": {"const": "exposure_midpoint"},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "head_pose_at_exposure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["frame_id", "world_frame_id", "clock_id", "time_ns", "pose_SE3", "method", "evidence"],
+      "properties": {
+        "frame_id": {"$ref": "#/$defs/id"},
+        "world_frame_id": {"$ref": "#/$defs/id"},
+        "clock_id": {"$ref": "#/$defs/id"},
+        "time_ns": {"type": "integer", "minimum": 0},
+        "pose_SE3": {"$ref": "#/$defs/pose"},
+        "method": {"enum": ["sampled_at_exposure", "interpolated_at_exposure"]},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      }
+    },
+    "sensor_pose_at_exposure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["frame_id", "world_frame_id", "pose_SE3"],
+      "properties": {
+        "frame_id": {"$ref": "#/$defs/id"},
+        "world_frame_id": {"$ref": "#/$defs/id"},
+        "pose_SE3": {"$ref": "#/$defs/pose"}
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pose": {"type": "array", "minItems": 7, "maxItems": 7, "items": {"type": "number"}},
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ref", "sha256", "fixture"],
+      "properties": {
+        "ref": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+        "sha256": {"$ref": "#/$defs/hash"},
+        "fixture": {"type": "boolean"}
+      }
+    }
+  }
+}

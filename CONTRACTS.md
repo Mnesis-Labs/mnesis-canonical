@@ -20,7 +20,7 @@
 - schema 随 wheel 分发；`contracts/contracts.lock` 以仓库相对路径钉住其 SHA256。`contracts_check` 的生成和校验均覆盖包内 `contracts/*.schema.json`；既有四项锁值保持不变。
 - 本次一致候选不实施 #168 零相机策略，不声明消费者已安装本包或端到端 MR/SIM 验收。
 
-> **规则**：任何跨仓接口，先在这里登记/改版本，再改代码；两侧仓库各自持有钉死该契约的测试。改契约的 PR 必须在描述里链接两侧测试。本文件由 Tech Lead（Claude Code）守门。
+> **规则**：任何跨仓接口，先在这里登记/改版本，再改代码；两侧仓库各自持有钉死该契约的测试。改契约的 PR 必须在描述里链接两侧测试。本文件由 Codex root 独立验收；Claude 已退役，不调用或恢复。
 > 仓库：**Iris**=手机采集 · **Eidolon**=Quest VR 前端 · **Daedalus**=机器人执行/训练 · **Ambrosia**=数据平台/控制台 · **canonical**=本仓（数据标准）。
 
 | # | 契约 | 版本 | Owner（定义方） | 消费方 | 两侧测试 |
@@ -329,6 +329,16 @@ Ambrosia 的 LeRobot/Isaac 导出应成为**稳定契约**,让 Daedalus/外部�
 
 ### C9(新草案)· `camera_intrinsics` 一等字段(来源:Eidolon TL IR-b · Iris TL 背书)
 相机内参(fx,fy,cx,cy,畸变,分辨率)应是 **canonical 一等字段**,不塞各仓私有 sidecar。两采集面同表示后,**4DGS/重构才能同吃手机+Quest 帧**。Owner=canonical 定义;消费方=Iris·Eidolon 产出、Ambrosia/重构消费。
+
+**2026-10-08 CAMERA-AUTHORITY-01 候选（复用 C9，不新增 feature）**：独立权威
+`camera-authority/1.0`，包内 schema + `camera_authority` 子模块 + 可执行 C1 关联
+golden/负例见 [docs/CAMERA-AUTHORITY.md](docs/CAMERA-AUTHORITY.md)。逐曝光 clock、
+真实 head pose、带 revision/hash 的 K/`T_head_sensor` 和 provider/version 必须有
+独立证据；`T_world_sensor=T_world_head_at_exposure*T_head_sensor` 支持 nonidentity。
+缺失不能默认 identity/clock/K，fixture 默认拒绝；C1 true-head 与 C2b inventory
+不变、不新增上传字段或顶层 exports。历史“内参已落地”编号说明不是实际 schema
+实现证据。旧 d239 wheel 不含本契约；本批仅 canonical 候选，ED/AM 消费者升级、
+真实相机/标定/重构/当前 APK/Q1Q2 未测，须 root 独审后后继。
 
 > **C8-C11 编号说明**：Eidolon/Tech-Lead 2026-07-10 曾在 PR#2 提出 C8-C11 四项跨仓建议，但 main 上 C8 已分配给 `space_id`、C9 已分配给 `camera_intrinsics`(后者主题已采纳落地)，造成编号撞车 → PR#2 长期 CONFLICTING。Muso 拍板（Parthenon#16 问题一 = A）关闭 PR#2，其中仍有效两项以新编号 **C10 / C11** 重新登记(见下)；原 C8「夹爪/末端执行通道」已单独立卡 mnesis-canonical#31。以下两条**仅为草案登记，待 Muso 拍板，不视为已生效契约**。
 
