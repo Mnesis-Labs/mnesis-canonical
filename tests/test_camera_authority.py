@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import math
+from enum import Enum
 from pathlib import Path
 
 import pytest
@@ -221,16 +222,31 @@ def test_unknown_fields_and_versions_fail_closed():
     assert errors(record)
 
 
-def binding(record, frame, **overrides):
-    supplied = dict(frame=frame, episode_id="fixture-episode", image_sha256="a" * 64,
-                    calibration_revision="fixture-r1",
-                    calibration_sha256=hashlib.sha256(b"calibration").hexdigest(),
-                    calibrated_T_head_sensor=golden()["calibration"]["T_head_sensor"],
-                    calibrated_intrinsics=golden()["intrinsics"],
-                    provider_id="synthetic-provider", provider_version="fixture-v1",
-                    max_clock_error_ns=5, allow_fixture=True)
-    supplied.update(overrides)
-    return validate_camera_authority_binding(record, **supplied)
+class BindingDefault(Enum):
+    GOLDEN = "golden"
+
+
+def binding(
+    record, frame, *, episode_id: str = "fixture-episode", image_sha256: str = "a" * 64,
+    calibration_revision: str = "fixture-r1",
+    calibration_sha256: str = hashlib.sha256(b"calibration").hexdigest(),
+    calibrated_T_head_sensor: list[float] | BindingDefault = BindingDefault.GOLDEN,
+    calibrated_intrinsics: dict[str, object] | BindingDefault = BindingDefault.GOLDEN,
+    provider_id: str = "synthetic-provider", provider_version: str = "fixture-v1",
+    max_clock_error_ns: int = 5, allow_fixture: bool = True,
+):
+    return validate_camera_authority_binding(
+        record, frame=frame, episode_id=episode_id, image_sha256=image_sha256,
+        calibration_revision=calibration_revision, calibration_sha256=calibration_sha256,
+        calibrated_T_head_sensor=(golden()["calibration"]["T_head_sensor"]
+                                  if calibrated_T_head_sensor is BindingDefault.GOLDEN
+                                  else calibrated_T_head_sensor),
+        calibrated_intrinsics=(golden()["intrinsics"]
+                               if calibrated_intrinsics is BindingDefault.GOLDEN
+                               else calibrated_intrinsics),
+        provider_id=provider_id, provider_version=provider_version,
+        max_clock_error_ns=max_clock_error_ns, allow_fixture=allow_fixture,
+    )
 
 
 def test_c1_binding_keeps_actual_head_pose_and_validates_c1(good_frame):
@@ -254,6 +270,16 @@ def test_c1_binding_keeps_actual_head_pose_and_validates_c1(good_frame):
     ("provider_id", "foreign-provider"), ("provider_version", "old-fixture-v0"),
 ])
 def test_consumer_verified_join_mismatch(good_frame, field, value):
+    frame = good_frame()
+    frame["frame_index"] = 7
+    frame["observation.images.ego"] = "frames/000007.jpg"
+    assert binding(golden(), frame, **{field: value})
+
+
+@pytest.mark.parametrize("field,value", [
+    ("calibrated_T_head_sensor", None), ("calibrated_intrinsics", None),
+])
+def test_explicit_none_calibration_override_is_not_defaulted(good_frame, field, value):
     frame = good_frame()
     frame["frame_index"] = 7
     frame["observation.images.ego"] = "frames/000007.jpg"
