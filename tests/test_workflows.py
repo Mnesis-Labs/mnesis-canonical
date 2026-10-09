@@ -60,6 +60,27 @@ def test_ci_fast_still_runs_on_a_hosted_runner():
     assert targets == ["ubuntu-latest"]
 
 
+def test_ci_release_check_reuses_installed_environment_without_sync():
+    """A second resolver must not fail before the installed checklist starts."""
+    text = (_WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+    job = re.search(r"^  release-check:\n(.*?)(?=^  \S|\Z)", text, re.MULTILINE | re.DOTALL)
+    assert job is not None
+    steps = re.split(r"^      - ", job.group(1), flags=re.MULTILINE)[1:]
+    install = next(i for i, step in enumerate(steps) if 'uv pip install -e ".[dev]"' in step)
+    check = next(i for i, step in enumerate(steps) if "scripts/release_check.py" in step)
+    assert install < check
+    for step in (steps[install], steps[check]):
+        assert "working-directory: ${{ env.CI_CHECKOUT_DIR }}" in step
+        assert "continue-on-error:" not in step
+        assert "if:" not in step
+    assert re.search(
+        r"^run: uv run --no-sync python scripts/release_check\.py$",
+        steps[check],
+        re.MULTILINE,
+    ), "Run the complete checklist in the already installed venv, without resync or filters"
+    assert "continue-on-error:" not in job.group(1)
+
+
 # ── release.yml：一条从未执行过的发布链路（#109）──────────────────────────────
 # `gh run list --workflow=release.yml` 至今为空：它由推 `v*.*.*` tag 触发，而本仓
 # 唯一的 tag v0.5.0 指向 07-28 的提交，**早于该 workflow 落地（#98，08-09）**——

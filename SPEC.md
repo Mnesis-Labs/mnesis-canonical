@@ -20,6 +20,17 @@ breaking existing data.
 One **frame** = one JSON object = one line in an episode's `data.jsonl` sidecar.
 An **episode** = `data.jsonl` (+ optional `video.mp4`) under one directory.
 
+### C9 camera exposure authority (standalone candidate, camera-authority/1.0)
+
+The canonical-owned [camera authority contract](docs/CAMERA-AUTHORITY.md) binds
+each image to explicit K, provider/version, exposure clock mapping and calibrated
+head-to-sensor extrinsics. `T_world_sensor = T_world_head_at_exposure * T_head_sensor`.
+Nonidentity is supported with evidence; missing calibration/clock/K is blocked,
+not an identity/default. C1 `head_pose_SE3` remains the actual head pose and is
+never replaced by the sensor pose. C1/C2b syntax and frozen API are unchanged;
+consumers must explicitly adopt/pin this separately versioned contract. CPU
+fixtures are not acquisition, calibration, reconstruction or device receipts.
+
 ## Profiles (v0.2+)
 
 A frame may carry an optional `profile` field at the top level. When absent, it
@@ -732,7 +743,7 @@ open items to align with the platform authority before freezing. ✅ = settled,
 | `observation.images.ego` / `<cam>` `str` | `observation.images.ego` | `observation.images.<cam>` | ✅ 1:1 file/key reference |
 | `timestamp` | `timestamp` | dataset column | ✅ 1:1 (ISO-8601 string) |
 | `index` / `episode_index` / `frame_index` / `task_index` | same | dataset columns | ✅ 1:1 |
-| `head_pose_SE3` `float[7]` | (extra column) | root / sensor pose | ✅ SI m + quat — shares ⚠️ frame + quaternion items |
+| `head_pose_SE3` `float[7]` | (extra column) | actual head/root pose, NOT a sensor-pose alias | ✅ SI m + quat — sensor conversion requires exposure-time head + calibrated extrinsics (C9) |
 | `t_ns` / `t_hw_ns` `int` | (extra column) | — (GR00T keys on `timestamp`) | ℹ️ Canonical-only; `t_hw_ns` is the pose↔video join key — drop on GR00T export |
 | `spatial_anchor_id` | (extra column) | — | ℹ️ Canonical-only spatial grounding |
 | `observation.hand.*` | (extra columns) | human-hand keypoints (retargeting input) | ℹ️ Canonical-only for now; SI m + quat `{x,y,z,w}`. Shares the ⚠️ frame + quaternion items below |
